@@ -610,6 +610,9 @@ touch "${STATUS_ESP_EVENTS_FILE}" 2>/dev/null || true
           > "${STATUS_ESP_BOOT_FILE}.tmp" \
           && mv "${STATUS_ESP_BOOT_FILE}.tmp" "${STATUS_ESP_BOOT_FILE}" 2>/dev/null \
           || true
+        # Clear stale suggestion on ESP reboot — suggestions from previous session
+        # are no longer actionable after the ESP restarts.
+        rm -f "${STATUS_ESP_SUGGESTION_FILE}" 2>/dev/null || true
       fi
     done < <(
       ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" \
