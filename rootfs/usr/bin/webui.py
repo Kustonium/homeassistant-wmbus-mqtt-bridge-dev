@@ -2132,9 +2132,9 @@ def _esp_event_summary(payload_str: str, evtype: str) -> str:
         return payload_str[:80] if payload_str else ""
     parts = []
     key_map: dict[str, list[str]] = {
-        "summary":            ["listen_mode", "total", "ok", "dropped", "drop_pct", "avg_ok_rssi"],
-        "summary_15min":      ["listen_mode", "total", "ok", "dropped", "drop_pct", "avg_ok_rssi"],
-        "summary_60min":      ["listen_mode", "total", "ok", "dropped", "drop_pct", "avg_ok_rssi"],
+        "summary":            ["listen_mode", "total", "ok", "dropped", "drop_pct", "avg_ok_rssi", "hint_en"],
+        "summary_15min":      ["listen_mode", "total", "ok", "dropped", "drop_pct", "avg_ok_rssi", "hint_en"],
+        "summary_60min":      ["listen_mode", "total", "ok", "dropped", "drop_pct", "avg_ok_rssi", "hint_en"],
         "dropped":            ["stage", "reason", "detail", "mode"],
         "truncated":          ["stage", "reason", "detail", "mode"],
         "rx_path":            ["stage", "mode", "rssi"],
@@ -2150,9 +2150,10 @@ def _esp_event_summary(payload_str: str, evtype: str) -> str:
         if v is not None and str(v) not in ("", "null"):
             parts.append(f"{k}={v}")
     if evtype == "meter_snapshot":
-        meters = d.get("meters", [])
-        if isinstance(meters, list):
-            parts.append(f"meters={len(meters)}")
+        meters_list = d.get("meters", [])
+        if isinstance(meters_list, list) and meters_list:
+            ids = "  ".join(m.get("id", "?") for m in meters_list if isinstance(m, dict))
+            parts.append(f"meters={len(meters_list)} [{ids}]")
     text = "  ".join(str(p) for p in parts)
     return text[:120] if text else ""
 

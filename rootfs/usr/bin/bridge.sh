@@ -69,12 +69,16 @@ RAW_RATE_PREV_MIN_COUNT=0
 touch "${STATUS_METERS_FILE}" "${STATUS_CANDIDATES_FILE}" "${STATUS_EVENTS_FILE}" "${STATUS_SEEN_FILE}" "${STATUS_LAST_RAW_FILE}" "${STATUS_RECENT_RAW_FILE}" "${STATUS_CANDIDATE_ANALYSIS_FILE}" "${STATUS_CANDIDATE_RAW_FILE}" "${SEARCH_MATCHES_FILE}" "${SEARCH_STATUS_FILE}"
 [[ -f "${STATUS_RAW_COUNT_FILE}" ]] || echo "0" > "${STATUS_RAW_COUNT_FILE}"
 
-# Record bridge start time for the WebGUI rate denominator fix.
-printf '%s\n' "$(epoch_now)" > "${STATUS_BRIDGE_START_FILE}" 2>/dev/null || true
-
 iso_now() {
   date -Iseconds 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S%z'
 }
+
+epoch_now() {
+  date +%s 2>/dev/null || echo 0
+}
+
+# Record bridge start time for the WebGUI rate denominator fix.
+printf '%s\n' "$(epoch_now)" > "${STATUS_BRIDGE_START_FILE}" 2>/dev/null || true
 
 status_add_event() {
   local level="$1"
