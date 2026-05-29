@@ -92,15 +92,42 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           CFG="config.yaml"
+
           RAW_VER="$(sed -nE 's/^version:[[:space:]]*"?([^"[:space:]]+)"?[[:space:]]*$/\1/p' "${CFG}" | head -n1)"
-          CORE_VER="$(echo "${RAW_VER}" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
-          NEW_VER="${CORE_VER}-dev.${{ github.run_number }}"
+
+          if [[ -z "${RAW_VER}" ]]; then
+            echo "ERROR: cannot read version from ${CFG}"
+            exit 1
+          fi
+
+          if [[ "${RAW_VER}" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-dev\.([0-9]+)$ ]]; then
+            CORE_VER="${BASH_REMATCH[1]}"
+            DEV_NUM="${BASH_REMATCH[2]}"
+            NEW_VER="${CORE_VER}-dev.$((DEV_NUM + 1))"
+          elif [[ "${RAW_VER}" =~ ^([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            CORE_VER="${BASH_REMATCH[1]}"
+            NEW_VER="${CORE_VER}-dev.1"
+          else
+            echo "ERROR: unsupported version format: ${RAW_VER}"
+            exit 1
+          fi
+
           echo "Bumping dev version: ${RAW_VER} → ${NEW_VER}"
-          sed -i -E "s/^(version:[[:space:]]*\").*\"/\1${NEW_VER}\"/" "${CFG}"
+
+          sed -i -E "s/^version:[[:space:]]*\"?.*\"?/version: \"${NEW_VER}\"/" "${CFG}"
+
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
           git add "${CFG}"
+
+          if git diff --cached --quiet; then
+            echo "No version changes to commit. Skipping commit."
+            exit 0
+          fi
+
           git commit -m "ci(dev): bump version to ${NEW_VER} [skip ci]"
           git pull --rebase origin main
           git push origin main
@@ -116,12 +143,24 @@ jobs:
 
           CFG="config.yaml"
           RAW_VER="$(sed -nE 's/^version:[[:space:]]*"?([^"[:space:]]+)"?[[:space:]]*$/\1/p' "${CFG}" | head -n1)"
+
           if [[ -z "${RAW_VER}" ]]; then
             echo "ERROR: cannot read version from ${CFG}"
             exit 1
           fi
-          CORE_VER="$(echo "${RAW_VER}" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
-          VER="${CORE_VER}-dev.${{ github.run_number }}"
+
+          if [[ "${RAW_VER}" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-dev\.([0-9]+)$ ]]; then
+            CORE_VER="${BASH_REMATCH[1]}"
+            DEV_NUM="${BASH_REMATCH[2]}"
+            VER="${CORE_VER}-dev.$((DEV_NUM + 1))"
+          elif [[ "${RAW_VER}" =~ ^([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            CORE_VER="${BASH_REMATCH[1]}"
+            VER="${CORE_VER}-dev.1"
+          else
+            echo "ERROR: unsupported version format: ${RAW_VER}"
+            exit 1
+          fi
+
           echo "ADDON_VERSION=${VER}" >> "$GITHUB_ENV"
           echo "Building dev version ${VER}"
 
