@@ -52,9 +52,9 @@ STATUS_CANDIDATE_VALUES_FILE="${BASE}/status_candidate_values.tsv"
 # Per-ESP-device telegram tracking — written by the background MQTT subscriber
 # that listens to the RAW topic itself. The "+" wildcard segment carries the
 # device name (e.g. wmbus/xiaoseed/telegram → "xiaoseed"). Lets the WebGUI
-# detect active ESPs WITHOUT requiring diagnostic publishing on the ESP side.
-# Telegrams arrive live (not retained), so a dead ESP's name naturally ages
-# out of the active window — solves the "ghost ESP" problem.
+# detect ESPs WITHOUT requiring diagnostic publishing on the ESP side.
+# The file is cleared at bridge start, so rows describe devices seen in the
+# current bridge session via the configured RAW_TOPIC.
 # Format: device_name<TAB>last_seen_epoch<TAB>last_topic<TAB>telegram_count
 STATUS_ESP_TELEGRAM_DEVICES_FILE="${BASE}/status_esp_telegram_devices.tsv"
 SEARCH_MATCHES_FILE="${BASE}/search_matches.tsv"
@@ -83,6 +83,7 @@ RAW_RATE_CUR_MIN_COUNT=0
 RAW_RATE_PREV_MIN_COUNT=0
 
 touch "${STATUS_METERS_FILE}" "${STATUS_CANDIDATES_FILE}" "${STATUS_EVENTS_FILE}" "${STATUS_SEEN_FILE}" "${STATUS_LAST_RAW_FILE}" "${STATUS_RECENT_RAW_FILE}" "${STATUS_CANDIDATE_ANALYSIS_FILE}" "${STATUS_CANDIDATE_RAW_FILE}" "${STATUS_RATE_HISTORY_FILE}" "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" "${SEARCH_MATCHES_FILE}" "${SEARCH_STATUS_FILE}"
+: > "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" 2>/dev/null || true
 # Preview values are session-scoped — clear stale entries from previous runs
 # so the WebGUI doesn't show outdated readings (or the legacy first-numeric-field
 # pick that briefly stored bogus backflow_m3 / fraud counter values) until the
@@ -649,8 +650,7 @@ STATUS_ESP_DIAG_FILE="${BASE}/status_esp_diag.json"
     # ESP device name (e.g. "esphome-wmbus-tx-lilygo"). webui.py uses _topic
     # to display the source in the Pipeline ESP node and to detect when more
     # than one ESP is publishing.
-    ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" -t "wmbus/+/diag/summary" -F '%t\t%p' -W 90 2>/dev/null \
-      | while IFS=$'\t' read -r _diag_topic _diag_line; do
+    while IFS=$'\t' read -r _diag_topic _diag_line; do
           [[ -n "${_diag_line}" ]] || continue
           _ts="$(date +%s 2>/dev/null || echo 0)"
           printf '%s\n' "${_diag_line}" \
@@ -658,7 +658,9 @@ STATUS_ESP_DIAG_FILE="${BASE}/status_esp_diag.json"
             > "${STATUS_ESP_DIAG_FILE}.tmp" \
             && mv "${STATUS_ESP_DIAG_FILE}.tmp" "${STATUS_ESP_DIAG_FILE}" 2>/dev/null \
             || true
-        done
+        done < <(
+          ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" -t "wmbus/+/diag/summary" -F '%t\t%p' -W 90 2>/dev/null
+        )
     sleep 5
   done
 ) &

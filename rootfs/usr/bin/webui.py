@@ -52,7 +52,7 @@ STATUS_ESP_BOOT_FILE = BASE / "status_esp_boot.json"
 STATUS_CANDIDATE_VALUES_FILE = BASE / "status_candidate_values.tsv"
 # Per-ESP-device telegram tracking — written by bridge.sh's background
 # subscriber listening to RAW_TOPIC. The PRIMARY source of truth for which
-# ESPs are publishing live (works without ESPHome diagnostics enabled).
+# ESPs were seen in the current bridge session (works without ESP diagnostics).
 # Format: device<TAB>last_seen_epoch<TAB>last_topic<TAB>telegram_count
 STATUS_ESP_TELEGRAM_DEVICES_FILE = BASE / "status_esp_telegram_devices.tsv"
 # LISTEN-only config dir — separate from /data/etc which holds the user's
@@ -860,21 +860,17 @@ def status_model(data: dict) -> dict:
 def _esp_payload() -> dict:
     """Assemble the ESP section of /api/app.
 
-    Multi-source ESP device detection:
+    ESP device detection is intentionally limited to two independent sources:
 
-      1. PRIMARY: status_esp_telegram_devices.tsv — per-device last_seen
-         from the RAW telegram topic. Telegrams arrive live (not retained),
-         so this is the most reliable signal of which ESPs are currently
-         alive. Works WITHOUT ESPHome diagnostics enabled.
+      1. PRIMARY: status_esp_telegram_devices.tsv, filled from RAW_TOPIC
+         (for example wmbus/+/telegram). This works without ESP diagnostics.
 
-      2. SECONDARY: ESP events buffer (status_esp_events.tsv) — summary
-         events confirm the device runs the wmbusmeters diag pipeline.
-         Adds richer info (RSSI, drop %, hints) when available.
+      2. SECONDARY: wmbus/+/diag/summary, used as an optional heartbeat when
+         the ESP firmware publishes diagnostics.
 
-    A device is "active" if it has emitted a RAW telegram OR a summary
-    event in the last ACTIVE_WINDOW_S window (5 min). Boot/meter_window
-    on their own no longer qualify as active — they typically replay from
-    MQTT retained on bridge restart.
+    Other diagnostic topics (boot, suggestion, meter_window, dropped, ...)
+    remain visible in the event log, but they do not create an active ESP and
+    they must not overwrite the detection topic shown for a device.
     """
     import time as _time
 
@@ -886,71 +882,118 @@ def _esp_payload() -> dict:
 
     ACTIVE_WINDOW_S = 5 * 60
     now_epoch       = int(_time.time())
-    SUMMARY_TYPES   = {"summary", "summary_15min", "summary_60min"}
+    SUMMARY_TOPIC_SUFFIX = "/diag/summary"
 
     # Per-device aggregation. Seeded from telegram tracker (primary), then
     # enriched from the diag events buffer (secondary).
     devices: dict[str, dict] = {}
 
+    def device_from_topic(topic: str) -> str:
+        parts = topic.split("/")
+        if len(parts) < 3 or parts[0] != "wmbus":
+            return ""
+        return parts[1].strip()
+
+    def blank_device(dev: str) -> dict:
+        return {
+            "name": dev,
+            "topic": "",
+            "telegram_topic": "",
+            "summary_topic": "",
+            "event_topic": "",
+            "last_telegram_epoch": 0,
+            "telegram_count": 0,
+            "last_summary_epoch": 0,
+            "last_event_epoch": 0,
+            "last_seen_epoch": 0,
+            "last_evtype": "",
+        }
+
+    def apply_summary(dev: str, topic: str, epoch: int) -> None:
+        if not dev or not topic or epoch <= 0:
+            return
+        entry = devices.setdefault(dev, blank_device(dev))
+        if epoch > entry["last_summary_epoch"]:
+            entry["last_summary_epoch"] = epoch
+            entry["summary_topic"] = topic
+
     # ── Seed from telegram tracker ──
-    # This is the most reliable "is alive" signal — telegrams are live,
-    # not retained, so a dead ESP fades out within ACTIVE_WINDOW_S.
+    # This is the primary source of truth. bridge.sh clears the tracker file at
+    # start, so a row means the current bridge process has seen that ESP publish
+    # on the configured RAW_TOPIC.
     for row in telegram_rows:
         dev = (row.get("name") or "").strip()
         if not dev:
             continue
+        topic = row.get("topic") or ""
         ep = safe_int(row.get("last_telegram_epoch"))
-        devices[dev] = {
-            "name": dev,
-            "topic": row.get("topic") or "",
-            "last_telegram_epoch": ep,
-            "telegram_count": safe_int(row.get("telegram_count")),
-            "last_seen_epoch": ep,
-            "last_evtype": "telegram",
-            "last_summary_epoch": 0,
-        }
+        entry = devices.setdefault(dev, blank_device(dev))
+        if ep >= entry["last_telegram_epoch"]:
+            entry["telegram_topic"] = topic
+            entry["last_telegram_epoch"] = ep
+            entry["telegram_count"] = safe_int(row.get("telegram_count"))
+
+    # The latest diag summary JSON is written by a separate subscriber. Use it
+    # as a direct heartbeat source in addition to the rolling event buffer.
+    diag_topic = (diag.get("_topic") or "").strip()
+    diag_epoch = safe_int(diag.get("_bridge_rx_epoch", 0))
+    if diag_topic.endswith(SUMMARY_TOPIC_SUFFIX):
+        apply_summary(device_from_topic(diag_topic), diag_topic, diag_epoch)
 
     # ── Enrich / merge from diag events ──
+    # Only the exact wmbus/<device>/diag/summary topic participates in device
+    # detection. All other events are retained as event-only context.
     for ev in events:
         topic = (ev.get("topic") or "").strip()
-        parts = topic.split("/")
-        if len(parts) < 3 or parts[0] != "wmbus":
-            continue
-        dev = parts[1]
+        dev = device_from_topic(topic)
         if not dev:
             continue
         epoch  = safe_int(ev.get("epoch"))
         evtype = ev.get("evtype") or ""
-        entry = devices.setdefault(dev, {
-            "name": dev,
-            "topic": topic,
-            "last_telegram_epoch": 0,
-            "telegram_count": 0,
-            "last_seen_epoch": 0,
-            "last_evtype": "",
-            "last_summary_epoch": 0,
-        })
-        # last_seen across both sources, with evtype carrying which side won.
-        if epoch > entry["last_seen_epoch"]:
-            entry["last_seen_epoch"] = epoch
-            entry["last_evtype"] = evtype
-            entry["topic"] = topic
-        if evtype in SUMMARY_TYPES and epoch > entry["last_summary_epoch"]:
-            entry["last_summary_epoch"] = epoch
+        if topic.endswith(SUMMARY_TOPIC_SUFFIX):
+            apply_summary(dev, topic, epoch)
+            continue
 
-    # ── Set active flag ──
-    # Active if EITHER telegram OR summary is recent. Boot-only or
-    # retained-only entries fall through to "stale".
+        # Keep boot/suggestion/etc. visible as event-only rows, but do not let
+        # them replace the telegram or summary topic used for detection.
+        entry = devices.setdefault(dev, blank_device(dev))
+        if epoch > entry["last_event_epoch"]:
+            entry["last_event_epoch"] = epoch
+            entry["event_topic"] = topic
+            if entry["last_telegram_epoch"] <= 0 and entry["last_summary_epoch"] <= 0:
+                entry["last_seen_epoch"] = epoch
+                entry["last_evtype"] = evtype
+
+    # ── Finalize display + active flag ──
+    # Telegram rows are session-scoped, so any telegram in the current bridge
+    # run counts as detected. diag/summary is a heartbeat, so it must be fresh.
     for entry in devices.values():
         last_tg  = entry.get("last_telegram_epoch", 0)
         last_sum = entry.get("last_summary_epoch", 0)
-        fresh_tg  = last_tg  > 0 and (now_epoch - last_tg)  <= ACTIVE_WINDOW_S
         fresh_sum = last_sum > 0 and (now_epoch - last_sum) <= ACTIVE_WINDOW_S
-        entry["active"] = bool(fresh_tg or fresh_sum)
+        entry["active"] = bool(last_tg > 0 or fresh_sum)
         # has_diag tells the frontend whether this ESP exposes diag/events
         # (useful for the "diag required" notice — we can soften it when
         # at least one ESP IS publishing diag).
         entry["has_diag"] = last_sum > 0
+        entry["topic"] = (
+            entry.get("telegram_topic")
+            or entry.get("summary_topic")
+            or entry.get("event_topic")
+            or entry.get("topic")
+            or ""
+        )
+        if last_tg > 0 or last_sum > 0:
+            if last_tg >= last_sum:
+                entry["last_seen_epoch"] = last_tg
+                entry["last_evtype"] = "telegram"
+            else:
+                entry["last_seen_epoch"] = last_sum
+                entry["last_evtype"] = "summary"
+        entry["detection_source"] = (
+            "telegram" if last_tg > 0 else
+            ("summary" if last_sum > 0 else "event")
+        )
 
     # Sort: active first (by recency), then inactive. Stale ghost entries
     # from MQTT retained messages drift to the bottom.

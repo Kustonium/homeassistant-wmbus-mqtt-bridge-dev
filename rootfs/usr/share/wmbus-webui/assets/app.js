@@ -766,8 +766,8 @@
     const hasLiveRate    = cur > 0;
 
     // Multi-ESP support: webui.py exposes esp.devices[] (each entry carries
-    // an `active` flag set when the device has emitted a RAW telegram or
-    // summary in the last 5 min). devices_count holds the ACTIVE count only.
+    // an `active` flag set from wmbus/+/telegram, or from a fresh
+    // wmbus/+/diag/summary heartbeat). devices_count holds the ACTIVE count.
     const espDevicesAll    = asArray((data.esp || {}).devices);
     const espActiveDevices = espDevicesAll.filter(d => d && d.active);
     const espCount         = Number((data.esp || {}).devices_count || espActiveDevices.length || 0);
@@ -1773,39 +1773,18 @@
     const suggestion = esp.suggestion || {};
     const events = asArray(esp.events);
 
-    // Identify ALL currently-active ESP devices, not just the single most-recent
-    // one. Each device that has sent a summary (or any event) within the last
-    // 5 minutes counts as "active" — multiple ESPs can run in parallel, each
-    // contributing telegrams to the bridge through its own MQTT topic.
-    //
-    // bridge.sh subscribes to wmbus/+/diag/summary etc.; topic segment [1] is
-    // the device name. We aggregate event topics into a Set per device with
-    // the latest event epoch, then mark any device with a fresh summary as
-    // "active" and any device with any event (older) as "seen".
-    const ACTIVE_WINDOW_S = 5 * 60;  // device counts as active for 5 min after last summary
-    const nowEpoch = Math.floor(Date.now() / 1000);
-    const SUMMARY_TYPES = new Set(["summary", "summary_15min", "summary_60min"]);
-
-    // device → most-recent summary epoch (0 if none)
-    const summaryEpochByDevice = new Map();
-    for (const ev of events) {
-      const dev = (ev.topic || "").split("/")[1] || "";
-      if (!dev) continue;
-      if (!SUMMARY_TYPES.has(ev.evtype)) continue;
-      const ep = Number(ev.epoch || 0);
-      const cur = summaryEpochByDevice.get(dev) || 0;
-      if (ep > cur) summaryEpochByDevice.set(dev, ep);
-    }
-    // Active = summary within last 5 min. Devices without any summary fall
-    // through to the "seen" (gray) bucket.
+    // Use the backend's single source of truth for ESP activity. It combines
+    // wmbus/+/telegram with the optional wmbus/+/diag/summary heartbeat; boot
+    // and other diag events remain log-only and do not mark a device active.
+    const devices = asArray(esp.devices);
     const activeDevices = new Set(
-      [...summaryEpochByDevice.entries()]
-        .filter(([, ep]) => ep > 0 && (nowEpoch - ep) <= ACTIVE_WINDOW_S)
-        .map(([dev]) => dev)
+      devices
+        .filter(d => d && d.active && d.name)
+        .map(d => d.name)
     );
 
-    // Badge — one pill per active device. When the list is empty (no recent
-    // summaries) we don't render any badge.
+    // Badge — one pill per active device. When the list is empty we don't
+    // render any badge.
     const activeDeviceBadges = [...activeDevices]
       .map(dev => `<span class="pill ok" style="font-size:11px;margin-left:6px;">📡 ${escapeHtml(dev)}</span>`)
       .join("");
@@ -1822,7 +1801,7 @@
         <div>
           <strong style="color:#cbd9e1;display:block;margin-bottom:3px;">${escapeHtml(t("esp_diag_required_title", "ESP diagnostics required"))}</strong>
           <div>${escapeHtml(t("esp_diag_required_text", "These events only appear when diagnostic publishing is enabled in your ESP firmware (ESPHome config). If the table is empty even though telegrams arrive, check the ESP's YAML for the diag/* topics."))}</div>
-          <div style="margin-top:4px;color:#7a8a96;">${escapeHtml(t("esp_diag_retained_hint", "MQTT retained messages may carry forward a name from a device that's no longer publishing — only ESPs with summary events in the last 5 minutes count as active."))}</div>
+          <div style="margin-top:4px;color:#7a8a96;">${escapeHtml(t("esp_diag_retained_hint", "ESP activity is detected from wmbus/+/telegram, with wmbus/+/diag/summary as an optional heartbeat. Other retained diag events are log-only."))}</div>
         </div>
       </div>`;
 
