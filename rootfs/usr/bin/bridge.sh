@@ -223,6 +223,53 @@ status_upsert_candidate_analysis() {
   mv "${tmp}" "${STATUS_CANDIDATE_ANALYSIS_FILE}" 2>/dev/null || true
 }
 
+candidate_autodecode_file() {
+  local id="$1"
+  printf '%s/meter-preview-%s' "${LISTEN_METER_DIR}" "${id}"
+}
+
+candidate_type_requires_aes() {
+  local type_lc
+  type_lc="$(echo "${1:-}" | tr '[:upper:]' '[:lower:]')"
+  [[ "${type_lc}" == *not\ encrypted* || "${type_lc}" == *unencrypted* || "${type_lc}" == *no\ aes* || "${type_lc}" == *no_aes* ]] && return 1
+  [[ "${type_lc}" == *encrypted* || "${type_lc}" == *aes* ]]
+}
+
+ensure_candidate_autodecode() {
+  local id="$1"
+  local driver="${2:-auto}"
+  local type_line="${3:-}"
+  local file tmp
+
+  [[ "${id}" =~ ^[0-9]{8}$ ]] || return 0
+  file="$(candidate_autodecode_file "${id}")"
+
+  if candidate_type_requires_aes "${type_line}"; then
+    if [[ -f "${file}" ]]; then
+      rm -f "${file}" 2>/dev/null || true
+      touch "${BASE}/.reload_listen" "${RELOAD_FLAG:-${BASE}/.reload_pipeline}" 2>/dev/null || true
+    fi
+    return 0
+  fi
+
+  mkdir -p "${LISTEN_METER_DIR}" 2>/dev/null || true
+  tmp="${file}.tmp"
+  {
+    echo "name=preview_${id}"
+    echo "id=${id}"
+    if [[ -n "${driver}" && "${driver}" != "auto" && "${driver}" != "unknown" ]]; then
+      echo "driver=${driver}"
+    fi
+  } > "${tmp}" 2>/dev/null || return 0
+
+  if [[ ! -f "${file}" ]] || ! cmp -s "${tmp}" "${file}" 2>/dev/null; then
+    mv "${tmp}" "${file}" 2>/dev/null || true
+    touch "${BASE}/.reload_listen" "${RELOAD_FLAG:-${BASE}/.reload_pipeline}" 2>/dev/null || true
+  else
+    rm -f "${tmp}" 2>/dev/null || true
+  fi
+}
+
 status_record_candidate_raw() {
   local id="$1"
   local raw="$2"
@@ -271,7 +318,7 @@ status_analyze_candidate_from_text() {
   # Do not guess encryption from driver. Only use explicit backend evidence:
   # 1) wmbusmeters/listen text explicitly says encrypted/AES,
   # 2) process_search_json marks a temporary no-key search meter as decoded.
-  if [[ "${type_lc}" == *encrypted* || "${type_lc}" == *aes* ]]; then
+  if candidate_type_requires_aes "${type_line}"; then
     encryption="aes_required"
     note="wmbusmeters/listen output explicitly reports encrypted/AES telegram"
   elif [[ -n "${raw}" ]]; then
@@ -430,6 +477,7 @@ status_candidate_seen() {
 ' "${id}" "${driver}" "${type_line}" "${now}" "${seen_count}" "${avg_interval_s}" "${seen_15m}" "${seen_60m}" >> "${tmp}"
   mv "${tmp}" "${STATUS_CANDIDATES_FILE}" 2>/dev/null || true
   status_analyze_candidate_from_text "${id}" "${driver}" "${type_line}"
+  ensure_candidate_autodecode "${id}" "${driver:-auto}" "${type_line:-}"
   if [[ "${existed}" != "true" ]]; then
     status_add_event "candidate" "Candidate detected ${id} (${driver})"
   fi
@@ -1102,7 +1150,7 @@ search_type_is_water_candidate() {
   local type_lc="$1"
 
   [[ -n "${type_lc}" ]] || return 1
-  [[ "${type_lc}" == *encrypted* ]] && return 1
+  candidate_type_requires_aes "${type_lc}" && return 1
 
   case "${type_lc}" in
     *water*) return 0 ;;

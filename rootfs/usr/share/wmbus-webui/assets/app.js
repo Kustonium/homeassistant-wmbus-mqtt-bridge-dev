@@ -1272,26 +1272,17 @@
                   : Infinity;
                 const seen15mAdj = ageS > 15 * 60 ? 0 : Number(row.seen_15m || 0);
                 const seen60mAdj = ageS > 60 * 60 ? 0 : Number(row.seen_60m || 0);
-                // ── Preview value (set by /api/preview-candidate) ───────────────
-                // preview_active = true → there's a meter-preview-<id> in LISTEN config.
-                // preview_value may still be empty if no telegram has been decoded yet
-                // (right after the user clicks "Preview"). AES-required candidates
-                // never decode without a key, so the preview button is hidden for them.
-                const previewActive = String(row.preview_active || "false") === "true";
+                // Values are decoded automatically by the parallel LISTEN instance
+                // for candidates that are not explicitly marked as AES/encrypted.
                 const previewVal    = String(row.preview_value || "").trim();
                 const previewKey    = String(row.preview_value_key || "").trim();
                 const previewUnit   = previewKey ? unitFromKey(previewKey) : "";
+                const aesRequired = enc === "encrypted" || enc === "aes_required" || enc === "aes";
                 const previewCell   = previewVal
                   ? `<span style="font-weight:700;color:#4df08d;">${escapeHtml(previewVal)}</span>${previewUnit ? ` <span class="mono" style="color:#9eafba;font-size:11px;">${escapeHtml(previewUnit)}</span>` : ""}${previewKey ? `<div class="mono" style="font-size:10px;color:#4a6070;">${escapeHtml(previewKey)}</div>` : ""}`
-                  : (previewActive
+                  : (!aesRequired
                       ? `<span style="font-size:11px;color:#f3c84b;">${escapeHtml(t("preview_pending", "decoding…"))}</span>`
                       : `<span style="color:#4a6070;">—</span>`);
-                const aesRequired = enc === "encrypted" || enc === "aes_required" || enc === "aes";
-                const previewBtn  = aesRequired
-                  ? ""  // no point — wmbusmeters can't decode without a key
-                  : previewActive
-                    ? `<button class="btn warn" data-action="cancel-preview" data-id="${escapeHtml(id)}">${escapeHtml(t("cancel_preview", "Cancel preview"))}</button>`
-                    : `<button class="btn" data-action="preview-candidate" data-id="${escapeHtml(id)}" data-driver="${escapeHtml(driver)}">${escapeHtml(t("preview_candidate", "Preview value"))}</button>`;
                 return `
                   <tr data-value="${escapeHtml(previewVal)}">
                     <td><strong>${escapeHtml(id)}</strong></td>
@@ -1308,7 +1299,6 @@
                       withActions
                         ? `<td><div class="actions">
                             <button class="btn primary" data-action="open-add" data-id="${escapeHtml(id)}" data-driver="${escapeHtml(driver)}">${escapeHtml(t("webui_add", "Add"))}</button>
-                            ${previewBtn}
                             <button class="btn" data-action="ignore" data-id="${escapeHtml(id)}">${escapeHtml(t("ignore", "Ignore"))}</button>
                           </div></td>`
                         : ""
@@ -2185,35 +2175,6 @@
       try {
         const result = await postApi(action, {id: target.dataset.id || ""});
         toast(result.message || t("webui_updated_ok", "Updated."));
-        await fetchData(currentLang());
-      } catch (error) {
-        toast(error.message, true);
-      }
-      return;
-    }
-
-    if (action === "preview-candidate") {
-      // Ask bridge.sh's LISTEN instance to start decoding this candidate.
-      // The value lands in status_candidate_values.tsv ~10 s later when
-      // wmbusmeters reloads and the next telegram arrives. We poll via the
-      // existing SSE/data refresh — no special wait needed here.
-      const id     = target.dataset.id || "";
-      const driver = target.dataset.driver || "auto";
-      try {
-        const result = await postApi("preview-candidate", {id, driver});
-        toast(result.message || t("preview_requested", "Preview requested — value in ~10 s."));
-        await fetchData(currentLang());
-      } catch (error) {
-        toast(error.message, true);
-      }
-      return;
-    }
-
-    if (action === "cancel-preview") {
-      const id = target.dataset.id || "";
-      try {
-        const result = await postApi("cancel-preview", {id});
-        toast(result.message || t("preview_canceled", "Preview canceled."));
         await fetchData(currentLang());
       } catch (error) {
         toast(error.message, true);
