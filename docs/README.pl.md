@@ -198,7 +198,7 @@ Edytuj `./config/options.json`. Pełna referencja pól w [§8](#8-pełna-lista-o
 
 ```json
 {
-  "raw_topic": "wmbus_bridge/+/telegram",
+  "raw_topic": "wmbus/+/telegram",
   "loglevel": "normal",
   "discovery_enabled": true,
   "state_prefix": "wmbusmeters",
@@ -285,7 +285,9 @@ Wartość główna to **aktualna** wartość chwilowa lub stan licznika (od wers
 
 ### 5.3. Wykrywaj (`/discover`)
 
-Tabela kandydatów z LISTEN mode. Dla każdego widoczne: ID, driver, media (💧/⚡/🔥/📡), szyfrowanie (AES required / no AES / —), odbiór (15m/60m), ostatni telegram, akcje.
+Tabela kandydatów z LISTEN mode. Dla każdego widoczne: ID, driver, media (💧/⚡/🔥/📡), szyfrowanie (AES required / no AES / —), odbiór (15m/60m), ostatni telegram, **podgląd wartości na żywo** oraz akcje.
+
+**Automatyczny podgląd wartości (auto-dekodowanie).** Kandydaci, którzy **nie** wymagają klucza AES, są dekodowani automatycznie przez równoległą instancję LISTEN — ich bieżący odczyt pojawia się w kolumnie **Wartość (podgląd)** bez konfigurowania ich jako licznika i bez żadnego kliknięcia. Bridge zasiewa te podglądy ze znanych kandydatów przy każdym (re)starcie pipeline'u, więc wartość pojawia się od razu, a nie dopiero po kolejnych telegramach. Kandydaci **wymagający AES** pozostają bez wartości, dopóki nie podasz klucza. Ręczny przełącznik **Podgląd / Anuluj podgląd** nadal jest dostępny (np. do odświeżenia wartości).
 
 **Akcje** zależą od pillu szyfrowania:
 

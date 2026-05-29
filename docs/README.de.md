@@ -200,7 +200,7 @@ Bearbeite `./config/options.json`. Vollständige Feldreferenz in [§8](#8-vollst
 
 ```json
 {
-  "raw_topic": "wmbus_bridge/+/telegram",
+  "raw_topic": "wmbus/+/telegram",
   "loglevel": "normal",
   "discovery_enabled": true,
   "state_prefix": "wmbusmeters",
@@ -287,7 +287,9 @@ Der Hauptwert ist der **aktuelle** Momentanwert oder der Zählerstand (seit Vers
 
 ### 5.3. Erkennung (`/discover`)
 
-Tabelle der LISTEN-Modus-Kandidaten. Für jeden siehst du: ID, Treiber, Medium (💧/⚡/🔥/📡), Verschlüsselung (AES required / no AES / —), Empfang (15m/60m), letztes Telegramm, Aktionen.
+Tabelle der LISTEN-Modus-Kandidaten. Für jeden siehst du: ID, Treiber, Medium (💧/⚡/🔥/📡), Verschlüsselung (AES required / no AES / —), Empfang (15m/60m), letztes Telegramm, eine **Live-Wertvorschau** und Aktionen.
+
+**Automatische Wertvorschau (Auto-Dekodierung).** Kandidaten, die **keinen** AES-Schlüssel benötigen, werden von der parallelen LISTEN-Instanz automatisch dekodiert — ihr aktueller Messwert erscheint in der Spalte **Wert (Vorschau)**, ohne sie als Zähler einzurichten und ohne Klick. Die Bridge legt diese Vorschauen bei jedem (Neu-)Start der Pipeline aus den bekannten Kandidaten an, sodass ein Wert sofort erscheint, statt auf weitere Telegramme zu warten. **AES-pflichtige** Kandidaten bleiben ohne Wert, bis du einen Schlüssel angibst. Ein manueller Schalter **Vorschau / Vorschau abbrechen** bleibt verfügbar (z. B. zum Aktualisieren eines Werts).
 
 **Aktionen** hängen vom Verschlüsselungs-Pill ab:
 

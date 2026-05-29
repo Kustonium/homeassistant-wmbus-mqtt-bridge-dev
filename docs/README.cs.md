@@ -200,7 +200,7 @@ Edituj `./config/options.json`. Úplná reference polí v [§8](#8-kompletní-re
 
 ```json
 {
-  "raw_topic": "wmbus_bridge/+/telegram",
+  "raw_topic": "wmbus/+/telegram",
   "loglevel": "normal",
   "discovery_enabled": true,
   "state_prefix": "wmbusmeters",
@@ -287,7 +287,9 @@ Hlavní hodnota je **aktuální** okamžitá hodnota nebo stav měřiče (od ver
 
 ### 5.3. Detekce (`/discover`)
 
-Tabulka kandidátů z LISTEN módu. Pro každého vidíš: ID, ovladač, médium (💧/⚡/🔥/📡), šifrování (AES required / no AES / —), příjem (15m/60m), poslední telegram, akce.
+Tabulka kandidátů z LISTEN módu. Pro každého vidíš: ID, ovladač, médium (💧/⚡/🔥/📡), šifrování (AES required / no AES / —), příjem (15m/60m), poslední telegram, **živý náhled hodnoty** a akce.
+
+**Automatický náhled hodnoty (auto-dekódování).** Kandidáti, kteří **nevyžadují** klíč AES, jsou automaticky dekódováni paralelní instancí LISTEN — jejich aktuální odečet se objeví ve sloupci **Hodnota (náhled)** bez nastavení jako měřič a bez jakéhokoli kliknutí. Bridge tyto náhledy nasadí ze známých kandidátů při každém (re)startu pipeline, takže se hodnota objeví hned, a ne až po dalších telegramech. Kandidáti **vyžadující AES** zůstanou bez hodnoty, dokud nezadáš klíč. Ruční přepínač **Náhled / Zrušit náhled** je stále k dispozici (např. pro obnovení hodnoty).
 
 **Akce** závisí na šifrovacím pillu:
 

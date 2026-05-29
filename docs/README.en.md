@@ -198,7 +198,7 @@ Edit `./config/options.json`. Full field reference in [§8](#8-complete-configur
 
 ```json
 {
-  "raw_topic": "wmbus_bridge/+/telegram",
+  "raw_topic": "wmbus/+/telegram",
   "loglevel": "normal",
   "discovery_enabled": true,
   "state_prefix": "wmbusmeters",
@@ -285,7 +285,9 @@ The main value is the **current** instantaneous value or the meter reading (sinc
 
 ### 5.3. Discover (`/discover`)
 
-Table of LISTEN-mode candidates. For each one you see: ID, driver, media (💧/⚡/🔥/📡), encryption (AES required / no AES / —), reception (15m/60m), last telegram, actions.
+Table of LISTEN-mode candidates. For each one you see: ID, driver, media (💧/⚡/🔥/📡), encryption (AES required / no AES / —), reception (15m/60m), last telegram, a **live value preview**, and actions.
+
+**Automatic value preview (auto-decode).** Candidates that do **not** require an AES key are decoded automatically by the parallel LISTEN instance — their current reading appears in the **Value (preview)** column without configuring them as a meter and without any click. The bridge seeds these previews from the known candidates on every pipeline (re)start, so a value shows up right away instead of waiting for extra telegrams. **AES-required** candidates stay without a value until you provide a key. A manual **Preview / Cancel preview** toggle is still available (e.g. to refresh a value).
 
 **Actions** depend on the encryption pill:
 

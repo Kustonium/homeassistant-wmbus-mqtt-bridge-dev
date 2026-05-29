@@ -49,7 +49,7 @@ docker compose -f docker/examples/docker-compose.yml up -d --build
 
 On first run, `docker/entrypoint.sh` writes a default `/config/options.json`.
 Edit it for your environment (the generated file uses
-`external_mqtt_host: mosquitto` and `raw_topic: wmbus_bridge/+/telegram`),
+`external_mqtt_host: mosquitto` and `raw_topic: wmbus/+/telegram`),
 then restart:
 
 ```bash
@@ -69,11 +69,13 @@ Open `#/discover`:
 1. Wait for candidate IDs to appear.
 2. Each row shows driver guess, media, encryption hint, last telegram,
    reception counters and (if available) a preview value.
-3. For a candidate with **Brak AES / no AES**, click **Preview value**.
-   `bridge.sh` writes a temporary `meter-preview-<id>` file under
-   `listen/etc/wmbusmeters.d/` and triggers a soft restart of the
-   parallel LISTEN instance via `.reload_listen`. The decoded value
-   appears in ~10 s once the next telegram arrives.
+3. Candidates **without** an AES key are decoded **automatically** — the
+   parallel LISTEN instance is seeded with a `meter-preview-<id>` file
+   under `listen/etc/wmbusmeters.d/` on every (re)start (soft-reloaded via
+   `.reload_listen`), so the preview value appears on its own, with no
+   click. A manual **Preview value** / **Cancel preview** toggle is still
+   available (e.g. to refresh). Candidates that **require AES** show no
+   value until you add a key.
 4. Use the value filter (numeric input with `± tolerance`) when several
    candidates share the same driver.
 5. Click **Add meter**. The WebGUI calls `/api/add-meter` followed by
@@ -212,7 +214,7 @@ docker compose -f docker/examples/docker-compose.yml up -d --build
 Przy pierwszym starcie `docker/entrypoint.sh` zapisuje domyślny
 `/config/options.json`. Edytuj go pod swoje środowisko (wygenerowany
 plik używa `external_mqtt_host: mosquitto` i
-`raw_topic: wmbus_bridge/+/telegram`), następnie restart:
+`raw_topic: wmbus/+/telegram`), następnie restart:
 
 ```bash
 docker compose -f docker/examples/docker-compose.yml restart wmbus
@@ -232,11 +234,13 @@ Otwórz `#/discover`:
 2. Każdy wiersz pokazuje sugerowany driver, medium, podpowiedź
    szyfrowania, ostatni telegram, liczniki odbioru i (jeśli dostępne)
    preview wartości.
-3. Dla kandydata z **Brak AES** kliknij **Podejrzyj wartość**.
-   `bridge.sh` zapisuje tymczasowy `meter-preview-<id>` w
-   `listen/etc/wmbusmeters.d/` i przeładowuje równoległą instancję
-   LISTEN przez `.reload_listen`. Wartość pojawi się w ~10 s po
-   następnym telegramie.
+3. Kandydaci **bez** klucza AES są dekodowani **automatycznie** —
+   równoległa instancja LISTEN dostaje plik `meter-preview-<id>` w
+   `listen/etc/wmbusmeters.d/` przy każdym (re)starcie (miękkie
+   przeładowanie przez `.reload_listen`), więc wartość podglądu pojawia
+   się sama, bez klikania. Ręczny **Podejrzyj wartość** / **Anuluj
+   podgląd** nadal jest dostępny (np. do odświeżenia). Kandydaci
+   **wymagający AES** nie pokazują wartości, dopóki nie podasz klucza.
 4. Użyj filtra po wartości (input z `± tolerancja`) jeśli kilka
    kandydatów dzieli driver.
 5. Kliknij **Dodaj licznik**. WebGUI wywołuje `/api/add-meter` a
