@@ -72,10 +72,9 @@ Open `#/discover`:
 3. Candidates **without** an AES key are decoded **automatically** — the
    parallel LISTEN instance is seeded with a `meter-preview-<id>` file
    under `listen/etc/wmbusmeters.d/` on every (re)start (soft-reloaded via
-   `.reload_listen`), so the preview value appears on its own, with no
-   click. A manual **Preview value** / **Cancel preview** toggle is still
-   available (e.g. to refresh). Candidates that **require AES** show no
-   value until you add a key.
+   `.reload_listen`), so the preview value appears on its own after the
+   next decoded telegram. There is no manual preview toggle in the current
+   table. Candidates that **require AES** show no value until you add a key.
 4. Use the value filter (numeric input with `± tolerance`) when several
    candidates share the same driver.
 5. Click **Add meter**. The WebGUI calls `/api/add-meter` followed by
@@ -157,11 +156,14 @@ advanced users.
 **ESP devices not shown**
 - The `raw_topic` must contain a `+` wildcard for ESP device detection.
 - The matched segment becomes the ESP name in `#/esp-logs`.
-- Diagnostic topics `wmbus/+/diag` and `wmbus/+/diag/#` are optional;
+- Diagnostic event topics `wmbus/+/diag` and `wmbus/+/diag/#` are optional
+  log feeds. The exact `wmbus/+/diag/summary` topic is an optional heartbeat;
   with no diag enabled, ESPs are still detected from the RAW topic
   (primary source).
-- Stale entries are MQTT-retained messages from devices no longer
-  publishing. They drop out of the active set after 5 minutes.
+- Boot/diagnostic retained messages are log-only. ESP activity is detected
+  from `wmbus/+/telegram`; a device seen on that topic stays counted for the
+  current bridge session. `wmbus/+/diag/summary` is an optional fresh
+  heartbeat.
 
 **Configured meter does not decode**
 - Verify `meter_id` (must be 8 hex characters).
@@ -237,10 +239,10 @@ Otwórz `#/discover`:
 3. Kandydaci **bez** klucza AES są dekodowani **automatycznie** —
    równoległa instancja LISTEN dostaje plik `meter-preview-<id>` w
    `listen/etc/wmbusmeters.d/` przy każdym (re)starcie (miękkie
-   przeładowanie przez `.reload_listen`), więc wartość podglądu pojawia
-   się sama, bez klikania. Ręczny **Podejrzyj wartość** / **Anuluj
-   podgląd** nadal jest dostępny (np. do odświeżenia). Kandydaci
-   **wymagający AES** nie pokazują wartości, dopóki nie podasz klucza.
+   przeładowanie przez `.reload_listen`), więc wartość pojawia się sama po
+   następnym zdekodowanym telegramie. W aktualnej tabeli nie ma ręcznego
+   przełącznika podglądu. Kandydaci **wymagający AES** nie pokazują
+   wartości, dopóki nie podasz klucza.
 4. Użyj filtra po wartości (input z `± tolerancja`) jeśli kilka
    kandydatów dzieli driver.
 5. Kliknij **Dodaj licznik**. WebGUI wywołuje `/api/add-meter` a
@@ -309,10 +311,13 @@ SEARCH, porównuje wartości i zapisuje `search_status.json` oraz
 **Nie widać urządzeń ESP**
 - `raw_topic` musi mieć wildcard `+` do wykrycia ESP.
 - Dopasowany segment to nazwa ESP w `#/esp-logs`.
-- Topiki diagnostyczne `wmbus/+/diag` i `wmbus/+/diag/#` są opcjonalne;
-  bez diagnostyki ESP są dalej wykrywane z RAW topicu.
-- Stare wpisy to MQTT retained od urządzeń które już nie publikują;
-  wypadają po 5 minutach.
+- Topiki zdarzeń diagnostycznych `wmbus/+/diag` i `wmbus/+/diag/#` są
+  opcjonalnymi logami. Dokładny topic `wmbus/+/diag/summary` jest
+  opcjonalnym heartbeat; bez diagnostyki ESP są dalej wykrywane z RAW topicu.
+- Retained `diag/boot` i inne zdarzenia diagnostyczne są tylko logami.
+  Aktywność ESP jest wykrywana z `wmbus/+/telegram`; urządzenie widziane na
+  tym topiku liczy się w bieżącej sesji bridge. `wmbus/+/diag/summary` jest
+  opcjonalnym świeżym heartbeat.
 
 **Skonfigurowany licznik nie dekoduje**
 - Sprawdź `meter_id` (musi być 8 znaków hex).
@@ -368,10 +373,11 @@ gesehene IDs in `status_candidates.tsv`. In `#/discover`:
 1. Auf Kandidaten-IDs warten.
 2. Pro Zeile: Driver-Vermutung, Medium, Verschlüsselungs-Hinweis,
    letztes Telegramm, Empfangszähler, ggf. Vorschauwert.
-3. Bei **kein AES** auf **Preview value** klicken. `bridge.sh`
+3. Kandidaten **ohne AES** werden automatisch dekodiert. `bridge.sh`
    schreibt eine temporäre `meter-preview-<id>`-Datei und lädt die
-   LISTEN-Instanz über `.reload_listen` neu. Der Wert erscheint nach
-   ~10 s mit dem nächsten Telegramm.
+   LISTEN-Instanz über `.reload_listen` neu. Der Wert erscheint mit dem
+   nächsten dekodierten Telegramm; in der aktuellen Tabelle gibt es keinen
+   manuellen Preview-Schalter.
 4. Wert-Filter (numerische Eingabe mit `± Toleranz`) bei mehreren
    gleichartigen Kandidaten.
 5. **Add meter** klicken. Die WebGUI ruft `/api/add-meter` und
@@ -404,9 +410,10 @@ Steuerung über `search_*`. Nach erfolgreicher Identifikation
 
 - **Keine RAW-Telegramme**: MQTT-Verbindung, `raw_topic` und
   HEX-Payload prüfen; `#/logs` und Statistik-Ansicht ansehen.
-- **Keine ESPs sichtbar**: `raw_topic` mit `+`-Wildcard verwenden;
-  veraltete Einträge sind MQTT-retained und fallen nach 5 Minuten
-  aus dem aktiven Status.
+- **Keine ESPs sichtbar**: `raw_topic` mit `+`-Wildcard verwenden.
+  `diag/boot` und andere retained Diagnoseereignisse sind nur Logs.
+  Aktivität wird aus `wmbus/+/telegram` erkannt; `wmbus/+/diag/summary`
+  ist ein optionaler frischer Heartbeat.
 - **Zähler dekodiert nicht**: `meter_id`, Driver-Wahl und
   AES-Schlüssel prüfen; auf nächste Übertragung warten.
 - **Pipeline-Neustart**: `Restart add-on` nutzt die Supervisor-API
@@ -446,9 +453,10 @@ Začněte s `meters: []` v režimu LISTEN. V `#/discover`:
 1. Vyčkejte na ID kandidátů.
 2. Každý řádek: odhad driveru, médium, hint o šifrování, poslední
    telegram, počítadla příjmu, příp. preview hodnota.
-3. Pro kandidáta **bez AES** klikněte **Preview value**.
-   `bridge.sh` zapíše `meter-preview-<id>` a obnoví LISTEN přes
-   `.reload_listen`. Hodnota dorazí cca za 10 s.
+3. Kandidáti **bez AES** se dekódují automaticky. `bridge.sh` zapíše
+   `meter-preview-<id>` a obnoví LISTEN přes `.reload_listen`. Hodnota se
+   objeví s dalším dekódovaným telegramem; aktuální tabulka nemá ruční
+   přepínač náhledu.
 4. Filtr podle hodnoty s `± tolerance`.
 5. **Add meter** zavolá `/api/add-meter` a `/api/reload-pipeline`.
    DECODE pipeline se restartuje bez restartu kontejneru.
@@ -474,8 +482,10 @@ Porovnává dekódované hodnoty s očekávaným m³. Po nalezení nastavte
 ### 8. Diagnostika
 
 - **Žádné RAW**: zkontrolovat MQTT, `raw_topic`, formát payloadu.
-- **ESP nejsou vidět**: `raw_topic` musí mít wildcard `+`. Staré
-  záznamy z MQTT retained vypadnou po 5 minutách.
+- **ESP nejsou vidět**: `raw_topic` musí mít wildcard `+`. `diag/boot`
+  a jiné retained diagnostické události jsou jen logy. Aktivita se detekuje
+  z `wmbus/+/telegram`; `wmbus/+/diag/summary` je volitelný čerstvý
+  heartbeat.
 - **Měřič nedekoduje**: zkontrolovat `meter_id`, driver, AES klíč.
 - **Restart pipeline**: `Restart add-on` jen v HA; přidání/odebrání
   v WebGUI volá `/api/reload-pipeline` automaticky.
@@ -513,9 +523,10 @@ Začnite s `meters: []` v režime LISTEN. V `#/discover`:
 1. Počkajte na ID kandidátov.
 2. Každý riadok: odhad driveru, médium, hint o šifrovaní, posledný
    telegram, počítadlá príjmu, príp. preview hodnota.
-3. Pre kandidáta **bez AES** kliknite **Preview value**.
-   `bridge.sh` zapíše `meter-preview-<id>` a obnoví LISTEN cez
-   `.reload_listen`. Hodnota dorazí cca za 10 s.
+3. Kandidáti **bez AES** sa dekódujú automaticky. `bridge.sh` zapíše
+   `meter-preview-<id>` a obnoví LISTEN cez `.reload_listen`. Hodnota sa
+   objaví s ďalším dekódovaným telegramom; aktuálna tabuľka nemá ručný
+   prepínač náhľadu.
 4. Filter podľa hodnoty s `± tolerancia`.
 5. **Add meter** zavolá `/api/add-meter` a `/api/reload-pipeline`.
    DECODE pipeline sa reštartuje bez reštartu kontajnera.
@@ -541,8 +552,10 @@ Porovnáva dekódované hodnoty s očakávaným m³. Po nájdení nastavte
 ### 8. Diagnostika
 
 - **Žiadne RAW**: skontrolovať MQTT, `raw_topic`, formát payloadu.
-- **ESP nie sú vidieť**: `raw_topic` musí mať wildcard `+`. Staré
-  záznamy z MQTT retained vypadnú po 5 minútach.
+- **ESP nie sú vidieť**: `raw_topic` musí mať wildcard `+`. `diag/boot`
+  a iné retained diagnostické udalosti sú iba logy. Aktivita sa deteguje
+  z `wmbus/+/telegram`; `wmbus/+/diag/summary` je voliteľný čerstvý
+  heartbeat.
 - **Merač nedekóduje**: skontrolovať `meter_id`, driver, AES kľúč.
 - **Reštart pipeline**: `Restart add-on` len v HA; pridanie/odobratie
   v WebGUI volá `/api/reload-pipeline` automaticky.

@@ -16,7 +16,7 @@
 2. [Datenfluss-Architektur](#2-datenfluss-architektur)
 3. [Schnellstart — Home Assistant](#3-schnellstart--home-assistant)
 4. [Schnellstart — Docker standalone](#4-schnellstart--docker-standalone)
-5. [WebUI — 7 Ansichten](#5-webui--7-ansichten)
+5. [WebUI — Hauptansichten](#5-webui--hauptansichten)
 6. [Typischer Workflow: von leer zum funktionierenden Zähler](#6-typischer-workflow-von-leer-zum-funktionierenden-zähler)
 7. [SEARCH-Modus — wenn LISTEN zu viele fremde Zähler hört](#7-search-modus--wenn-listen-zu-viele-fremde-zähler-hört)
 8. [Vollständige Konfigurationsreferenz](#8-vollständige-konfigurationsreferenz)
@@ -143,24 +143,23 @@ Im **Info**-Tab des Add-ons klicke **OPEN WEB UI**. Das Dashboard begrüßt dich
 ```
 ┌────────────────────────────────────────────────────────────────┐
 │ wMBus MQTT Bridge                              [EN PL DE CS SK]│
-│ Dashboard | Zähler | Erkennung | Suche | Logs | Einstell. | ⋮  │
+│ Dashboard | Zähler | Erkennung | Logs | ESP Logs | Einstell.  │
 ├────────────────────────────────────────────────────────────────┤
 │ Dashboard                                                      │
-│ Pipeline-Laufzeitstatus...                                     │
+│ [Pipeline] [Statistik]                                         │
 │                                                                │
-│ [System status]  [Statistics]  [Discovery]                     │
+│ ESP -> MQTT -> wmbusmeters -> Home Assistant                   │
 │                                                                │
-│ Konfigurierte Zähler                                           │
-│   (leer)                                                       │
+│ Noch keine Zähler konfiguriert                                 │
+│   Zur Erkennung gehen, um den ersten Zähler hinzuzufügen       │
 │                                                                │
-│ Erkannte Kandidaten                                            │
-│   12 Kandidaten / ERKENNUNG ÖFFNEN                             │
+│ Letzte Ereignisse                                              │
 └────────────────────────────────────────────────────────────────┘
 ```
 
 ### Schritt 5 — zu „Erkennung" gehen und Zähler hinzufügen
 
-Im **ERKENNUNG**-Tab siehst du die Liste der Kandidaten. Für jeden ohne AES-Schlüssel-Anforderung — eine **ZÄHLER HINZUFÜGEN**-Schaltfläche direkt inline in der Zeile. Klick, Neustart, fertig.
+Im **ERKENNUNG**-Tab siehst du die Liste der Kandidaten. **ZÄHLER HINZUFÜGEN** öffnet ein Modal mit ID, Treiber, Name und optionalem AES-Schlüssel. Nach dem Speichern ruft die WebUI `/api/reload-pipeline` auf; die DECODE-Pipeline lädt neu, ohne den Container komplett neu zu starten.
 
 ➡️ Vollständige Beschreibung dieses Workflows in [§6 Typischer Workflow](#6-typischer-workflow-von-leer-zum-funktionierenden-zähler).
 
@@ -236,11 +235,11 @@ Dann `http://<host-ip>:8099/` öffnen.
 
 ---
 
-## 5. WebUI — 7 Ansichten
+## 5. WebUI — Hauptansichten
 
 Die WebUI ist in **5 Sprachen** verfügbar (EN/PL/DE/CS/SK) — Sprachumschalter oben rechts. Die Sprache wird in dieser Reihenfolge erkannt: `?lang=`, Cookie `wmbus_lang`, Header `Accept-Language`.
 
-Alle Seiten aktualisieren sich automatisch alle 15 Sekunden (außer `/candidate`).
+Die UI aktualisiert sich über SSE von `/api/events`; wenn die Live-Verbindung nicht verfügbar ist, nutzt das Frontend Polling von `/api/app`.
 
 ### Tab-Karte
 
@@ -248,61 +247,43 @@ Alle Seiten aktualisieren sich automatisch alle 15 Sekunden (außer `/candidate`
 flowchart LR
   N1["DASHBOARD<br/>/"] --> N2["ZÄHLER<br/>/meters"]
   N2 --> N3["ERKENNUNG<br/>/discover"]
-  N3 --> N4["SUCHE<br/>/search"]
-  N4 --> N5["LOGS<br/>/logs"]
+  N3 --> N4["LOGS<br/>/logs"]
+  N4 --> N5["ESP LOGS<br/>/esp-logs"]
   N5 --> N6["EINSTELLUNGEN<br/>/settings"]
   N6 --> N7["INFO<br/>/about"]
-  N3 -.->|ANALYSIEREN| N8["/candidate?id=...<br/>(Kandidatendetails)"]
+  N3 -.->|legacy direct URL| N8["SUCHE<br/>#search"]
 ```
 
 ### 5.1. Dashboard (`/`)
 
-Drei Karten oben: **System status** (MQTT, RAW telegrams, wmbusmeters, decoded JSON, configured meters, HA Discovery), **Statistics** (Zahlen + Mini-Balken), **Discovery status** (Präfixe + Anzahl Zähler/Kandidaten).
+Der obere Block hat einen **Pipeline / Statistik**-Umschalter. Pipeline zeigt ESP → MQTT → wmbusmeters → Home Assistant mit Metriken je Stufe; Statistik zeigt Telegrammrate, Funnel und Rate-Historie.
 
-Darunter: kompaktes Raster konfigurierter Zähler + Kandidaten-Zusammenfassung mit der „ERKENNUNG ÖFFNEN"-Schaltfläche.
+Darunter zeigt das Dashboard Pending/Waiting-Panel, zuletzt dekodierte Zähler oder eine CTA nach `/discover`, sowie letzte Laufzeitereignisse.
 
-Wenn du **ausstehende Änderungen** hast (du hast etwas vor dem Neustart hinzugefügt) — ein gelbes Panel erscheint hier, auf `/meters` und auf `/discover`. Siehe [§6](#schritt-3--sehen-was-auf-neustart-wartet).
+Wenn Zähler in `options.json` gespeichert, aber noch nicht dekodiert sind, zeigt das Dashboard „Waiting for first telegram". Siehe [§6](#schritt-3--pipeline-neuladen-und-auf-telegramm-warten).
 
 ### 5.2. Zähler (`/meters`)
 
-Vollständiges Raster **dekodierter** Zähler. Jede Karte:
-
-```
-┌──────────────────────────────┐
-│ 💧 cold_water_bathroom       │
-│ 41553221 / mkradio3          │
-│                              │
-│ total_m3                     │
-│ 123.456                      │
-│ ─────────────────────────    │
-│ Media:    water              │
-│ Reception: ~30 min           │
-│ Seen 15m:  2  Seen 60m: 5    │
-│ ─────────────────────────    │
-│ [Online]            [DELETE] │
-└──────────────────────────────┘
-```
-
-Der Hauptwert ist der **aktuelle** Momentanwert oder der Zählerstand (seit Version 1.5.2-dev — siehe [§13](#13-problemlösung)).
+Tabelle **dekodierter** Zähler. Spalten: ID, Name, Treiber, Wert, letztes Telegramm und Empfang. Der Hauptwert ist der aktuelle Momentanwert oder der Zählerstand (seit Version 1.5.2-dev — siehe [§13](#13-problemlösung)). Jede Zeile hat eine **DELETE**-Aktion. Pending-Einträge aus `options.json` können unter der Tabelle erscheinen, bis das erste Telegramm eintrifft.
 
 ### 5.3. Erkennung (`/discover`)
 
 Tabelle der LISTEN-Modus-Kandidaten. Für jeden siehst du: ID, Treiber, Medium (💧/⚡/🔥/📡), Verschlüsselung (AES required / no AES / —), Empfang (15m/60m), letztes Telegramm, eine **Live-Wertvorschau** und Aktionen.
 
-**Automatische Wertvorschau (Auto-Dekodierung).** Kandidaten, die **keinen** AES-Schlüssel benötigen, werden von der parallelen LISTEN-Instanz automatisch dekodiert — ihr aktueller Messwert erscheint in der Spalte **Wert (Vorschau)**, ohne sie als Zähler einzurichten und ohne Klick. Die Bridge legt diese Vorschauen bei jedem (Neu-)Start der Pipeline aus den bekannten Kandidaten an, sodass ein Wert sofort erscheint, statt auf weitere Telegramme zu warten. **AES-pflichtige** Kandidaten bleiben ohne Wert, bis du einen Schlüssel angibst. Ein manueller Schalter **Vorschau / Vorschau abbrechen** bleibt verfügbar (z. B. zum Aktualisieren eines Werts).
+**Automatische Wertvorschau (Auto-Dekodierung).** Kandidaten, die **keinen** AES-Schlüssel benötigen, werden von der parallelen LISTEN-Instanz automatisch dekodiert — ihr aktueller Messwert erscheint in der Spalte **Wert (Vorschau)**, ohne sie als Zähler einzurichten und ohne Preview-Klick. Die Bridge erzeugt temporäre `meter-preview-<id>`-Einträge und schreibt Werte nach `status_candidate_values.tsv`; ein Wert erscheint aber erst nach dem nächsten dekodierten Telegramm. **AES-pflichtige** Kandidaten bleiben ohne Wert, bis du einen Schlüssel angibst.
 
 **Aktionen** hängen vom Verschlüsselungs-Pill ab:
 
 | Pill | Schaltflächen |
 |---|---|
-| 🟢 **no AES** oder grau **—** | `[ZÄHLER HINZUFÜGEN] [ANALYSIEREN] [IGNORIEREN]` — inline ADD, ein Klick = schreibt in `options.json` |
-| 🔴 **AES required** | `[ANALYSIEREN] [IGNORIEREN]` — du musst `/candidate` aufrufen und einen 32-Zeichen-HEX-Schlüssel einfügen |
+| 🟢 **no AES** oder grau **—** | `[ZÄHLER HINZUFÜGEN] [IGNORIEREN]` — ADD öffnet das Modal und schreibt in `options.json` |
+| 🔴 **AES required** | `[ZÄHLER HINZUFÜGEN] [IGNORIEREN]` — den 32-Zeichen-HEX-Schlüssel im Modal eintragen; ohne Schlüssel erscheint kein Wert |
 
 Medienfilter oben: **Alle / Wasser / Strom / Wärme / Andere**. Der zweite Link `[Ignoriert]` zeigt zuvor ignorierte Kandidaten (mit WIEDERHERSTELLEN-Option).
 
-### 5.4. Suche (`/search`)
+### 5.4. Suche (`#search`, Legacy-Modus)
 
-Servicemodus — wird verwendet, wenn LISTEN dutzende Nachbarn-Zähler zurückgibt (z. B. Mietshaus) und du nicht weißt, welcher deiner ist. Siehe den eigenen Abschnitt [§7](#7-search-modus--wenn-listen-zu-viele-fremde-zähler-hört).
+Servicemodus — wird verwendet, wenn LISTEN dutzende Nachbarn-Zähler zurückgibt (z. B. Mietshaus) und du nicht weißt, welcher deiner ist. Er ist nicht mehr in der Hauptnavigation, weil der aktuelle Workflow den Wertfilter in `/discover` nutzt; der Bildschirm funktioniert weiter über den direkten Hash `#search`. Siehe den eigenen Abschnitt [§7](#7-search-modus--wenn-listen-zu-viele-fremde-zähler-hört).
 
 Die UI hat 3 (kontextuelle) Banner:
 
@@ -316,16 +297,20 @@ Plus ein Konfigurationsformular (m³-Stand + Toleranz) und Live-Status von bridg
 
 Kurzer Laufzeit-Ereignisstrom aus [`status_events.tsv`](#10-laufzeit-dateien-in-data) — RAW received, candidate detected, errors. Vollständige Logs sind weiterhin im HA-Add-on-**Log**-Tab.
 
-### 5.6. Einstellungen (`/settings`)
+### 5.6. ESP Logs (`/esp-logs`)
+
+Diagnose der ESP-Empfänger: Geräte aus `wmbus/+/telegram`, optionaler Heartbeat `wmbus/+/diag/summary`, Diagnoseereignisse, Boot und Vorschläge. `diag/boot` und andere retained Diagnoseereignisse sind Logs; sie sind nicht die Quelle für den aktiven Board-Status.
+
+### 5.7. Einstellungen (`/settings`)
 
 Zeigt die aktive Laufzeitkonfiguration (aus `status.json`):
 - `raw_topic`, `state_prefix`, `discovery_prefix`
 - `search_mode`, `search_expected_value_m3`, `search_tolerance_m3`
 - `loglevel`, MQTT-Host, Anzahl ignorierter Kandidaten
 
-Plus ein **RESTART ADDON**-Block (oder im Docker-Modus: ein `docker restart`-Hinweis) und eine Liste von Laufzeit-Dateien + eine **MANAGE IGNORED CANDIDATES**-Schaltfläche (leitet auf `/discover?ignored=1` weiter).
+Darunter zeigt sie den `options.json`-Snapshot. Der Restart-Button ist global im oberen WebUI-Balken; Ignorieren/Wiederherstellen von Kandidaten erfolgt in der `/discover`-Liste.
 
-### 5.7. Info (`/about`)
+### 5.8. Info (`/about`)
 
 Kurze Architekturbeschreibung und ASCII-Diagramm.
 
@@ -339,11 +324,11 @@ flowchart TD
   B --> C["Empfänger veröffentlicht<br/>HEX → wmbusmeters<br/>→ Kandidat sichtbar"]
   C --> D{"Siehst du den Kandidaten<br/>auf /discover?"}
   D -- "ja, no AES" --> E["2️⃣ Klick ZÄHLER HINZUFÜGEN<br/>(inline)"]
-  D -- "ja, AES required" --> F["2a. Klick ANALYSIEREN<br/>→ HEX-Schlüssel eingeben<br/>→ ZÄHLER HINZUFÜGEN"]
+  D -- "ja, AES required" --> F["2a. Klick ZÄHLER HINZUFÜGEN<br/>→ HEX-Schlüssel<br/>im Modal eingeben"]
   D -- "nein" --> G["Prüfe Empfänger,<br/>Broker, raw_topic,<br/>filter_hex_only"]
-  E --> H["3️⃣ Kandidat verschwindet,<br/>Pending-Panel zeigt<br/>'wartet auf Neustart'"]
+  E --> H["3️⃣ WebUI schreibt options.json<br/>und ruft /api/reload-pipeline auf"]
   F --> H
-  H --> I["4️⃣ Klick RESTART ADDON<br/>(Panel oder /settings)"]
+  H --> I["4️⃣ DECODE-Pipeline<br/>lädt Konfiguration neu"]
   I --> J["5️⃣ Nach dem ersten Telegramm<br/>geht der Zähler Online<br/>auf /meters"]
 ```
 
@@ -369,44 +354,42 @@ Für einen Zähler ohne Verschlüsselung: in der **ERKENNUNG**-Zeile `ZÄHLER HI
 2. Prüfung von `SUPERVISOR_TOKEN`:
    - **Vorhanden** → POST an `http://supervisor/addons/self/options` mit dem gesamten `meters[]`-Array → Supervisor persistiert es
    - **Fehlt** → `write_json_atomic(/data/options.json, ...)` — direkter Dateischreibvorgang
-3. Redirect zurück auf `/discover?added=...`
+3. Das Frontend ruft `/api/reload-pipeline` auf; der Backend-Endpunkt setzt `/data/.reload_pipeline`, und der Watcher in `bridge.sh` startet nur die DECODE-Pipeline neu.
 
-Ergebnis: Der Zähler ist in `options.json`, aber **wmbusmeters kennt ihn noch nicht** (lernt ihn erst nach einem Neustart).
+Ergebnis: Der Zähler ist in `options.json`, die Pipeline lädt die Konfiguration ohne kompletten Container-Neustart neu. Sichtbar wird der Zähler nach dem nächsten Telegramm dieser ID.
 
-### Schritt 3 — sehen, was auf Neustart wartet
+### Schritt 3 — Pipeline neuladen und auf Telegramm warten
 
-Die WebUI zeigt sofort, dass du inaktive Änderungen hast:
+Die WebUI unterscheidet zwei Zustände: `pending_restart=true`, wenn `options.json` neuer als `status_bridge_start.txt` ist, und „Waiting for first telegram", wenn der Zähler gespeichert ist, aber noch nicht in `status_meters.tsv` steht.
 
-**Gelbes Panel oben auf /discover, /meters und Dashboard:**
+Typischer Zustand nach erfolgreichem Soft-Reload:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ ⚠ Ausstehende Änderungen — warten auf Neustart (2)          │
-│ Diese Zähler sind in options.json, aber das Add-on hat sie  │
-│ noch nicht übernommen. Add-on neu starten zum Laden.        │
+│ ⏳ Waiting for first telegram (2)                            │
+│ Die Zähler sind gespeichert, die Pipeline wurde neu geladen, │
+│ erscheinen aber erst nach dem nächsten Telegramm.            │
 │ ┌─────────────────────────────────────────────┐             │
 │ │ Meter ID   │ Driver       │ AES             │             │
 │ │ 41553221   │ mkradio3     │ kein AES-Schl.  │             │
 │ │ aabbccdd   │ amiplus      │ AES-Schl. ges.  │             │
 │ └─────────────────────────────────────────────┘             │
-│                                                             │
-│ [ ADD-ON JETZT NEUSTARTEN ]                                 │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-Plus graue/gestrichelte „Pending"-Karten im Raster konfigurierter Zähler mit der Aufschrift „Wartet / Neustart erforderlich".
+Auf `/meters` können zusätzlich graue/gestrichelte Pending-Karten für konfigurierte, aber noch nicht dekodierte Zähler erscheinen.
 
 Der Mechanismus funktioniert durch Vergleich von `options.json` ↔ `status_meters.tsv`. Ein Eintrag verschwindet aus Pending automatisch, sobald wmbusmeters das erste Telegramm für diese ID dekodiert.
 
-### Schritt 4 — Neustart
+### Schritt 4 — wann ein Add-on-Neustart nötig ist
 
-Im HA-Modus: Klick **ADD-ON JETZT NEUSTARTEN** → POST `/restart-bridge` → Aufruf von `http://supervisor/addons/self/restart`.
+Hinzufügen/Entfernen eines Zählers über die WebUI nutzt `/api/reload-pipeline` und braucht normalerweise keinen kompletten Neustart. Ein Add-on-Neustart bleibt als manuelle/Fallback-Aktion in `/settings`.
 
-Im Docker-Modus: Statt der Schaltfläche — die Anweisung `docker restart <container>`. Siehe [§11](#11-home-assistant-vs-docker--ux-unterschiede).
+Im HA-Modus ruft die Restart-Schaltfläche `POST /restart-bridge` → `http://supervisor/addons/self/restart` auf. Im Docker-Modus zeigt die UI `docker restart <container>`. Siehe [§11](#11-home-assistant-vs-docker--ux-unterschiede).
 
 ### Schritt 5 — fertig
 
-Nach dem Neustart erhält wmbusmeters die neue Konfiguration, wartet auf das nächste Telegramm. Wenn es eintrifft:
+Nach dem Pipeline-Reload hat wmbusmeters die neue Konfiguration und wartet auf das nächste Telegramm. Wenn es eintrifft:
 
 1. JSON landet in MQTT (`wmbusmeters/<id>/...`)
 2. `bridge.sh` schreibt einen Eintrag in `status_meters.tsv`
@@ -626,12 +609,22 @@ Alle Dateien, die zwischen `bridge.sh` ↔ `webui.py` geteilt werden, leben in `
 | `status_meters.tsv` | TSV | `bridge.sh` | `webui.py` | Dekodierte Zähler — eine Zeile pro meter_id |
 | `status_candidates.tsv` | TSV | `bridge.sh` | `webui.py` | LISTEN-Kandidaten |
 | `status_candidate_analysis.tsv` | TSV | `bridge.sh` | `webui.py` | Verschlüsselungsanalyse der Kandidaten |
-| `status_events.tsv` | TSV | `bridge.sh`, `webui.py` | `webui.py` | Letzte 80 Ereignisse (RAW received, errors, UI actions) |
+| `status_events.tsv` | TSV | `bridge.sh`, `webui.py` | `webui.py` | Letzte 40 Ereignisse (RAW received, errors, UI actions) |
 | `status_seen.tsv` | TSV | `bridge.sh` | `bridge.sh` | Empfangsintervall-Historie (für seen_15m/seen_60m-Statistiken) |
 | `status_ignored_candidates.tsv` | text | `webui.py` | `bridge.sh`, `webui.py` | Liste der vom Benutzer ignorierten IDs |
+| `status_candidate_values.tsv` | TSV | `bridge.sh` | `webui.py` | Automatisch dekodierte LISTEN-Kandidatenwerte |
+| `status_candidate_raw.tsv` | TSV | `bridge.sh` | `bridge.sh` | Letzter RAW pro Kandidat für Verschlüsselungsanalyse |
 | `status_raw_count.txt` | int | `bridge.sh` | `bridge.sh` | Zähler aller RAW-Telegramme dieser Sitzung |
 | `status_last_raw_seen.txt` | ISO time | `bridge.sh` | `bridge.sh`, `webui.py` | Zeitstempel des letzten RAW |
 | `status_recent_raw.tsv` | TSV | `bridge.sh` | (für Debug) | Ringpuffer der letzten N RAW-HEX-Werte |
+| `status_rate_1m.json` | JSON | `bridge.sh` | `webui.py` | Telegrammrate der aktuellen/vorigen Minute |
+| `status_rate_history.tsv` | TSV | `bridge.sh` | `webui.py` | Rate-Historie für Diagramme |
+| `status_bridge_start.txt` | epoch | `bridge.sh` | `webui.py` | Startzeit der Bridge für Pending/Reload-Status |
+| `status_esp_telegram_devices.tsv` | TSV | `bridge.sh` | `webui.py` | Aus `wmbus/+/telegram` erkannte ESP-Geräte |
+| `status_esp_diag.json` | JSON | `bridge.sh` | `webui.py` | Optionaler letzter `wmbus/+/diag/summary`-Heartbeat |
+| `status_esp_events.tsv` | TSV | `bridge.sh` | `webui.py` | Letzte ESP-Diagnoseereignisse |
+| `status_esp_suggestion.json` | JSON | `bridge.sh` | `webui.py` | ESP-Diagnosevorschlag |
+| `status_esp_boot.json` | JSON | `bridge.sh` | `webui.py` | Letztes ESP-Boot-Ereignis |
 | `search_candidates.tsv` | TSV | `bridge.sh` | `bridge.sh` | Wasserzähler-Kandidaten für SEARCH |
 | `search_matches.tsv` | TSV | `bridge.sh` | `webui.py` | In SEARCH gefundene Treffer |
 | `search_status.json` | JSON | `bridge.sh` | `webui.py` | Live-SEARCH-Status (Phase, Zahlen) |
@@ -659,11 +652,10 @@ Eine Codebasis, zwei Run-Modi. Die UI erkennt den Modus selbst anhand der `SUPER
 
 | Aktion | Home Assistant | Docker standalone |
 |---|---|---|
-| Zähler hinzufügen | POST `http://supervisor/addons/self/options` (persistent) | `write_json_atomic(/data/options.json)` (Datei) |
-| Banner nach dem Hinzufügen | „Klicke RESTART ADDON unten…" | „Container manuell neu starten zum Übernehmen." |
-| Pending-Panel — Restart-Schaltfläche | `[ADD-ON JETZT NEUSTARTEN]` (POST `/restart-bridge`) | Hinweis: `docker restart <container>` |
-| `/settings` — Restart-Bereich | Schaltfläche + supervisor_api_notice | Gelbe Karte mit Hinweis |
-| `/candidate` — RESTART ADDON | POST-Schaltfläche | Hinweis |
+| Zähler hinzufügen | POST `http://supervisor/addons/self/options` (persistent) + `/api/reload-pipeline` | `write_json_atomic(/data/options.json)` + `/api/reload-pipeline` |
+| Nach dem Hinzufügen | DECODE-Pipeline lädt neu; der Zähler erscheint nach dem nächsten Telegramm | Gleich |
+| Voller Add-on-Neustart | `[ADD-ON JETZT NEUSTARTEN]` (POST `/restart-bridge`) als manuelle/Fallback-Aktion | Hinweis: `docker restart <container>` |
+| Globaler Restart-Button | Button im oberen Balken (POST `/restart-bridge`) | Gleicher Button, aber ohne Supervisor kann manuelles `docker restart <container>` nötig sein |
 | Neues Image pullen | HA Supervisor automatisch bei „Update Available" | `docker pull ...` manuell |
 | Persistenz der Änderungen | Supervisor (Supervisor-DB) | `/data`-Volume |
 
@@ -674,8 +666,10 @@ Es gibt keine Supervisor-API in Docker. Ein Aufruf an `http://supervisor/addons/
 ```mermaid
 flowchart TD
   A["UI-Klick"] --> B{"is_supervisor_mode()<br/>SUPERVISOR_TOKEN env?"}
-  B -- "JA" --> C["POST /supervisor/addons/self/...<br/>Supervisor schreibt + startet neu"]
-  B -- "NEIN" --> D["write_json_atomic(options.json)<br/>+ Hinweis an Benutzer:<br/>docker restart"]
+  B -- "JA" --> C["POST /supervisor/addons/self/options<br/>Supervisor speichert Konfiguration"]
+  B -- "NEIN" --> D["write_json_atomic(options.json)<br/>Schreiben nach /data"]
+  C --> E["/api/reload-pipeline<br/>Soft-Reload DECODE"]
+  D --> E
 ```
 
 ---
@@ -744,9 +738,9 @@ Prüfe der Reihe nach:
 
 ### „Kandidat hinzugefügt, aber der Zähler erscheint nicht in Zähler"
 
-- Klick auf **ZÄHLER HINZUFÜGEN** schreibt in `options.json`, aber **startet wmbusmeters nicht neu**. Du musst das Add-on neu starten.
-- Die WebUI zeigt das durch das **Pending-Panel** (gelb, oben auf /discover, /meters, Dashboard).
-- Nach dem Neustart erhält wmbusmeters die neue Liste, braucht aber **ein weiteres Telegramm** zum Dekodieren — das kann von einigen Dutzend Sekunden bis zu vielen Minuten dauern, je nach Zähler-Intervall.
+- Klick auf **ZÄHLER HINZUFÜGEN** schreibt in `options.json`; das Frontend ruft danach `/api/reload-pipeline` auf. Das lädt die DECODE-Pipeline ohne kompletten Container-Neustart neu.
+- Der Zähler erscheint in `/meters` erst nach dem nächsten Telegramm dieser ID — das kann von einigen Dutzend Sekunden bis zu vielen Minuten dauern.
+- Wenn er danach weiter fehlt, `meter_id`, Treiber, AES-Schlüssel und Logs prüfen. Ein voller Add-on-Neustart bleibt Fallback in `/settings`.
 
 ### „Der Wert zeigt eine Zahl, die nur wächst, nicht eine Momentanzahl"
 
@@ -804,45 +798,55 @@ Prüfe:
 │   ├── etc/services.d/          # s6-overlay-Service-Definitionen
 │   │   ├── wmbus_mqtt_bridge/
 │   │   └── wmbus_webui/
-│   └── usr/bin/
-│       ├── bridge.sh            # 1400+ Zeilen — Hauptschleife, MQTT, Decode
-│       ├── i18n.py              # Übersetzungen für 5 Sprachen
-│       ├── run.sh               # Startup-Wrapper für HA-Modus
-│       └── webui.py             # 1700+ Zeilen — HTTP-Server, Seiten, API
+│   └── usr/
+│       ├── bin/
+│       │   ├── bridge.sh        # 2000+ Zeilen — Hauptschleife, MQTT, Decode
+│       │   ├── i18n.py          # Übersetzungen für 5 Sprachen
+│       │   ├── run.sh           # Startup-Wrapper für HA-Modus
+│       │   └── webui.py         # 1300+ Zeilen — HTTP-API-Server für die SPA
+│       └── share/wmbus-webui/
+│           └── assets/app.js    # 2200+ Zeilen — WebUI-SPA
 ├── translations/                # HA-Add-on-Options-Übersetzungen (en.yaml, pl.yaml)
 └── .github/workflows/           # CI: build-addon, shellcheck, yaml-lint
 ```
 
 ### Hauptkomponenten
 
-#### `bridge.sh` (1400+ Zeilen)
+#### `bridge.sh` (2000+ Zeilen)
 
 Bash, ein Prozess. Hauptschleife:
 
 1. **Setup** — `options.json` lesen, `wmbusmeters.conf` in `/data/etc/` generieren
-2. **MQTT subscribe** — `mosquitto_sub` auf `raw_topic`, jede Zeile → `process_raw_telegram`
-3. **HEX → wmbusmeters** — über `stdin:hex` weitergeleitet
-4. **JSON parse** — nächste Zeile von `mosquitto_sub` auf dem wmbusmeters-Topic
-5. **Status-Update** — Schreiben in `status_meters.tsv`, `status_events.tsv`, `status.json`
+2. **MQTT subscribe** — `mosquitto_sub` auf `raw_topic`; jedes Telegramm aktualisiert RAW-Zähler, Recent RAW und ESP-Erkennung aus `wmbus/+/telegram`
+3. **HEX → wmbusmeters** — HEX-Payload geht über `stdin:hex` an die DECODE-Instanz
+4. **JSON/Text parse** — `run_once()` verarbeitet `wmbusmeters`-Ausgabe und schreibt Zähler, Kandidaten und Events
+5. **Status-Update** — Schreiben in `status_meters.tsv`, `status_candidates.tsv`, `status_candidate_values.tsv`, `status_events.tsv`, `status.json`
 6. **HA Discovery publish** — MQTT-Discovery-Nachrichten für jedes neue Feld berechnet
-7. **SEARCH** — wenn aktiviert, dekodiert Kandidaten aus `search_candidates.tsv` parallel
+7. **Parallel LISTEN** — `start_listen_instance()` hält Kandidatensuche und automatische Wertvorschau aktiv
+8. **SEARCH** — wenn aktiviert, dekodiert Kandidaten aus `search_candidates.tsv`
 
 Schlüsselfunktionen:
-- `status_meter_seen()` ([Zeile 316](../rootfs/usr/bin/bridge.sh#L316)) — schreibt einen Eintrag in `status_meters.tsv`, wählt value_key (Momentanwert > kumulativ)
-- `status_candidate_seen()` ([Zeile 341](../rootfs/usr/bin/bridge.sh#L341)) — registriert einen LISTEN-Kandidaten
-- `process_raw_telegram()` — Haupt-HEX-→-Decode-Pipeline
+- `status_meter_seen()` ([Zeile 441](../rootfs/usr/bin/bridge.sh#L441)) — schreibt einen Eintrag in `status_meters.tsv`, wählt value_key (Momentanwert > kumulativ)
+- `status_candidate_seen()` ([Zeile 475](../rootfs/usr/bin/bridge.sh#L475)) — registriert einen LISTEN-Kandidaten
+- `_store_candidate_value()` ([Zeile 1692](../rootfs/usr/bin/bridge.sh#L1692)) — speichert automatisch dekodierte Kandidatenwerte
+- `parse_listen_candidates()` ([Zeile 1729](../rootfs/usr/bin/bridge.sh#L1729)) — verarbeitet die parallele LISTEN-Instanz
+- `run_once()` ([Zeile 1776](../rootfs/usr/bin/bridge.sh#L1776)) — Hauptzyklus DECODE
+- `start_listen_instance()` ([Zeile 1946](../rootfs/usr/bin/bridge.sh#L1946)) — hält die always-on LISTEN-Pipeline
 
-#### `webui.py` (1700+ Zeilen)
+#### `webui.py` (1300+ Zeilen)
 
-Python 3.12, `http.server.ThreadingHTTPServer`. Kein Framework — rohes HTTP + HTML-Strings. Hauptabschnitte:
+Python 3.12, `http.server.ThreadingHTTPServer`. Kein Framework — JSON/SSE-API und statische SPA. Hauptabschnitte:
 
-- **`state()`** ([Zeile 583](../rootfs/usr/bin/webui.py#L583)) — liest alle Laufzeit-Dateien, gibt ein dict zurück
-- **`add_meter_to_options()`** ([Zeile 385](../rootfs/usr/bin/webui.py#L385)) — Supervisor API + File-Fallback
+- **`add_meter_to_options()`** ([Zeile 354](../rootfs/usr/bin/webui.py#L354)) — Supervisor API + File-Fallback
+- **`state()`** ([Zeile 585](../rootfs/usr/bin/webui.py#L585)) — liest Runtime-Dateien für die API
+- **`status_model()`** ([Zeile 686](../rootfs/usr/bin/webui.py#L686)) — baut das Dashboard-/Pipeline-Modell
+- **`_esp_payload()`** ([Zeile 860](../rootfs/usr/bin/webui.py#L860)) — baut ESP-Diagnose; Aktivität kommt aus `wmbus/+/telegram`, `wmbus/+/diag/summary` ist optional
 - **`is_supervisor_mode()`** — erkennt HA- vs. Docker-Modus
-- **`pending_meters()`** — diff `options.json` ↔ `status_meters.tsv`
-- **`render_*()`** — Funktionen, die einzelne HTML-Fragmente rendern (system_status, stats, meter_card, candidates_table, …)
-- **`page_*()`** — Renderer für ganze Seiten (`page_dashboard`, `page_meters`, `page_discover`, `page_search`, `page_candidate`, `page_logs`, `page_settings`, `page_about`)
 - **`Handler` (BaseHTTPRequestHandler)** — GET/POST-Routing, Spracherkennung, Cookie-Handling
+
+#### `app.js` (2200+ Zeilen)
+
+Frontend-SPA aus `rootfs/usr/share/wmbus-webui/assets/app.js`. Rendert Dashboard, `/meters`, `/discover`, `/search`, `/logs`, `/esp-logs`, `/settings` und `/about`; liest `/api/app`, nutzt SSE aus `/api/events`, bedient das Add-Meter-Modal und ruft nach dem Speichern `/api/reload-pipeline` auf.
 
 Lokalisierung (`i18n.py`):
 - `tr(lang, key)` — Hauptübersetzungsfunktion

@@ -76,13 +76,13 @@ Widoki:
 
 - **Panel** — stan pipeline'u (MQTT, telegramy RAW, dekoder, HA Discovery), statystyki odbioru (w tym tempo telegramy/min na żywo) oraz wykryte płytki ESP.
 - **Liczniki** — skonfigurowane liczniki z bieżącą wartością i statystykami odbioru (15m / 60m).
-- **Odbierane / Szukaj** — kandydaci z trybu LISTEN (ID, driver, medium, szyfrowanie, odbiór). Każdy bez wymaganego klucza AES ma przycisk **Dodaj licznik** i jest **dekodowany automatycznie** — bieżąca wartość pojawia się w kolumnie **Wartość (podgląd)** od razu, bez dodawania licznika i bez klikania. Kandydaci wymagający AES nie pokazują wartości, dopóki nie podasz klucza; ręczny **Podgląd / Anuluj podgląd** pozostaje (np. do odświeżenia). Stąd uruchamia się również tryb SEARCH.
+- **Odbierane / Szukaj** — kandydaci z trybu LISTEN (ID, driver, medium, szyfrowanie, odbiór). Każdy bez wymaganego klucza AES ma przycisk **Dodaj licznik** i jest **dekodowany automatycznie** przez równoległą instancję LISTEN — bieżąca wartość pojawia się w kolumnie **Wartość** po następnym zdekodowanym telegramie, bez dodawania licznika i bez klikania podglądu. Kandydaci wymagający AES nie pokazują wartości, dopóki nie podasz klucza. Stąd uruchamia się również tryb SEARCH.
 - **Logi** — skrócony strumień zdarzeń runtime (pełne logi w zakładce **Log** dodatku HA).
 - **Logi ESP** — diagnostyka z odbiorników ESP (zdarzenia, RSSI, boot, sugestie) oraz wykrycie wielu płytek na podstawie napływających telegramów `wmbus/+/telegram`.
-- **Ustawienia** — aktywna konfiguracja runtime, restart dodatku, zarządzanie ignorowanymi kandydatami.
+- **Ustawienia** — aktywna konfiguracja runtime i snapshot `options.json`; globalny restart dodatku jest w górnym pasku WebUI.
 - **O projekcie** — krótki opis architektury.
 
-Interfejs jest dostępny w 5 językach (🇬🇧 EN · 🇵🇱 PL · 🇩🇪 DE · 🇨🇿 CS · 🇸🇰 SK) — przełącznik w prawym górnym rogu. Pełny opis widoków: [dokumentacja PL](docs/README.pl.md) · [EN §5](docs/README.en.md#5-webui--7-views).
+Interfejs jest dostępny w 5 językach (🇬🇧 EN · 🇵🇱 PL · 🇩🇪 DE · 🇨🇿 CS · 🇸🇰 SK) — przełącznik w prawym górnym rogu. Pełny opis widoków: [dokumentacja PL](docs/README.pl.md) · [EN §5](docs/README.en.md#5-webui--main-views).
 
 ---
 
@@ -325,13 +325,13 @@ Views:
 
 - **Dashboard** — pipeline status (MQTT, RAW telegrams, decoder, HA Discovery), reception statistics (including a live telegrams-per-minute rate) and detected ESP boards.
 - **Meters** — configured meters with their current value and reception stats (15m / 60m).
-- **Received / Search** — LISTEN-mode candidates (ID, driver, media, encryption, reception). Each one without a required AES key has an **Add meter** button and is **decoded automatically** — its current value appears in the **Value (preview)** column right away, with no meter added and no click. AES-required candidates show no value until you provide a key; a manual **Preview / Cancel preview** toggle remains (e.g. to refresh). SEARCH mode is also started here.
+- **Received / Search** — LISTEN-mode candidates (ID, driver, media, encryption, reception). Each one without a required AES key has an **Add meter** button and is **decoded automatically** by the parallel LISTEN instance — its current value appears in the **Value** column after the next decoded telegram, with no meter added and no preview click. AES-required candidates show no value until you provide a key. SEARCH mode is also started here.
 - **Logs** — a short runtime event stream (full logs are in the add-on **Log** tab).
 - **ESP Logs** — diagnostics from ESP receivers (events, RSSI, boot, suggestions) and multi-board detection based on incoming `wmbus/+/telegram` telegrams.
-- **Settings** — active runtime configuration, add-on restart, management of ignored candidates.
+- **Settings** — active runtime configuration and `options.json` snapshot; the global add-on restart button is in the WebUI top bar.
 - **About** — a short architecture description.
 
-The interface is available in 5 languages (🇬🇧 EN · 🇵🇱 PL · 🇩🇪 DE · 🇨🇿 CS · 🇸🇰 SK) — switcher in the top-right corner. Full description of the views: [docs EN §5](docs/README.en.md#5-webui--7-views).
+The interface is available in 5 languages (🇬🇧 EN · 🇵🇱 PL · 🇩🇪 DE · 🇨🇿 CS · 🇸🇰 SK) — switcher in the top-right corner. Full description of the views: [docs EN §5](docs/README.en.md#5-webui--main-views).
 
 ---
 
