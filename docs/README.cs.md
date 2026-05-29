@@ -4,7 +4,7 @@
 
 # wMBus MQTT Bridge — kompletní dokumentace (CS)
 
-> Verze dokumentu: **1.5.4-dev**  ·  Jazyk: **čeština**  ·  Stav: dev-channel Home Assistant add-onu
+> Aktuální k datu: **2026-05-29**  ·  Jazyk: **čeština**  ·  Stav: dev-channel Home Assistant add-onu
 >
 > Krátký dvojjazyčný přehled najdete v hlavním [README.md](../README.md). Tento dokument je úplná česká dokumentace projektu — od „co to je" po detaily architektury a runtime.
 
@@ -112,7 +112,7 @@ flowchart TB
 
 Tyto tři komponenty komunikují pouze přes **soubory v `/data/`** — žádné sockety uvnitř kontejneru. Díky tomu lze webui restartovat nezávisle na bridge a stav přežívá restarty.
 
-> 🔗 **Na straně přijímače (ESP32 s rádiem)** — používáme sesterský projekt Kustonia: **[esphome-wmbus-bridge-rawonly](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly)** — ESPHome firmware pro SX1262 / SX1276 / CC1101 publikující surové HEX na `wmbus/<device>/telegram`. Topic přesně odpovídá našemu výchozímu `raw_topic: wmbus/+/telegram` — na naší straně není třeba nic konfigurovat. Přijímač má vlastní úplnou dokumentaci (EN/PL) — začni s [`START_HERE.md`](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly/blob/main/docs/START_HERE.md).
+> 🔗 **Na straně přijímače (ESP32 s rádiem)** — používáme sesterský projekt Kustonia: **[esphome-wmbus-bridge-rawonly](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly)** — ESPHome firmware pro SX1262 / SX1276 / CC1101 publikující surové HEX na `wmbus/<device>/telegram`. V HA odpovídá výchozímu `raw_topic: wmbus/+/telegram`; v Dockeru zkontroluj vygenerovaný `/config/options.json`, protože `docker/entrypoint.sh` aktuálně vytváří `raw_topic: wmbus_bridge/+/telegram`. Přijímač má vlastní úplnou dokumentaci (EN/PL) — začni s [`START_HERE.md`](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly/blob/main/docs/START_HERE.md).
 
 ---
 
@@ -231,7 +231,7 @@ services:
 
 Pak otevři `http://<host-ip>:8099/`.
 
-> 💡 V režimu Docker UI detekuje chybějící `SUPERVISOR_TOKEN` a nahradí tlačítka RESTART pokynem `docker restart <container>` — viz [§11](#11-home-assistant-vs-docker--rozdíly-ux).
+> 💡 V režimu Docker UI stále zobrazuje globální restart tlačítko, ale `/api/restart-bridge` vyžaduje `SUPERVISOR_TOKEN`. Bez Supervisora restartuj kontejner ručně (`docker restart <container>`).
 
 ---
 
@@ -383,9 +383,9 @@ Mechanismus funguje porovnáním `options.json` ↔ `status_meters.tsv`. Záznam
 
 ### Krok 4 — kdy restartovat add-on
 
-Přidání/odebrání měřiče z WebUI používá `/api/reload-pipeline` a obvykle nepotřebuje plný restart. Plný restart zůstává ruční/fallback akce v `/settings`.
+Přidání měřiče z WebUI volá `/api/reload-pipeline` a obvykle nepotřebuje plný restart. Odebrání aktualizuje `options.json` a smaže řádek statusu v UI, ale frontend po něm nevolá `/api/reload-pipeline`; pipeline proto může používat starou konfiguraci do dalšího reloadu nebo restartu.
 
-V režimu HA restartovací tlačítko volá `POST /restart-bridge` → `http://supervisor/addons/self/restart`. V Dockeru UI zobrazí `docker restart <container>`. Viz [§11](#11-home-assistant-vs-docker--rozdíly-ux).
+V režimu HA restartovací tlačítko volá `POST /restart-bridge` → `http://supervisor/addons/self/restart`. V Dockeru stejné tlačítko zasáhne API bez `SUPERVISOR_TOKEN` a kontejner nerestartuje; použij ručně `docker restart <container>`. Viz [§11](#11-home-assistant-vs-docker--rozdíly-ux).
 
 ### Krok 5 — hotovo
 
@@ -415,13 +415,13 @@ sequenceDiagram
 
   U->>W: zadá expected=23.93, tolerance=0.05
   U->>W: klik ULOŽIT — AKTIVOVAT SEARCH A RESTARTOVAT
-  W->>B: zápis options.json, restart addonu
+  W->>B: zápis options.json, pokus o restart přes Supervisor
   B->>B: fáze 1 — čte search_candidates.tsv,<br/>vytváří search_<id> měřič pro každého
   B->>WM: všechny telegramy dekódovány jako<br/>všechny možné ovladače
   WM-->>B: JSON pro každého kandidáta
   B->>B: porovnává total_m3 s expected ±tolerance
   B-->>W: SEARCH MATCH! zapisuje do search_matches.tsv
-  W-->>U: zelený banner + tlačítko PŘIDAT MĚŘIČ
+  W-->>U: aktualizovaný status, cache kandidátů a tabulka matches
 ```
 
 ### Konfigurace přes UI
@@ -432,7 +432,7 @@ Jdi na `/search`:
 2. **Tolerance m³** — výchozí `0.05` (50 litrů). V bytovém domě **nepoužívej `0.5`** — mnoho měřičů může mít podobné hodnoty
 3. Klik **ULOŽIT — AKTIVOVAT SEARCH A RESTARTOVAT**
 
-Add-on se restartuje a přejde do SEARCH MODE. Čekej na další telegramy (typické intervaly: 30 s — 15 min v závislosti na měřiči).
+V HA backend zkusí restart add-onu přes Supervisor a po restartu přejde do SEARCH MODE. V Dockeru zapíše volby, ale bez `SUPERVISOR_TOKEN` kontejner automaticky nerestartuje. Po účinném restartu/reloadu čekej na další telegramy (typické intervaly: 30 s — 15 min v závislosti na měřiči).
 
 ### Výsledek
 
@@ -447,22 +447,7 @@ Když je shoda nalezena:
    "type_other":"","key":""}
 ```
 
-WebUI na `/search` ukazuje:
-
-```
-✅ SEARCH MODE — NALEZENA SHODA
-Hlavní výsledek: nalezena shoda (1)
-
-┌──────────────────────────────────────────────────────┐
-│ 03534159  hydrodigit · water                         │
-│ value: 23.932 m³ · expected: 23.93 m³ · diff: 0.002  │
-│ {"id":"meter_03534159","meter_id":"03534159",...}    │
-│                                                      │
-│ [ PŘIDAT MĚŘIČ ]  [ KOPÍROVAT KONFIG ]               │
-└──────────────────────────────────────────────────────┘
-```
-
-Klik PŘIDAT MĚŘIČ → uloženo do `options.json`, restart, hotovo.
+Aktuální frontend `/search` ukazuje SEARCH formulář, `search_candidates` a `search_matches` jako jednoduché tabulky. V tomto pohledu nerenderuje tlačítka **PŘIDAT MĚŘIČ** ani **KOPÍROVAT KONFIG**; přidání měřiče probíhá z `/discover` přes add-meter modal.
 
 ### Po dokončení
 
@@ -480,7 +465,7 @@ Z [`config.yaml`](../config.yaml):
 
 | Pole | Typ | Výchozí | Popis |
 |---|---|---|---|
-| `raw_topic` | str | `wmbus/+/telegram` | Topic se surovým HEX z přijímače. `+` je MQTT wildcard — odpovídá jednomu segmentu |
+| `raw_topic` | str | HA: `wmbus/+/telegram`; Docker/fallback: `wmbus_bridge/+/telegram` | Topic se surovým HEX z přijímače. `+` je MQTT wildcard — odpovídá jednomu segmentu a používá se jako jméno ESP v diagnostice |
 | `filter_hex_only` | bool | `true` | Ignoruj MQTT zprávy, které nevypadají jako HEX (chrání před odpadem) |
 | `mqtt_mode` | enum | `auto` | `auto` (HA broker je-li dostupný, jinak external), `ha` (vynuť HA), `external` (vždy externí) |
 | `external_mqtt_host` | str? | `""` | Host externího brokeru (když `mqtt_mode=external`) |
@@ -637,13 +622,13 @@ Tyto soubory přežívají restart kontejneru (mountovaný `/data` volume), ale 
 
 ## 11. Home Assistant vs Docker — rozdíly UX
 
-Jedna kódová báze, dva módy běhu. UI sama detekuje mód podle přítomnosti `SUPERVISOR_TOKEN` v prostředí (HA injektuje, když `hassio_api: true`).
+Jedna kódová báze, dva módy běhu. Backend vrací `runtime` podle přítomnosti `SUPERVISOR_TOKEN` v prostředí (HA ho injektuje, když `hassio_api: true`) a API operace kontrolují token přímo bez samostatné funkce `is_supervisor_mode()`.
 
 ### Co funguje identicky
 
 ✅ Celé WebUI (Panel, Měřiče, Detekce, Hledání, Logy, Nastavení, O projektu)
 ✅ Lokalizace 5 jazyků
-✅ Inline ADD v tabulce kandidátů (rozdíl pouze v zápisu: API vs soubor)
+✅ Přidání kandidáta přes modal (rozdíl pouze v zápisu: API vs soubor)
 ✅ Pending panel
 ✅ Bridge.sh — dekódování, MQTT, Discovery
 ✅ Výběr okamžitých hodnot (current_power_kw místo total_kwh)
@@ -654,18 +639,18 @@ Jedna kódová báze, dva módy běhu. UI sama detekuje mód podle přítomnosti
 |---|---|---|
 | Přidání měřiče | POST `http://supervisor/addons/self/options` (perzistentní) + `/api/reload-pipeline` | `write_json_atomic(/data/options.json)` + `/api/reload-pipeline` |
 | Po přidání | DECODE pipeline se reloaduje; měřič se objeví po dalším telegramu | Stejně |
-| Plný restart add-onu | `[RESTARTOVAT ADD-ON NYNÍ]` (POST `/restart-bridge`) jako ruční/fallback akce | Pokyn: `docker restart <container>` |
-| Globální restart tlačítko | Tlačítko v horní liště (POST `/restart-bridge`) | Stejné tlačítko, ale bez Supervisora může být nutný ruční `docker restart <container>` |
+| Odebrání měřiče | POST `/api/remove-meter`; žádné automatické frontend volání `/api/reload-pipeline` | Stejně |
+| Plný restart add-onu | Tlačítko v horní liště (POST `/restart-bridge`) jako ruční/fallback akce | Stejné tlačítko zkusí `/api/restart-bridge`, ale bez Supervisora kontejner nerestartuje; spusť `docker restart <container>` ručně |
 | Stažení nového image | HA Supervisor automaticky při „Update Available" | `docker pull ...` ručně |
 | Perzistence změn | Supervisor (Supervisor DB) | `/data` volume |
 
 ### Proč tak
 
-V Dockeru není Supervisor API. Volání `http://supervisor/addons/self/restart` by vrátilo chybu. Místo zobrazení rozbitého tlačítka uživateli, UI sama detekuje chybějící token a nahradí ho textovou instrukcí.
+V Dockeru není Supervisor API. Backend `/api/restart-bridge` vrací chybu chybějícího `SUPERVISOR_TOKEN`; aktuální frontend nenahrazuje restart tlačítko textovou instrukcí.
 
 ```mermaid
 flowchart TD
-  A["UI klik"] --> B{"is_supervisor_mode()<br/>SUPERVISOR_TOKEN env?"}
+  A["UI klik ADD"] --> B{"SUPERVISOR_TOKEN env?"}
   B -- "ANO" --> C["POST /supervisor/addons/self/options<br/>Supervisor uloží konfiguraci"]
   B -- "NE" --> D["write_json_atomic(options.json)<br/>zápis do /data"]
   C --> E["/api/reload-pipeline<br/>soft reload DECODE"]
@@ -765,12 +750,12 @@ AES klíč dodává:
 
 Bez klíče nedekóduješ šifrované telegramy. Některé měřiče používají tzv. „zero-key" (`00000000000000000000000000000000`) jako fasádové šifrování — někdy funguje.
 
-### „Inline ADD nic neudělal" (v Dockeru)
+### „Přidat měřič nic neudělalo" (v Dockeru)
 
 Zkontroluj:
 - Je adresář `./config/` **zapisovatelný** pro uživatele kontejneru (ne `:ro`)
-- Je v logu `Meter added to options.json (file only — no SUPERVISOR_TOKEN)` — to znamená, že soubor byl uložen. Restartuj kontejner ručně.
-- Zkontroluj obsah `options.json` po kliknutí — měl by obsahovat nový záznam v `meters[]`.
+- Je v logu `Meter added to options.json (file only — no SUPERVISOR_TOKEN)` — to znamená, že soubor byl uložen.
+- Zkontroluj obsah `options.json` po kliknutí — měl by obsahovat nový záznam v `meters[]`. Po úspěšném přidání frontend volá `/api/reload-pipeline`; ruční `docker restart` je jen fallback, pokud pipeline přesto nenačte konfiguraci.
 
 ---
 
@@ -841,7 +826,7 @@ Python 3.12, `http.server.ThreadingHTTPServer`. Bez frameworku — JSON/SSE API 
 - **`state()`** ([řádek 585](../rootfs/usr/bin/webui.py#L585)) — čte runtime soubory pro API
 - **`status_model()`** ([řádek 686](../rootfs/usr/bin/webui.py#L686)) — staví model dashboardu/pipeline
 - **`_esp_payload()`** ([řádek 860](../rootfs/usr/bin/webui.py#L860)) — skládá ESP diagnostiku; aktivita je z `wmbus/+/telegram`, `wmbus/+/diag/summary` je volitelné
-- **`is_supervisor_mode()`** — detekuje HA vs Docker režim
+- HA vs Docker režim se detekuje přes přímé kontroly `SUPERVISOR_TOKEN` a pole `runtime` v API odpovědích; samostatná funkce `is_supervisor_mode()` neexistuje.
 - **`Handler` (BaseHTTPRequestHandler)** — GET/POST routing, language detection, cookie handling
 
 #### `app.js` (2200+ řádků)
@@ -911,7 +896,7 @@ print(webui.render_page('/discover', {}, 'pl'))
 | Část | Bumpuje při |
 |---|---|
 | MAJOR | Breaking change v konfiguraci / MQTT / discovery |
-| MINOR | Nové funkce (např. lokalizace, pending panel, inline ADD) |
+| MINOR | Nové funkce (např. lokalizace, pending panel, přidání přes modal) |
 | PATCH | Bug fixes, drobné UX |
 | `-dev` | Dokud jsme ve vývojářském kanále |
 
@@ -949,7 +934,7 @@ Bump verze v `config.yaml` je **vyžadován**, aby HA detekoval aktualizaci — 
 
 **GNU General Public License v3.0 (GPL-3.0)**
 
-Toto repo obsahuje a modifikuje kód z projektu `wmbusmeters-ha-addon` (GPL-3.0). Celý projekt — včetně forku, nových komponent (webui.py, i18n.py, bridge.sh rewrite, pending panel, inline ADD) — je distribuován pod GPL-3.0.
+Toto repo obsahuje a modifikuje kód z projektu `wmbusmeters-ha-addon` (GPL-3.0). Celý projekt — včetně forku, nových komponent (webui.py, i18n.py, bridge.sh rewrite, pending panel, přidání přes modal) — je distribuován pod GPL-3.0.
 
 ### Upstream
 

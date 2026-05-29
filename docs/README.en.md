@@ -2,7 +2,7 @@
 
 # wMBus MQTT Bridge — full documentation (EN)
 
-> Document version: **1.5.4-dev**  ·  Language: **English**  ·  Status: dev-channel Home Assistant add-on
+> Current as of: **2026-05-29**  ·  Language: **English**  ·  Status: dev-channel Home Assistant add-on
 >
 > A short bilingual overview lives in the main [README.md](../README.md). This document is the full English documentation — from "what is it" to architecture and runtime details.
 
@@ -110,7 +110,7 @@ flowchart TB
 
 The three components communicate only through **files in `/data/`** — no sockets inside the container. This means the webui can be restarted independently of the bridge, and state persists across restarts.
 
-> 🔗 **On the receiver side (ESP32 with radio)** — we use Kustonium's sibling project: **[esphome-wmbus-bridge-rawonly](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly)** — ESPHome firmware for SX1262 / SX1276 / CC1101 that publishes raw HEX to `wmbus/<device>/telegram`. The topic matches our default `raw_topic: wmbus/+/telegram` exactly — no configuration needed on our side. The receiver has its own full documentation (EN/PL) — start with [`START_HERE.md`](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly/blob/main/docs/START_HERE.md).
+> 🔗 **On the receiver side (ESP32 with radio)** — we use Kustonium's sibling project: **[esphome-wmbus-bridge-rawonly](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly)** — ESPHome firmware for SX1262 / SX1276 / CC1101 that publishes raw HEX to `wmbus/<device>/telegram`. In HA it matches the `raw_topic: wmbus/+/telegram` default; in Docker check the generated `/config/options.json`, because `docker/entrypoint.sh` currently creates `raw_topic: wmbus_bridge/+/telegram`. The receiver has its own full documentation (EN/PL) — start with [`START_HERE.md`](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly/blob/main/docs/START_HERE.md).
 
 ---
 
@@ -229,7 +229,7 @@ services:
 
 Then open `http://<host-ip>:8099/`.
 
-> 💡 In Docker mode the UI detects the missing `SUPERVISOR_TOKEN` and replaces RESTART buttons with a `docker restart <container>` hint — see [§11](#11-home-assistant-vs-docker--ux-differences).
+> 💡 In Docker mode the UI still shows the global restart button, but `/api/restart-bridge` requires `SUPERVISOR_TOKEN`. Without Supervisor, restart the container manually (`docker restart <container>`).
 
 ---
 
@@ -382,9 +382,9 @@ The mechanism works by comparing `options.json` ↔ `status_meters.tsv`. An entr
 
 ### Step 4 — when to restart the add-on
 
-Adding/removing a meter from the WebUI uses `/api/reload-pipeline` and normally does not need a full restart. A full restart remains a fallback in `/settings` or for changes that soft reload does not cover.
+Adding a meter from the WebUI calls `/api/reload-pipeline` and normally does not need a full restart. Removing a meter updates `options.json` and clears the status row in the UI, but the frontend does not call `/api/reload-pipeline` after removal, so the pipeline may keep the old configuration until the next reload or restart.
 
-In HA mode the restart button calls `POST /restart-bridge` → `http://supervisor/addons/self/restart`. In Docker mode the UI shows `docker restart <container>`. See [§11](#11-home-assistant-vs-docker--ux-differences).
+In HA mode the restart button calls `POST /restart-bridge` → `http://supervisor/addons/self/restart`. In Docker mode the same button hits the API without `SUPERVISOR_TOKEN` and does not restart the container; use a manual `docker restart <container>`. See [§11](#11-home-assistant-vs-docker--ux-differences).
 
 ### Step 5 — done
 
@@ -414,13 +414,13 @@ sequenceDiagram
 
   U->>W: enters expected=23.93, tolerance=0.05
   U->>W: click SAVE — ENABLE SEARCH AND RESTART
-  W->>B: writes options.json, restarts addon
+  W->>B: writes options.json, attempts Supervisor restart
   B->>B: phase 1 — reads search_candidates.tsv,<br/>creates search_<id> meter for each
   B->>WM: every telegram decoded as<br/>all possible drivers
   WM-->>B: JSON for each candidate
   B->>B: compares total_m3 with expected ±tolerance
   B-->>W: SEARCH MATCH! writes to search_matches.tsv
-  W-->>U: green banner + ADD METER button
+  W-->>U: refreshed status, candidate cache and matches table
 ```
 
 ### Configuration through the UI
@@ -431,7 +431,7 @@ Go to `/search`:
 2. **Tolerance m³** — default `0.05` (50 litres). In an apartment block **do not use `0.5`** — many meters may have similar readings
 3. Click **SAVE — ENABLE SEARCH AND RESTART**
 
-The add-on will restart and enter SEARCH MODE. Wait for more telegrams (typical intervals: 30 s — 15 min depending on the meter).
+In HA, the backend attempts an add-on restart through Supervisor and then enters SEARCH MODE after restart. In Docker, it writes the options but cannot restart the container automatically without `SUPERVISOR_TOKEN`. Wait for more telegrams after an effective restart/reload (typical intervals: 30 s — 15 min depending on the meter).
 
 ### Result
 
@@ -446,22 +446,7 @@ When a match is found:
    "type_other":"","key":""}
 ```
 
-WebUI on `/search` shows:
-
-```
-✅ SEARCH MODE — MATCH FOUND
-Top-level result: match found (1)
-
-┌──────────────────────────────────────────────────────┐
-│ 03534159  hydrodigit · water                         │
-│ value: 23.932 m³ · expected: 23.93 m³ · diff: 0.002  │
-│ {"id":"meter_03534159","meter_id":"03534159",...}    │
-│                                                      │
-│ [ ADD METER ]  [ COPY CONFIG ]                       │
-└──────────────────────────────────────────────────────┘
-```
-
-Click ADD METER → saved to `options.json`, restart, done.
+The current `/search` frontend shows the SEARCH form, `search_candidates` and `search_matches` as simple tables. It does not render **ADD METER** or **COPY CONFIG** buttons in that view; adding a meter is done from `/discover` through the add-meter modal.
 
 ### After you're done
 
@@ -479,7 +464,7 @@ From [`config.yaml`](../config.yaml):
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `raw_topic` | str | `wmbus/+/telegram` | Topic with raw HEX from the receiver. `+` is the MQTT wildcard — matches one segment |
+| `raw_topic` | str | HA: `wmbus/+/telegram`; Docker/fallback: `wmbus_bridge/+/telegram` | Topic with raw HEX from the receiver. `+` is the MQTT wildcard — matches one segment and is used as the ESP name in diagnostics |
 | `filter_hex_only` | bool | `true` | Ignore MQTT messages that don't look like HEX (protects against garbage) |
 | `mqtt_mode` | enum | `auto` | `auto` (HA broker if available, otherwise external), `ha` (force HA), `external` (always external) |
 | `external_mqtt_host` | str? | `""` | External broker host (when `mqtt_mode=external`) |
@@ -636,13 +621,13 @@ These files survive container restart (mounted `/data` volume), but `options.jso
 
 ## 11. Home Assistant vs Docker — UX differences
 
-One codebase, two run modes. The UI detects the mode itself based on the `SUPERVISOR_TOKEN` env variable (HA injects it when `hassio_api: true`).
+One codebase, two run modes. The backend exposes `runtime` based on the `SUPERVISOR_TOKEN` env variable (HA injects it when `hassio_api: true`), and API operations check that token directly without a separate `is_supervisor_mode()` helper.
 
 ### What works identically
 
 ✅ The entire WebUI (Dashboard, Meters, Discover, Search, Logs, Settings, About)
 ✅ 5-language localisation
-✅ Inline ADD in the candidates table (difference only in writing: API vs file)
+✅ Candidate add through the modal (difference only in writing: API vs file)
 ✅ Pending panel
 ✅ Bridge.sh — decoding, MQTT, Discovery
 ✅ Selection of instantaneous values (current_power_kw instead of total_kwh)
@@ -653,18 +638,18 @@ One codebase, two run modes. The UI detects the mode itself based on the `SUPERV
 |---|---|---|
 | Adding a meter | POST `http://supervisor/addons/self/options` (persistent) + `/api/reload-pipeline` | `write_json_atomic(/data/options.json)` + `/api/reload-pipeline` |
 | After adding a meter | DECODE pipeline soft-reloads; the meter appears after the next telegram | Same |
-| Full add-on restart | `[RESTART ADDON NOW]` (POST `/restart-bridge`) as a manual/fallback action | Hint: `docker restart <container>` |
-| Global restart button | Top-bar button (POST `/restart-bridge`) | Same button, but without Supervisor a manual `docker restart <container>` may be required |
+| Removing a meter | POST `/api/remove-meter`; no automatic frontend call to `/api/reload-pipeline` | Same |
+| Full add-on restart | Top-bar button (POST `/restart-bridge`) as a manual/fallback action | The same button tries `/api/restart-bridge`, but without Supervisor it does not restart the container; run `docker restart <container>` manually |
 | Pulling new image | HA Supervisor auto on "Update Available" | `docker pull ...` manually |
 | Change persistence | Supervisor (Supervisor DB) | `/data` volume |
 
 ### Why
 
-There is no Supervisor API in Docker. A call to `http://supervisor/addons/self/restart` would return an error. Instead of showing a broken button to the user, the UI detects the missing token and replaces it with a textual instruction.
+There is no Supervisor API in Docker. The `/api/restart-bridge` backend returns a missing `SUPERVISOR_TOKEN` error; the current frontend does not replace the restart button with textual instructions.
 
 ```mermaid
 flowchart TD
-  A["UI click"] --> B{"is_supervisor_mode()<br/>SUPERVISOR_TOKEN env?"}
+  A["UI ADD click"] --> B{"SUPERVISOR_TOKEN env?"}
   B -- "YES" --> C["POST /supervisor/addons/self/options<br/>Supervisor persists config"]
   B -- "NO" --> D["write_json_atomic(options.json)<br/>write to /data"]
   C --> E["/api/reload-pipeline<br/>soft reload DECODE"]
@@ -764,12 +749,12 @@ The AES key is provided by:
 
 Without the key you can't decode encrypted telegrams. Some meters use a so-called "zero-key" (`00000000000000000000000000000000`) as facade encryption — sometimes works.
 
-### "Inline ADD did nothing" (under Docker)
+### "Add meter did nothing" (under Docker)
 
 Check:
 - Is the `./config/` directory **writable** for the container user (not `:ro`)
-- Is the log saying `Meter added to options.json (file only — no SUPERVISOR_TOKEN)` — that means the file was saved. Restart the container manually.
-- Check the contents of `options.json` after clicking — it should contain a new entry in `meters[]`.
+- Is the log saying `Meter added to options.json (file only — no SUPERVISOR_TOKEN)` — that means the file was saved.
+- Check the contents of `options.json` after clicking — it should contain a new entry in `meters[]`. After a successful add, the frontend calls `/api/reload-pipeline`; manual `docker restart` is only a fallback if the pipeline still does not reload the configuration.
 
 ---
 
@@ -840,7 +825,7 @@ Python 3.12, `http.server.ThreadingHTTPServer`. No framework — JSON/SSE API an
 - **`state()`** ([line 585](../rootfs/usr/bin/webui.py#L585)) — reads runtime files for the API
 - **`status_model()`** ([line 686](../rootfs/usr/bin/webui.py#L686)) — builds the dashboard/pipeline model
 - **`_esp_payload()`** ([line 860](../rootfs/usr/bin/webui.py#L860)) — builds ESP diagnostics; activity comes from `wmbus/+/telegram`, while `wmbus/+/diag/summary` is optional
-- **`is_supervisor_mode()`** — detects HA vs Docker mode
+- HA vs Docker mode is detected through direct `SUPERVISOR_TOKEN` checks and the `runtime` field in API responses; there is no separate `is_supervisor_mode()` function.
 - **`Handler` (BaseHTTPRequestHandler)** — GET/POST routing, language detection, cookie handling
 
 #### `app.js` (2200+ lines)
@@ -910,7 +895,7 @@ print(webui.render_page('/discover', {}, 'pl'))
 | Part | Bumps when |
 |---|---|
 | MAJOR | Breaking change in configuration / MQTT / discovery |
-| MINOR | New features (e.g. localisation, pending panel, inline ADD) |
+| MINOR | New features (e.g. localisation, pending panel, modal-based add) |
 | PATCH | Bug fixes, minor UX |
 | `-dev` | While we're on the developer channel |
 
@@ -948,7 +933,7 @@ A version bump in `config.yaml` is **required** for HA to detect an update — w
 
 **GNU General Public License v3.0 (GPL-3.0)**
 
-This repository contains and modifies code from the `wmbusmeters-ha-addon` project (GPL-3.0). The entire project — including the fork, new components (webui.py, i18n.py, bridge.sh rewrite, pending panel, inline ADD) — is distributed under GPL-3.0.
+This repository contains and modifies code from the `wmbusmeters-ha-addon` project (GPL-3.0). The entire project — including the fork, new components (webui.py, i18n.py, bridge.sh rewrite, pending panel, modal-based add) — is distributed under GPL-3.0.
 
 ### Upstream
 

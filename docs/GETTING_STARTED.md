@@ -1,6 +1,6 @@
 # Getting Started — wMBus MQTT Bridge Dev
 
-Series: `1.5.x-dev`.
+Current as of: `2026-05-29`.
 
 - [English](#english)
 - [Polski](#polski)
@@ -48,9 +48,10 @@ docker compose -f docker/examples/docker-compose.yml up -d --build
 ```
 
 On first run, `docker/entrypoint.sh` writes a default `/config/options.json`.
-Edit it for your environment (the generated file uses
-`external_mqtt_host: mosquitto` and `raw_topic: wmbus/+/telegram`),
-then restart:
+Edit it for your environment. The generated file currently uses
+`external_mqtt_host: mosquitto` and `raw_topic: wmbus_bridge/+/telegram`;
+set `raw_topic: wmbus/+/telegram` manually when your receiver publishes
+to `wmbus/<device>/telegram`, then restart:
 
 ```bash
 docker compose -f docker/examples/docker-compose.yml restart wmbus
@@ -136,9 +137,9 @@ controlled by:
 
 `bridge.sh` collects water candidates in `search_candidates.tsv`,
 generates temporary meter files in SEARCH mode, compares decoded values,
-and writes `search_status.json` and `search_matches.tsv`. After adding
-a meter from a SEARCH result, set `search_mode: false` to return to
-normal operation.
+and writes `search_status.json` and `search_matches.tsv`. The current
+`#/search` UI shows the result tables only; add the identified meter from
+`#/discover`, then set `search_mode: false` to return to normal operation.
 
 The hidden `#/search` route in the WebGUI is the entry point for
 advanced users.
@@ -173,9 +174,12 @@ advanced users.
   meter, not the add-on.
 
 **Bridge pipeline restart**
-- `Restart add-on` button uses the Supervisor API (HA only).
-- Adding/removing a meter from the WebGUI calls `/api/reload-pipeline`
-  automatically; no full container restart needed.
+- `Restart add-on` button uses the Supervisor API. In Docker it does not
+  restart the container without `SUPERVISOR_TOKEN`; use `docker restart`.
+- Adding a meter from the WebGUI calls `/api/reload-pipeline`
+  automatically; removing a meter does not call that endpoint in the
+  current frontend, so the old decode config may persist until reload or
+  restart.
 
 ---
 
@@ -214,9 +218,11 @@ docker compose -f docker/examples/docker-compose.yml up -d --build
 ```
 
 Przy pierwszym starcie `docker/entrypoint.sh` zapisuje domyślny
-`/config/options.json`. Edytuj go pod swoje środowisko (wygenerowany
-plik używa `external_mqtt_host: mosquitto` i
-`raw_topic: wmbus/+/telegram`), następnie restart:
+`/config/options.json`. Edytuj go pod swoje środowisko. Wygenerowany
+plik używa obecnie `external_mqtt_host: mosquitto` i
+`raw_topic: wmbus_bridge/+/telegram`; ustaw ręcznie
+`raw_topic: wmbus/+/telegram`, jeśli odbiornik publikuje na
+`wmbus/<device>/telegram`, następnie restart:
 
 ```bash
 docker compose -f docker/examples/docker-compose.yml restart wmbus
@@ -295,7 +301,8 @@ SEARCH porównuje dekodowane odczyty z oczekiwaną wartością m³.
 Sterowany opcjami `search_*`. `bridge.sh` zbiera kandydatów wodnych
 do `search_candidates.tsv`, generuje tymczasowe pliki meter w trybie
 SEARCH, porównuje wartości i zapisuje `search_status.json` oraz
-`search_matches.tsv`. Po dodaniu licznika z wyniku SEARCH ustaw
+`search_matches.tsv`. Aktualny widok `#/search` pokazuje tylko tabele
+wyników; zidentyfikowany licznik dodaj z `#/discover`, a potem ustaw
 `search_mode: false`, żeby wrócić do normalnej pracy. Ukryta trasa
 `#/search` jest punktem wejścia dla zaawansowanych.
 
@@ -326,9 +333,11 @@ SEARCH, porównuje wartości i zapisuje `search_status.json` oraz
 - Poczekaj na następny telegram — interwały kontroluje licznik.
 
 **Restart pipeline**
-- Przycisk `Restart add-on` używa Supervisor API (tylko HA).
-- Dodanie/usunięcie licznika wywołuje `/api/reload-pipeline`
-  automatycznie; bez pełnego restartu kontenera.
+- Przycisk `Restart add-on` używa Supervisor API. W Dockerze bez
+  `SUPERVISOR_TOKEN` nie restartuje kontenera; użyj `docker restart`.
+- Dodanie licznika wywołuje `/api/reload-pipeline` automatycznie.
+  Usunięcie licznika w aktualnym frontendzie tego endpointu nie wywołuje,
+  więc stara konfiguracja dekodowania może działać do reloadu lub restartu.
 
 ---
 
@@ -416,9 +425,10 @@ Steuerung über `search_*`. Nach erfolgreicher Identifikation
   ist ein optionaler frischer Heartbeat.
 - **Zähler dekodiert nicht**: `meter_id`, Driver-Wahl und
   AES-Schlüssel prüfen; auf nächste Übertragung warten.
-- **Pipeline-Neustart**: `Restart add-on` nutzt die Supervisor-API
-  (nur HA); Hinzufügen/Entfernen über die WebGUI löst automatisch
-  `/api/reload-pipeline` aus.
+- **Pipeline-Neustart**: `Restart add-on` nutzt die Supervisor-API; in
+  Docker startet er ohne `SUPERVISOR_TOKEN` den Container nicht neu.
+  Hinzufügen über die WebGUI ruft `/api/reload-pipeline` automatisch auf;
+  Entfernen ruft diesen Endpoint im aktuellen Frontend nicht auf.
 
 ---
 
@@ -487,8 +497,10 @@ Porovnává dekódované hodnoty s očekávaným m³. Po nalezení nastavte
   z `wmbus/+/telegram`; `wmbus/+/diag/summary` je volitelný čerstvý
   heartbeat.
 - **Měřič nedekoduje**: zkontrolovat `meter_id`, driver, AES klíč.
-- **Restart pipeline**: `Restart add-on` jen v HA; přidání/odebrání
-  v WebGUI volá `/api/reload-pipeline` automaticky.
+- **Restart pipeline**: `Restart add-on` používá Supervisor API; v Dockeru
+  bez `SUPERVISOR_TOKEN` kontejner nerestartuje. Přidání v WebGUI volá
+  `/api/reload-pipeline` automaticky; odebrání ho v aktuálním frontendu
+  nevolá.
 
 ---
 
@@ -557,5 +569,7 @@ Porovnáva dekódované hodnoty s očakávaným m³. Po nájdení nastavte
   z `wmbus/+/telegram`; `wmbus/+/diag/summary` je voliteľný čerstvý
   heartbeat.
 - **Merač nedekóduje**: skontrolovať `meter_id`, driver, AES kľúč.
-- **Reštart pipeline**: `Restart add-on` len v HA; pridanie/odobratie
-  v WebGUI volá `/api/reload-pipeline` automaticky.
+- **Reštart pipeline**: `Restart add-on` používa Supervisor API; v Dockeri
+  bez `SUPERVISOR_TOKEN` kontajner nereštartuje. Pridanie v WebGUI volá
+  `/api/reload-pipeline` automaticky; odobratie ho v aktuálnom frontende
+  nevolá.
