@@ -627,8 +627,17 @@ STATUS_ESP_DIAG_FILE="${BASE}/status_esp_diag.json"
   if [[ "${_RT_DEV_POS}" -ge 0 ]]; then
     log "ESP-device tracker: device name at topic segment ${_RT_DEV_POS} of '${RAW_TOPIC}'"
     while true; do
-      ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" "${SUB_EXTRA[@]}" -t "${RAW_TOPIC}" -F '%t' -W 180 2>/dev/null \
-        | while IFS= read -r _tg_topic; do
+      # IMPORTANT: read via process substitution (done < <(...)), NOT a pipe.
+      # Under `set -euo pipefail` a pipe `mosquitto_sub | while ...` would let a
+      # non-zero mosquitto_sub exit (e.g. when the -W timeout fires or the broker
+      # blips) propagate through pipefail and trip set -e — killing this whole
+      # background subshell permanently. The tracker would then only ever record
+      # device names seen during the FIRST connection window, so a board that
+      # starts publishing later (e.g. a second ESP plugged in after boot) would
+      # never be added — the dashboard would show "1 × ESP" forever.
+      # Process substitution keeps mosquitto_sub's exit code out of the loop's
+      # pipe status, matching the robust ESP-diag subscriber above.
+      while IFS= read -r _tg_topic; do
             [[ -n "${_tg_topic}" ]] || continue
             IFS='/' read -ra _T_PARTS <<< "${_tg_topic}"
             _dev="${_T_PARTS[${_RT_DEV_POS}]:-}"
@@ -650,7 +659,9 @@ STATUS_ESP_DIAG_FILE="${BASE}/status_esp_diag.json"
             ' "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" 2>/dev/null > "${_tmp}" \
               && mv "${_tmp}" "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" 2>/dev/null \
               || true
-          done
+      done < <(
+        ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" "${SUB_EXTRA[@]}" -t "${RAW_TOPIC}" -F '%t' -W 180 2>/dev/null
+      )
       sleep 5
     done
   else
