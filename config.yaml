@@ -1,7 +1,7 @@
-name: "wMBus MQTT Bridge NewGUI"
-description: "[NEWGUI] MQTT RAW HEX -> wmbusmeters (stdin:hex) -> MQTT + Home Assistant Discovery"
+name: "wMBus MQTT Bridge Dev"
+description: "[DEV] MQTT RAW HEX -> wmbusmeters (stdin:hex) -> MQTT + Home Assistant Discovery"
 version: "1.5.11-dev.37"
-slug: "wmbus_mqtt_bridge_newgui"
+slug: "wmbus_mqtt_bridge_dev"
 stage: experimental
 image: "ghcr.io/kustonium/{arch}-addon-wmbus_mqtt_bridge-dev"
 arch:
@@ -14,7 +14,7 @@ ingress: true
 ingress_port: 8099
 hassio_api: true
 panel_icon: mdi:gauge
-panel_title: "wMBus Bridge NewGUI"
+panel_title: "wMBus Bridge Dev"
 services:
   - mqtt:want
 

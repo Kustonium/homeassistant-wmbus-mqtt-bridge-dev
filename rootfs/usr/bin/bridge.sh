@@ -627,30 +627,33 @@ STATUS_ESP_DIAG_FILE="${BASE}/status_esp_diag.json"
   if [[ "${_RT_DEV_POS}" -ge 0 ]]; then
     log "ESP-device tracker: device name at topic segment ${_RT_DEV_POS} of '${RAW_TOPIC}'"
     while true; do
-      ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" "${SUB_EXTRA[@]}" -t "${RAW_TOPIC}" -F '%t' -W 180 2>/dev/null \
-        | while IFS= read -r _tg_topic; do
-            [[ -n "${_tg_topic}" ]] || continue
-            IFS='/' read -ra _T_PARTS <<< "${_tg_topic}"
-            _dev="${_T_PARTS[${_RT_DEV_POS}]:-}"
-            [[ -n "${_dev}" ]] || continue
-            _now=$(date +%s 2>/dev/null || echo 0)
-            _tmp="${STATUS_ESP_TELEGRAM_DEVICES_FILE}.tmp"
-            # Upsert the row for this device — increment count if exists,
-            # otherwise append a fresh row with count=1.
-            awk -F'\t' -v dev="${_dev}" -v now="${_now}" -v tg="${_tg_topic}" '
-              BEGIN { upd=0 }
-              $1 == dev {
-                cnt = (NF >= 4 ? $4+1 : 1)
-                print dev "\t" now "\t" tg "\t" cnt
-                upd=1
-                next
-              }
-              { print }
-              END { if (!upd) print dev "\t" now "\t" tg "\t1" }
-            ' "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" 2>/dev/null > "${_tmp}" \
-              && mv "${_tmp}" "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" 2>/dev/null \
-              || true
-          done
+      # Read via process substitution, not a pipe: with set -euo pipefail a
+      # mosquitto_sub timeout/disconnect would otherwise kill this tracker.
+      while IFS= read -r _tg_topic; do
+        [[ -n "${_tg_topic}" ]] || continue
+        IFS='/' read -ra _T_PARTS <<< "${_tg_topic}"
+        _dev="${_T_PARTS[${_RT_DEV_POS}]:-}"
+        [[ -n "${_dev}" ]] || continue
+        _now=$(date +%s 2>/dev/null || echo 0)
+        _tmp="${STATUS_ESP_TELEGRAM_DEVICES_FILE}.tmp"
+        # Upsert the row for this device — increment count if exists,
+        # otherwise append a fresh row with count=1.
+        awk -F'\t' -v dev="${_dev}" -v now="${_now}" -v tg="${_tg_topic}" '
+          BEGIN { upd=0 }
+          $1 == dev {
+            cnt = (NF >= 4 ? $4+1 : 1)
+            print dev "\t" now "\t" tg "\t" cnt
+            upd=1
+            next
+          }
+          { print }
+          END { if (!upd) print dev "\t" now "\t" tg "\t1" }
+        ' "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" 2>/dev/null > "${_tmp}" \
+          && mv "${_tmp}" "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" 2>/dev/null \
+          || true
+      done < <(
+        ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" "${SUB_EXTRA[@]}" -t "${RAW_TOPIC}" -F '%t' -W 180 2>/dev/null
+      )
       sleep 5
     done
   else
@@ -741,9 +744,9 @@ EOFCONF
 # with NO meter files — this instance always runs in pure listen mode
 # and emits "Received telegram from: XXXXXXXX" / type: / driver: lines
 # for every wMBus telegram seen, regardless of how many meters the user
-# has configured in the primary instance. Spawned by run_once() only
-# when METERS_COUNT > 0 (otherwise the primary instance is already in
-# listen mode and the secondary would be redundant).
+# has configured in the primary instance. Spawned when DECODE is active or
+# when meter-preview-* files exist (preview values need this separate config
+# dir even if the primary instance is otherwise in pure LISTEN mode).
 #
 # Shares the SAME wmbusmeters binary as the primary — only the config
 # dir differs. User-uploaded binary upgrades are picked up by both
@@ -1261,13 +1264,14 @@ refresh_meter_files() {
   rm -f "${METER_DIR}/meter-"* 2>/dev/null || true
 
   METERS_COUNT=0
+  OFFICIAL_METERS_COUNT=0
+  local configured_count=0
   if [[ -f "${OPTIONS_JSON}" ]] && jq -e '.meters and (.meters|length>0)' "${OPTIONS_JSON}" >/dev/null 2>&1; then
-    METERS_COUNT="$(jq -r '.meters|length' "${OPTIONS_JSON}")"
+    configured_count="$(jq -r '.meters|length' "${OPTIONS_JSON}")"
   fi
-  OFFICIAL_METERS_COUNT="${METERS_COUNT}"
   SEARCH_USING_TEMP_METERS="false"
 
-  if [[ "${METERS_COUNT}" -eq 0 && "${SEARCH_MODE}" == "true" && "${SEARCH_EXPECTED_VALUE_M3}" != "0" ]]; then
+  if [[ "${configured_count}" -eq 0 && "${SEARCH_MODE}" == "true" && "${SEARCH_EXPECTED_VALUE_M3}" != "0" ]]; then
     local cached_count
     cached_count="$(create_search_meter_files_from_cache)"
     if [[ "${cached_count}" =~ ^[0-9]+$ && "${cached_count}" -gt 0 ]]; then
@@ -1283,16 +1287,13 @@ refresh_meter_files() {
       warn "The bridge will collect id+driver candidates first. Let it run long enough to hear meters; restart later to decode cached candidates and compare m3 values."
       write_search_status "collecting" "no_cached_candidates"
     fi
-  elif [[ "${METERS_COUNT}" -eq 0 ]]; then
+  elif [[ "${configured_count}" -eq 0 ]]; then
     warn "No meters configured -> LISTEN MODE (will log DLL-ID + suggested driver)."
     write_search_status "listen" "listen_mode"
   else
-    local i=0
+    local loaded_count=0
     local meter_json file friendly_name driver driver_other mid_raw key mid
     while IFS= read -r meter_json; do
-      i=$((i+1))
-      file="$(printf '%s/meter-%04d' "${METER_DIR}" "${i}")"
-
       friendly_name="$(echo "${meter_json}" | jq -r '.id // "meter"')"
       driver="$(echo "${meter_json}" | jq -r '.type // "auto"')"
       driver_other="$(echo "${meter_json}" | jq -r '.type_other // empty')"
@@ -1322,6 +1323,8 @@ refresh_meter_files() {
         continue
       fi
 
+      loaded_count=$((loaded_count + 1))
+      file="$(printf '%s/meter-%04d' "${METER_DIR}" "${loaded_count}")"
       {
         echo "name=${friendly_name}"
         echo "id=${mid}"
@@ -1335,7 +1338,14 @@ refresh_meter_files() {
 
       log "meter: ${friendly_name} id=${mid} driver=${driver}"
     done < <(jq -c '.meters[]' "${OPTIONS_JSON}" 2>/dev/null || true)
-    write_search_status "configured" "official_meters_configured"
+    METERS_COUNT="${loaded_count}"
+    OFFICIAL_METERS_COUNT="${loaded_count}"
+    if [[ "${loaded_count}" -gt 0 ]]; then
+      write_search_status "configured" "official_meters_configured"
+    else
+      warn "Configured meters exist in options.json, but none produced a valid wmbusmeters meter file -> LISTEN MODE."
+      write_search_status "listen" "configured_meters_invalid"
+    fi
   fi
 }
 
@@ -1677,10 +1687,15 @@ parse_listen_candidates() {
       last_driver="${BASH_REMATCH[1]}"
     fi
     if [[ -n "${last_id}" && -n "${last_driver}" ]]; then
-      if [[ "${SEARCH_MODE}" == "true" && "${SEARCH_EXPECTED_VALUE_M3}" != "0" ]]; then
-        search_cache_candidate "${last_id}" "${last_driver}" "${last_type}"
-      else
-        emit_snippet_if_new "${last_id}" "${last_driver}" "${last_type}"
+      # When there are no official meters, the primary pipeline already runs in
+      # LISTEN mode and updates candidate stats. A secondary LISTEN may still be
+      # running for preview decoding; do not double-count candidate receptions.
+      if [[ "${OFFICIAL_METERS_COUNT:-0}" -gt 0 ]]; then
+        if [[ "${SEARCH_MODE}" == "true" && "${SEARCH_EXPECTED_VALUE_M3}" != "0" ]]; then
+          search_cache_candidate "${last_id}" "${last_driver}" "${last_type}"
+        else
+          emit_snippet_if_new "${last_id}" "${last_driver}" "${last_type}"
+        fi
       fi
       last_id=""
       last_driver=""
@@ -1855,6 +1870,15 @@ fi
 # ────────────────────────────────────────────────────────────────────────
 LISTEN_PID=""
 
+listen_preview_count() {
+  local count=0 f
+  for f in "${LISTEN_METER_DIR}"/meter-preview-*; do
+    [[ -e "${f}" ]] || continue
+    count=$((count + 1))
+  done
+  echo "${count}"
+}
+
 start_listen_instance() {
   # Already running? Done.
   if [[ -n "${LISTEN_PID}" ]] && kill -0 "${LISTEN_PID}" 2>/dev/null; then
@@ -1969,10 +1993,10 @@ while true; do
   # is required for new meters to start decoding.
   refresh_meter_files
 
-  # LISTEN instance is needed only when DECODE is active (METERS_COUNT > 0).
-  # When user has no meters, the primary wmbusmeters already runs in listen
-  # mode and a second one would be redundant work.
-  if [[ "${METERS_COUNT}" -gt 0 ]]; then
+  # LISTEN is needed when DECODE is active, and also when preview files exist.
+  # In pure LISTEN mode the primary pipeline sees candidates, but only this
+  # separate config dir contains meter-preview-* files for value preview.
+  if [[ "${METERS_COUNT}" -gt 0 || "$(listen_preview_count)" -gt 0 ]]; then
     start_listen_instance
   else
     stop_listen_instance

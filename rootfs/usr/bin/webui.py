@@ -60,6 +60,7 @@ STATUS_ESP_TELEGRAM_DEVICES_FILE = BASE / "status_esp_telegram_devices.tsv"
 # instance (decode pipeline reads /data/etc/wmbusmeters.d/).
 LISTEN_METER_DIR = BASE / "listen" / "etc" / "wmbusmeters.d"
 RELOAD_LISTEN_FLAG = BASE / ".reload_listen"
+RELOAD_PIPELINE_FLAG = BASE / ".reload_pipeline"
 ZERO_AES_KEY = "00000000000000000000000000000000"
 
 
@@ -100,6 +101,15 @@ ADDON_VERSION, ADDON_IS_DEV = read_addon_version()
 
 VALID_ID_RE = re.compile(r"^[0-9A-Fa-f]{8}$")
 MEDIA_FILTERS = {"all", "water", "warm_water", "electricity", "heat", "other"}
+
+
+def normalize_meter_id(value: object) -> str:
+    mid = re.sub(r"\s+", "", str(value or "")).lower()
+    if mid.startswith("0x"):
+        mid = mid[2:]
+    if not mid or not re.fullmatch(r"[0-9a-f]+", mid):
+        return ""
+    return mid.zfill(8) if len(mid) < 8 else mid
 
 
 # ---------------------------------------------------------------------------
@@ -351,6 +361,7 @@ def add_meter_to_options(meter_id: str, driver: str, key: str, meter_name: str =
     """
     import urllib.request
 
+    meter_id = normalize_meter_id(meter_id)
     if not VALID_ID_RE.match(meter_id):
         return False, f"Invalid meter_id: {meter_id}"
 
@@ -369,7 +380,7 @@ def add_meter_to_options(meter_id: str, driver: str, key: str, meter_name: str =
 
     # Check duplicate
     for m in meters:
-        if isinstance(m, dict) and m.get("meter_id") == meter_id:
+        if isinstance(m, dict) and normalize_meter_id(m.get("meter_id")) == meter_id:
             return False, f"Meter {meter_id} already exists in options."
 
     # Build entry id: use provided name (sanitized) or fall back to meter_XXXXXXXX
@@ -441,7 +452,8 @@ def _remove_meter_from_tsv(meter_id: str) -> None:
         if not METERS_TSV.exists():
             return
         lines = METERS_TSV.read_text(encoding="utf-8", errors="replace").splitlines()
-        new_lines = [l for l in lines if l.split("\t")[0] != meter_id]
+        meter_id = normalize_meter_id(meter_id)
+        new_lines = [l for l in lines if normalize_meter_id(l.split("\t")[0]) != meter_id]
         write_lines_atomic(METERS_TSV, new_lines)
     except Exception:
         pass  # non-fatal — worst case the row disappears after restart
@@ -451,6 +463,7 @@ def remove_meter_from_options(meter_id: str) -> tuple[bool, str]:
     """Remove a meter from options via HA Supervisor API."""
     import urllib.request
 
+    meter_id = normalize_meter_id(meter_id)
     if not VALID_ID_RE.match(meter_id):
         return False, f"Invalid meter_id: {meter_id}"
 
@@ -463,7 +476,7 @@ def remove_meter_from_options(meter_id: str) -> tuple[bool, str]:
         return False, "No meters list in options."
 
     before = len(meters)
-    meters = [m for m in meters if not (isinstance(m, dict) and m.get("meter_id") == meter_id)]
+    meters = [m for m in meters if not (isinstance(m, dict) and normalize_meter_id(m.get("meter_id")) == meter_id)]
     if len(meters) == before:
         return False, f"Meter {meter_id} not found in options."
 
@@ -555,15 +568,14 @@ def parse_iso_time(value: str) -> datetime | None:
 def _sync_meters_tsv(valid_ids: set[str]) -> None:
     """Rewrite status_meters.tsv keeping only rows whose id is in valid_ids.
 
-    Called from state() whenever options.json has a 'meters' key so that rows
-    deleted via the HA options UI (not the WebGUI DELETE button) are cleaned up
-    from disk on the next page load — no manual restart required.
+    This must not be called from read-only state assembly: if Supervisor briefly
+    exposes default/empty options, a page refresh would erase live decoded values.
     """
     try:
         if not METERS_TSV.exists():
             return
         lines = METERS_TSV.read_text(encoding="utf-8", errors="replace").splitlines()
-        new_lines = [l for l in lines if l.split("\t")[0].lower() in valid_ids]
+        new_lines = [l for l in lines if normalize_meter_id(l.split("\t")[0]) in valid_ids]
         if len(new_lines) != len(lines):
             write_lines_atomic(METERS_TSV, new_lines)
     except Exception:
@@ -593,51 +605,45 @@ def state(include_ignored: bool = False) -> dict:
         STATUS_CANDIDATE_VALUES_FILE,
         ["id", "preview_value", "preview_value_key", "preview_ts"],
     )
-    preview_by_id = {r.get("id", ""): r for r in preview_rows if r.get("id")}
+    preview_by_id = {normalize_meter_id(r.get("id")): r for r in preview_rows if normalize_meter_id(r.get("id"))}
     for c in candidates:
         c["ignored"] = "true" if c.get("id") in ignored else "false"
         c["analysis"] = analysis.get(c.get("id") or "", {})
         # preview_active = there's a meter-preview-<id> file in the LISTEN config dir.
         # Single source of truth = filesystem; the TSV row may linger for a brief
         # window after cancel until the next .reload_listen cycle clears it.
-        cid = (c.get("id") or "").lower()
+        cid = normalize_meter_id(c.get("id"))
         if cid:
             preview_file = LISTEN_METER_DIR / f"meter-preview-{cid}"
             c["preview_active"] = "true" if preview_file.exists() else "false"
-            pv = preview_by_id.get(c.get("id") or "")
+            pv = preview_by_id.get(cid)
             if pv:
                 c["preview_value"]     = pv.get("preview_value", "")
                 c["preview_value_key"] = pv.get("preview_value_key", "")
                 c["preview_ts"]        = pv.get("preview_ts", "")
 
-    # Build options_meter_ids early — used both for TSV filtering and candidate dedup.
-    # options.get("meters") may be None (key absent) or [] (all removed).
-    # We only filter when the key is present so we don't hide everything on a fresh install
-    # where options.json might not have been written yet.
+    # Build normalized options_meter_ids early — used both for TSV filtering and
+    # candidate dedup. Do not write back to status_meters.tsv from this read path.
     options_meters_list = options.get("meters") if isinstance(options, dict) and "meters" in options else None
     options_meter_ids = {
-        str(m.get("meter_id") or "").strip().lower()
+        normalize_meter_id(m.get("meter_id"))
         for m in (options_meters_list or [])
-        if isinstance(m, dict) and m.get("meter_id")
+        if isinstance(m, dict) and normalize_meter_id(m.get("meter_id"))
     }
 
-    # Filter status_meters.tsv to only show meters still present in options.json.
-    # This handles meters deleted via the HA options UI (not through the WebGUI
-    # DELETE button) — without this filter, stale TSV rows would keep appearing
-    # until the next addon restart.
-    if options_meters_list is not None:
-        meters = [m for m in meters if str(m.get("id") or "").lower() in options_meter_ids]
-        # Also clean up the TSV on disk so stale rows don't accumulate.
-        _sync_meters_tsv(options_meter_ids)
+    # Filter in memory only when options contain meter ids. Empty/default options
+    # must not hide or delete live decoded rows from a previous valid runtime.
+    if options_meter_ids:
+        meters = [m for m in meters if normalize_meter_id(m.get("id")) in options_meter_ids]
 
     # Remove candidates that are already in configured meters (decoded)
-    configured_ids = {m.get("id") for m in meters if m.get("id")}
-    candidates = [c for c in candidates if c.get("id") not in configured_ids]
+    configured_ids = {normalize_meter_id(m.get("id")) for m in meters if normalize_meter_id(m.get("id"))}
+    candidates = [c for c in candidates if normalize_meter_id(c.get("id")) not in configured_ids]
 
     # Also remove candidates that are pending (in options.json but not yet decoded)
     # so the user doesn't see them twice (once in pending panel, once in candidate table)
     if options_meter_ids:
-        candidates = [c for c in candidates if str(c.get("id") or "").lower() not in options_meter_ids]
+        candidates = [c for c in candidates if normalize_meter_id(c.get("id")) not in options_meter_ids]
 
     if not include_ignored:
         candidates = [c for c in candidates if c.get("ignored") != "true"]
@@ -687,7 +693,15 @@ def status_model(data: dict) -> dict:
     raw_count = safe_int(pipe.get("raw_count"))
     decoded_count = safe_int(pipe.get("decoded_count"))
     candidate_count = len(candidates)
-    meter_count = len(meters)
+    decoded_meter_count = len(meters)
+    options = data.get("options", {}) if isinstance(data.get("options"), dict) else {}
+    options_meters = options.get("meters") if isinstance(options.get("meters"), list) else None
+    configured_meter_ids = {
+        normalize_meter_id(m.get("meter_id"))
+        for m in (options_meters or [])
+        if isinstance(m, dict) and normalize_meter_id(m.get("meter_id"))
+    }
+    meter_count = len(configured_meter_ids) if configured_meter_ids else decoded_meter_count
     mqtt_ok = bool(mqtt.get("connected"))
     raw_ok = raw_count > 0
     wmbus_ok = bool(pipe.get("wmbusmeters_running")) or candidate_count > 0 or decoded_count > 0
@@ -717,7 +731,7 @@ def status_model(data: dict) -> dict:
     # In LISTEN mode (no configured meters) use only candidates TSV.
     _meters_list     = data.get("meters", [])
     _candidates_list = data.get("candidates", [])
-    _in_decode_mode  = len(_meters_list) > 0
+    _in_decode_mode  = meter_count > 0 or len(_meters_list) > 0
     if _in_decode_mode:
         total_60m = sum(safe_int(m.get("seen_60m")) for m in _meters_list)
     else:
@@ -805,6 +819,7 @@ def status_model(data: dict) -> dict:
         "search_cached_count": len(data.get("search_candidates", [])),
         "search_match_count": len(data.get("search_matches", [])),
         "meter_count": meter_count,
+        "decoded_meter_count": decoded_meter_count,
         "mqtt_ok": mqtt_ok,
         "raw_ok": raw_ok,
         "wmbus_ok": wmbus_ok,
@@ -1151,10 +1166,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path.endswith('/api/preview-candidate'):
             # Drop a temporary meter-preview-<id> file into the LISTEN instance's
-            # config dir. bridge.sh's LISTEN supervisor sees the .reload_listen
-            # flag, restarts the listen pipeline (~2-3 s), and wmbusmeters then
-            # starts decoding that ID — value lands in status_candidate_values.tsv.
-            # No effect on the DECODE pipeline / configured meters / MQTT publish.
+            # config dir. .reload_listen restarts an already-running LISTEN
+            # instance; .reload_pipeline makes bridge.sh start LISTEN when it was
+            # previously stopped because there were no configured meters.
             cid = (params.get('id') or [''])[0].strip().lower()
             drv = (params.get('driver') or ['auto'])[0].strip()
             if not re.match(r'^[0-9a-f]{8}$', cid):
@@ -1168,6 +1182,7 @@ class Handler(BaseHTTPRequestHandler):
                     encoding='utf-8'
                 )
                 RELOAD_LISTEN_FLAG.touch()
+                RELOAD_PIPELINE_FLAG.touch()
                 webui_add_event('ok', f'Preview value requested for {cid}.')
                 self._send_json(200, {"ok": True, "message": "Preview requested. Value will appear within ~10 s once a telegram arrives."})
             except Exception as exc:
@@ -1194,6 +1209,7 @@ class Handler(BaseHTTPRequestHandler):
                 except OSError:
                     pass
                 RELOAD_LISTEN_FLAG.touch()
+                RELOAD_PIPELINE_FLAG.touch()
                 webui_add_event('ok', f'Preview canceled for {cid}.')
                 self._send_json(200, {"ok": True, "message": "Preview canceled."})
             except Exception as exc:

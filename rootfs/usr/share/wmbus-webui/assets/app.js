@@ -122,6 +122,13 @@
     return Array.isArray(value) ? value : [];
   }
 
+  function normalizeMeterId(value) {
+    let mid = String(value || "").replace(/\s+/g, "").toLowerCase();
+    if (mid.startsWith("0x")) mid = mid.slice(2);
+    if (!/^[0-9a-f]+$/.test(mid)) return "";
+    return mid.length < 8 ? mid.padStart(8, "0") : mid;
+  }
+
   // ── Media classification ──────────────────────────────────────────────────
   // Works for both candidates (type = wmbusmeters type string like
   // "Warm Water (30°C-90°C) meter (0x06)") and meters (media = wmbusmeters
@@ -280,9 +287,9 @@
     const model = data.model || {};
 
     // Compute pending meter count: in options.json but NOT yet in decoded meters TSV.
-    const decodedIds   = new Set(asArray(data.meters).map(m => String(m.id || "").toLowerCase()));
+    const decodedIds   = new Set(asArray(data.meters).map(m => normalizeMeterId(m.id)));
     const pendingCount = asArray((data.options || {}).meters).filter(m => {
-      const mid = String(m.meter_id || "").toLowerCase();
+      const mid = normalizeMeterId(m.meter_id);
       return mid && !decodedIds.has(mid);
     }).length;
 
@@ -662,7 +669,7 @@
       : t("waiting_for_telegrams_text", "These meters are configured but haven't sent a telegram yet.");
 
     const rows = pending.map(m => {
-      const mid    = String(m.meter_id || "").toLowerCase();
+      const mid    = normalizeMeterId(m.meter_id);
       const type   = m.type === "other" ? (m.type_other || "other") : (m.type || "auto");
       const hasKey = !!(m.key && m.key.trim());
       const a      = analysis[mid] || analysis[mid.toUpperCase()] || {};
@@ -758,21 +765,18 @@
     const decodedCount   = Number(model.decoded_count || 0);
     const hasLiveRate    = cur > 0;
 
-    // ─── ESP node ───
-    // Status priority: ESP confirmed active (rate_source=="esp") → green live;
-    // fresh diag from ESP (seen recently) → green; nothing → gray-ish "n/a".
-    const espOk  = espActive || (esp && Object.keys(esp).length > 0);
-    const espRssi = esp.avg_ok_rssi ? `${esp.avg_ok_rssi} dBm` : "—";
-
     // Multi-ESP support: webui.py exposes esp.devices[] (each entry carries
-    // an `active` flag set when the device has emitted a summary in the
-    // last 5 min). devices_count holds the ACTIVE count only, so MQTT
-    // retained messages from dead ESPs no longer inflate the badge.
+    // an `active` flag set when the device has emitted a RAW telegram or
+    // summary in the last 5 min). devices_count holds the ACTIVE count only.
     const espDevicesAll    = asArray((data.esp || {}).devices);
     const espActiveDevices = espDevicesAll.filter(d => d && d.active);
     const espCount         = Number((data.esp || {}).devices_count || espActiveDevices.length || 0);
     const isMultiEsp       = espCount > 1;
     const espTitle         = isMultiEsp ? `${espCount} × ESP` : "ESP";
+    const raw15m           = Number(model.raw_15m || 0);
+    const espOk            = espActive || espActiveDevices.length > 0 || (esp && Object.keys(esp).length > 0)
+                          || (raw15m > 0 && espDevicesAll.length > 0);
+    const espRssi          = esp.avg_ok_rssi ? `${esp.avg_ok_rssi} dBm` : "—";
 
     // Status text + rate. The rate comes from model.rate_current_min which
     // status_model() already populates either from ESP's diag.total (when
@@ -1104,9 +1108,9 @@
     const candidateCount = Number(model.candidate_count || 0);
 
     // Pending = in options.json but not yet decoded (same logic as metersPage)
-    const decodedIds = new Set(asArray(data.meters).map(m => String(m.id || "").toLowerCase()));
+    const decodedIds = new Set(asArray(data.meters).map(m => normalizeMeterId(m.id)));
     const pending    = asArray((data.options || {}).meters).filter(m => {
-      const mid = String(m.meter_id || "").toLowerCase();
+      const mid = normalizeMeterId(m.meter_id);
       return mid && !decodedIds.has(mid);
     });
 
@@ -1342,7 +1346,7 @@
             </thead>
             <tbody>
               ${rows.map(m => {
-                const mid    = String(m.meter_id || "").toLowerCase();
+                const mid    = normalizeMeterId(m.meter_id);
                 const type   = m.type === "other" ? (m.type_other || "other") : (m.type || "auto");
                 const hasKey = !!(m.key && m.key.trim());
                 // analysis keyed by id as written by bridge.sh (may be lowercase or uppercase)
@@ -1375,10 +1379,10 @@
     const filtered = applyMediaFilter(all, "media");
 
     // Pending = in options.json but not yet decoded (not in status_meters.tsv)
-    const knownIds  = new Set(all.map(m => String(m.id || "").toLowerCase()));
+    const knownIds  = new Set(all.map(m => normalizeMeterId(m.id)));
     const optMeters = asArray((data.options || {}).meters);
     const pending   = optMeters.filter(m => {
-      const mid = String(m.meter_id || "").toLowerCase();
+      const mid = normalizeMeterId(m.meter_id);
       return mid && !knownIds.has(mid);
     });
 
