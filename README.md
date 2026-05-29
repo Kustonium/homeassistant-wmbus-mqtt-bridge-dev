@@ -74,7 +74,7 @@ Add-on udostępnia interaktywny panel WWW (w Home Assistant jako panel boczny lu
 
 Widoki:
 
-- **Panel** — stan pipeline'u (MQTT, telegramy RAW, dekoder, HA Discovery), statystyki odbioru oraz wykryte płytki ESP.
+- **Panel** — stan pipeline'u (MQTT, telegramy RAW, dekoder, HA Discovery), statystyki odbioru (w tym tempo telegramy/min na żywo) oraz wykryte płytki ESP.
 - **Liczniki** — skonfigurowane liczniki z bieżącą wartością i statystykami odbioru (15m / 60m).
 - **Odbierane / Szukaj** — kandydaci z trybu LISTEN (ID, driver, medium, szyfrowanie, odbiór). Każdy bez wymaganego klucza AES ma przycisk **Dodaj licznik** i jest **dekodowany automatycznie** — bieżąca wartość pojawia się w kolumnie **Wartość (podgląd)** od razu, bez dodawania licznika i bez klikania. Kandydaci wymagający AES nie pokazują wartości, dopóki nie podasz klucza; ręczny **Podgląd / Anuluj podgląd** pozostaje (np. do odświeżenia). Stąd uruchamia się również tryb SEARCH.
 - **Logi** — skrócony strumień zdarzeń runtime (pełne logi w zakładce **Log** dodatku HA).
@@ -321,7 +321,7 @@ The add-on ships an interactive web panel (a side panel or the **OPEN WEB UI** b
 
 Views:
 
-- **Dashboard** — pipeline status (MQTT, RAW telegrams, decoder, HA Discovery), reception statistics and detected ESP boards.
+- **Dashboard** — pipeline status (MQTT, RAW telegrams, decoder, HA Discovery), reception statistics (including a live telegrams-per-minute rate) and detected ESP boards.
 - **Meters** — configured meters with their current value and reception stats (15m / 60m).
 - **Received / Search** — LISTEN-mode candidates (ID, driver, media, encryption, reception). Each one without a required AES key has an **Add meter** button and is **decoded automatically** — its current value appears in the **Value (preview)** column right away, with no meter added and no click. AES-required candidates show no value until you provide a key; a manual **Preview / Cancel preview** toggle remains (e.g. to refresh). SEARCH mode is also started here.
 - **Logs** — a short runtime event stream (full logs are in the add-on **Log** tab).
