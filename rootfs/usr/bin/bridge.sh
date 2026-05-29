@@ -239,6 +239,7 @@ ensure_candidate_autodecode() {
   local id="$1"
   local driver="${2:-auto}"
   local type_line="${3:-}"
+  local reload="${4:-true}"
   local file tmp
 
   [[ "${id}" =~ ^[0-9]{8}$ ]] || return 0
@@ -247,7 +248,9 @@ ensure_candidate_autodecode() {
   if candidate_type_requires_aes "${type_line}"; then
     if [[ -f "${file}" ]]; then
       rm -f "${file}" 2>/dev/null || true
-      touch "${BASE}/.reload_listen" "${RELOAD_FLAG:-${BASE}/.reload_pipeline}" 2>/dev/null || true
+      if [[ "${reload}" == "true" ]]; then
+        touch "${BASE}/.reload_listen" "${RELOAD_FLAG:-${BASE}/.reload_pipeline}" 2>/dev/null || true
+      fi
     fi
     return 0
   fi
@@ -264,10 +267,21 @@ ensure_candidate_autodecode() {
 
   if [[ ! -f "${file}" ]] || ! cmp -s "${tmp}" "${file}" 2>/dev/null; then
     mv "${tmp}" "${file}" 2>/dev/null || true
-    touch "${BASE}/.reload_listen" "${RELOAD_FLAG:-${BASE}/.reload_pipeline}" 2>/dev/null || true
+    if [[ "${reload}" == "true" ]]; then
+      touch "${BASE}/.reload_listen" "${RELOAD_FLAG:-${BASE}/.reload_pipeline}" 2>/dev/null || true
+    fi
   else
     rm -f "${tmp}" 2>/dev/null || true
   fi
+}
+
+sync_candidate_autodecode_files() {
+  local id driver type_line rest
+  [[ -f "${STATUS_CANDIDATES_FILE}" ]] || return 0
+  while IFS=$'\t' read -r id driver type_line rest; do
+    [[ "${id}" =~ ^[0-9]{8}$ ]] || continue
+    ensure_candidate_autodecode "${id}" "${driver:-auto}" "${type_line:-}" "false"
+  done < "${STATUS_CANDIDATES_FILE}"
 }
 
 status_record_candidate_raw() {
@@ -2040,6 +2054,11 @@ while true; do
   # configs only at startup, so the pipeline restart on the next line
   # is required for new meters to start decoding.
   refresh_meter_files
+
+  # Existing candidates from previous LISTEN ticks should be decodable by the
+  # secondary LISTEN immediately after restart, not only after each one sends
+  # one more telegram to create its meter-preview file.
+  sync_candidate_autodecode_files
 
   # LISTEN is needed when DECODE is active, and also when preview files exist.
   # In pure LISTEN mode the primary pipeline sees candidates, but only this
