@@ -110,7 +110,7 @@ flowchart TB
 
 Te trzy komponenty komunikują się tylko przez **pliki w `/data/`** — żadnych socketów wewnątrz kontenera. Dzięki temu webui może być restartowane niezależnie od bridge'a, a stan jest perystentny przez restarty.
 
-> 🔗 **Po stronie odbiornika (ESP32 z radiem)** — używamy siostrzanego projektu Kustoniem: **[esphome-wmbus-bridge-rawonly-dev](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly-dev)** — firmware ESPHome dla SX1262 / SX1276 / CC1101 publikujący RAW HEX na `wmbus/<device>/telegram`. Topic dokładnie matchuje nasz domyślny `raw_topic: wmbus/+/telegram` — z naszej strony nic nie trzeba konfigurować. Receiver ma własną pełną dokumentację (EN/PL) — zacznij od [`START_HERE_PL.md`](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly-dev/blob/main/docs/START_HERE_PL.md).
+> 🔗 **Po stronie odbiornika (ESP32 z radiem)** — używamy siostrzanego projektu Kustoniem: **[esphome-wmbus-bridge-rawonly](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly)** — firmware ESPHome dla SX1262 / SX1276 / CC1101 publikujący RAW HEX na `wmbus/<device>/telegram`. Topic dokładnie matchuje nasz domyślny `raw_topic: wmbus/+/telegram` — z naszej strony nic nie trzeba konfigurować. Receiver ma własną pełną dokumentację (EN/PL) — zacznij od [`START_HERE_PL.md`](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly/blob/main/docs/START_HERE_PL.md).
 
 ---
 
@@ -172,7 +172,7 @@ Dla wszystkich poza Home Assistant (DietPi, Ubuntu, Raspberry Pi OS, NAS itp.).
 
 - Docker + docker compose
 - Działający broker MQTT (Mosquitto, EMQX, …) dostępny z hosta
-- Odbiornik radiowy publikujący ramki HEX do brokera — np. [esphome-wmbus-bridge-rawonly-dev](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly-dev) (publikuje na `wmbus/<device>/telegram`, kompatybilne out-of-the-box)
+- Odbiornik radiowy publikujący ramki HEX do brokera — np. [esphome-wmbus-bridge-rawonly](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly) (publikuje na `wmbus/<device>/telegram`, kompatybilne out-of-the-box)
 
 ### Instalacja
 

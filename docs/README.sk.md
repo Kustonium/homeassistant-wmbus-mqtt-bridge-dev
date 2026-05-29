@@ -112,7 +112,7 @@ flowchart TB
 
 Tieto tri komponenty komunikujú iba cez **súbory v `/data/`** — žiadne sockety vo vnútri kontajnera. Vďaka tomu sa dá webui reštartovať nezávisle od bridge a stav prežíva reštarty.
 
-> 🔗 **Na strane prijímača (ESP32 s rádiom)** — používame sesterský projekt Kustonia: **[esphome-wmbus-bridge-rawonly-dev](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly-dev)** — ESPHome firmware pre SX1262 / SX1276 / CC1101 publikujúci surové HEX na `wmbus/<device>/telegram`. Topic presne zodpovedá nášmu predvolenému `raw_topic: wmbus/+/telegram` — na našej strane nie je potrebné nič konfigurovať. Prijímač má vlastnú úplnú dokumentáciu (EN/PL) — začni s [`START_HERE.md`](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly-dev/blob/main/docs/START_HERE.md).
+> 🔗 **Na strane prijímača (ESP32 s rádiom)** — používame sesterský projekt Kustonia: **[esphome-wmbus-bridge-rawonly](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly)** — ESPHome firmware pre SX1262 / SX1276 / CC1101 publikujúci surové HEX na `wmbus/<device>/telegram`. Topic presne zodpovedá nášmu predvolenému `raw_topic: wmbus/+/telegram` — na našej strane nie je potrebné nič konfigurovať. Prijímač má vlastnú úplnú dokumentáciu (EN/PL) — začni s [`START_HERE.md`](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly/blob/main/docs/START_HERE.md).
 
 ---
 
@@ -174,7 +174,7 @@ Pre všetkých mimo Home Assistant (DietPi, Ubuntu, Raspberry Pi OS, NAS atď.).
 
 - Docker + docker compose
 - Funkčný MQTT broker (Mosquitto, EMQX, …) dostupný z hostiteľa
-- Rádiový prijímač publikujúci HEX rámce do brokeru — napr. [esphome-wmbus-bridge-rawonly-dev](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly-dev) (publikuje na `wmbus/<device>/telegram`, kompatibilný out-of-the-box)
+- Rádiový prijímač publikujúci HEX rámce do brokeru — napr. [esphome-wmbus-bridge-rawonly](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly) (publikuje na `wmbus/<device>/telegram`, kompatibilný out-of-the-box)
 
 ### Inštalácia
 

@@ -112,7 +112,7 @@ flowchart TB
 
 Die drei Komponenten kommunizieren nur über **Dateien in `/data/`** — keine Sockets innerhalb des Containers. Dadurch kann die WebUI unabhängig von der Bridge neu gestartet werden, und der Zustand bleibt über Neustarts erhalten.
 
-> 🔗 **Auf der Empfängerseite (ESP32 mit Radio)** — wir verwenden Kustoniums Schwesterprojekt: **[esphome-wmbus-bridge-rawonly-dev](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly-dev)** — ESPHome-Firmware für SX1262 / SX1276 / CC1101, die rohes HEX an `wmbus/<device>/telegram` veröffentlicht. Das Topic passt exakt zu unserem Standard `raw_topic: wmbus/+/telegram` — auf unserer Seite ist keine Konfiguration nötig. Der Empfänger hat eine eigene vollständige Dokumentation (EN/PL) — beginne mit [`START_HERE.md`](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly-dev/blob/main/docs/START_HERE.md).
+> 🔗 **Auf der Empfängerseite (ESP32 mit Radio)** — wir verwenden Kustoniums Schwesterprojekt: **[esphome-wmbus-bridge-rawonly](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly)** — ESPHome-Firmware für SX1262 / SX1276 / CC1101, die rohes HEX an `wmbus/<device>/telegram` veröffentlicht. Das Topic passt exakt zu unserem Standard `raw_topic: wmbus/+/telegram` — auf unserer Seite ist keine Konfiguration nötig. Der Empfänger hat eine eigene vollständige Dokumentation (EN/PL) — beginne mit [`START_HERE.md`](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly/blob/main/docs/START_HERE.md).
 
 ---
 
@@ -174,7 +174,7 @@ Für alle außerhalb von Home Assistant (DietPi, Ubuntu, Raspberry Pi OS, NAS us
 
 - Docker + docker compose
 - Ein funktionierender MQTT-Broker (Mosquitto, EMQX, …), vom Host erreichbar
-- Ein Funkempfänger, der HEX-Frames an den Broker veröffentlicht — z. B. [esphome-wmbus-bridge-rawonly-dev](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly-dev) (veröffentlicht an `wmbus/<device>/telegram`, out-of-the-box kompatibel)
+- Ein Funkempfänger, der HEX-Frames an den Broker veröffentlicht — z. B. [esphome-wmbus-bridge-rawonly](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly) (veröffentlicht an `wmbus/<device>/telegram`, out-of-the-box kompatibel)
 
 ### Installation
 

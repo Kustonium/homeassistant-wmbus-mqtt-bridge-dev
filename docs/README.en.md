@@ -110,7 +110,7 @@ flowchart TB
 
 The three components communicate only through **files in `/data/`** — no sockets inside the container. This means the webui can be restarted independently of the bridge, and state persists across restarts.
 
-> 🔗 **On the receiver side (ESP32 with radio)** — we use Kustonium's sibling project: **[esphome-wmbus-bridge-rawonly-dev](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly-dev)** — ESPHome firmware for SX1262 / SX1276 / CC1101 that publishes raw HEX to `wmbus/<device>/telegram`. The topic matches our default `raw_topic: wmbus/+/telegram` exactly — no configuration needed on our side. The receiver has its own full documentation (EN/PL) — start with [`START_HERE.md`](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly-dev/blob/main/docs/START_HERE.md).
+> 🔗 **On the receiver side (ESP32 with radio)** — we use Kustonium's sibling project: **[esphome-wmbus-bridge-rawonly](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly)** — ESPHome firmware for SX1262 / SX1276 / CC1101 that publishes raw HEX to `wmbus/<device>/telegram`. The topic matches our default `raw_topic: wmbus/+/telegram` exactly — no configuration needed on our side. The receiver has its own full documentation (EN/PL) — start with [`START_HERE.md`](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly/blob/main/docs/START_HERE.md).
 
 ---
 
@@ -172,7 +172,7 @@ For everyone outside Home Assistant (DietPi, Ubuntu, Raspberry Pi OS, NAS, etc.)
 
 - Docker + docker compose
 - A working MQTT broker (Mosquitto, EMQX, …) reachable from the host
-- A radio receiver publishing HEX frames to the broker — e.g. [esphome-wmbus-bridge-rawonly-dev](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly-dev) (publishes to `wmbus/<device>/telegram`, compatible out-of-the-box)
+- A radio receiver publishing HEX frames to the broker — e.g. [esphome-wmbus-bridge-rawonly](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly) (publishes to `wmbus/<device>/telegram`, compatible out-of-the-box)
 
 ### Installation
 
