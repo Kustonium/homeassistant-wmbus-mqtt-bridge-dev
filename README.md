@@ -189,6 +189,8 @@ Pliki pod `./config/etc/` są **generowane automatycznie** przy każdym starcie 
 | `type_other` | Niestandardowy driver — wypełnij tylko gdy `type` = `other` |
 | `key` | Klucz szyfrowania w formacie HEX; zostaw puste, jeśli licznik nie szyfruje |
 
+> ℹ️ Pełna lista opcji (m.in. `discovery_prefix`, `discovery_retain`, `state_retain`, `debug_every_n`, `search_delta_mode`, `search_min_delta_m3`) znajduje się w `config.yaml` oraz w pełnej dokumentacji: [docs/README.pl.md](docs/README.pl.md).
+
 Przykład `options.json`:
 
 ```json
@@ -433,6 +435,8 @@ Files under `./config/etc/` are **auto-generated on startup** — do not edit th
 | `type` | wmbusmeters driver (from LISTEN mode), or `auto` |
 | `type_other` | Custom driver name — only when `type` is `other` |
 | `key` | Encryption key in HEX; leave empty if the meter is not encrypted |
+
+> ℹ️ The full option list (e.g. `discovery_prefix`, `discovery_retain`, `state_retain`, `debug_every_n`, `search_delta_mode`, `search_min_delta_m3`) is in `config.yaml` and the full documentation: [docs/README.en.md](docs/README.en.md).
 
 Example `options.json`:
 
