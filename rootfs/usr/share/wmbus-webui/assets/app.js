@@ -791,20 +791,26 @@
     const haSub           = discoveryPrefix ? `${discoveryPrefix} · ${haSubMeters}` : haSubMeters;
 
     // ─── ESP node ───
-    // Status priority: ESP confirmed active (rate_source=="esp") → green live;
-    // fresh diag from ESP (seen recently) → green; nothing → gray-ish "n/a".
-    const espOk  = espActive || (esp && Object.keys(esp).length > 0);
-    const espRssi = esp.avg_ok_rssi ? `${esp.avg_ok_rssi} dBm` : "—";
-
     // Multi-ESP support: webui.py exposes esp.devices[] (each entry carries
-    // an `active` flag set when the device has emitted a summary in the
-    // last 5 min). devices_count holds the ACTIVE count only, so MQTT
-    // retained messages from dead ESPs no longer inflate the badge.
+    // an `active` flag set when the device has emitted a summary OR a RAW
+    // telegram in the last 5 min). devices_count holds the ACTIVE count only,
+    // so MQTT-retained messages from dead ESPs no longer inflate the badge.
+    const espRssi          = esp.avg_ok_rssi ? `${esp.avg_ok_rssi} dBm` : "—";
     const espDevicesAll    = asArray((data.esp || {}).devices);
     const espActiveDevices = espDevicesAll.filter(d => d && d.active);
     const espCount         = Number((data.esp || {}).devices_count || espActiveDevices.length || 0);
     const isMultiEsp       = espCount > 1;
     const espTitle         = isMultiEsp ? `${espCount} × ESP` : "ESP";
+
+    // Status priority. Liveness comes from THREE possible signals, any of which
+    // counts as the ESP being healthy:
+    //   1. rate_source == "esp"           — bridge picked ESP diag.total as source
+    //   2. esp.devices[] has active entry — telegram tracker confirms live frames
+    //                                       (works WITHOUT ESP-side diagnostics)
+    //   3. esp.diag has any keys          — legacy "we ever saw a summary" signal
+    // espOk needs all three so the node turns green when telegrams are flowing
+    // even on ESPs that don't publish diag/summary at all.
+    const espOk  = espActive || espActiveDevices.length > 0 || (esp && Object.keys(esp).length > 0);
 
     // Status text + rate. The rate comes from model.rate_current_min which
     // status_model() already populates either from ESP's diag.total (when
