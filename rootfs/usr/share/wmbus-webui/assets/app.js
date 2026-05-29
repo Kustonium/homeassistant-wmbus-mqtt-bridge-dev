@@ -808,9 +808,16 @@
     //   2. esp.devices[] has active entry — telegram tracker confirms live frames
     //                                       (works WITHOUT ESP-side diagnostics)
     //   3. esp.diag has any keys          — legacy "we ever saw a summary" signal
-    // espOk needs all three so the node turns green when telegrams are flowing
+    //   4. raw_15m > 0 + known device     — raw telegrams flowing on RAW_TOPIC
+    //                                       (wmbus/+/telegram) and at least one
+    //                                       device name recorded by the tracker;
+    //                                       this is the primary source of truth
+    //                                       when ESP diagnostics are not enabled
+    // espOk needs all four so the node turns green when telegrams are flowing
     // even on ESPs that don't publish diag/summary at all.
-    const espOk  = espActive || espActiveDevices.length > 0 || (esp && Object.keys(esp).length > 0);
+    const raw15m = Number(model.raw_15m || 0);
+    const espOk  = espActive || espActiveDevices.length > 0 || (esp && Object.keys(esp).length > 0)
+                || (raw15m > 0 && espDevicesAll.length > 0);
 
     // Status text + rate. The rate comes from model.rate_current_min which
     // status_model() already populates either from ESP's diag.total (when
