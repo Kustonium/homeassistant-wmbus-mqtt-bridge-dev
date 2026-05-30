@@ -925,6 +925,23 @@ EOFLISTEN
 # ------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------
+meter_id_from_raw_hex() {
+  local raw="$1"
+  local byte_count lfield id_le
+
+  [[ "${raw}" =~ ^[0-9A-F]+$ ]] || { echo ""; return 0; }
+  [[ "${#raw}" -ge 22 ]] || { echo ""; return 0; }
+  (( ${#raw} % 2 == 0 )) || { echo ""; return 0; }
+
+  byte_count=$(( ${#raw} / 2 ))
+  lfield=$((16#${raw:0:2}))
+  [[ "${lfield}" -eq $((byte_count - 1)) ]] || { echo ""; return 0; }
+
+  # wMBus A-field stores the 4-byte meter ID little-endian after L/C/M-field.
+  id_le="${raw:8:8}"
+  echo "${id_le:6:2}${id_le:4:2}${id_le:2:2}${id_le:0:2}"
+}
+
 normalize_meter_id() {
   local mid_raw="$1"
   mid_raw="$(echo "${mid_raw}" | tr -d '[:space:]')"
@@ -938,6 +955,8 @@ normalize_meter_id() {
 
   if [[ "${#mid_raw}" -lt 8 ]]; then
     printf "%8s" "${mid_raw}" | tr ' ' '0'
+  elif [[ "${#mid_raw}" -gt 8 ]]; then
+    meter_id_from_raw_hex "${mid_raw}"
   else
     echo "${mid_raw}"
   fi
