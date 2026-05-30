@@ -396,6 +396,17 @@
     });
   }
 
+  function fmtClock(value) {
+    if (!value) return "";
+    const date = new Date(String(value));
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleTimeString(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  }
+
   function pill(ok, label) {
     const cls = ok ? "ok" : "bad";
     return `<span class="pill ${cls}"><span class="dot"></span>${escapeHtml(label)}</span>`;
@@ -903,6 +914,12 @@
       : t("pipeline_wmbus_listen_only", "LISTEN");   // single instance, no decode targets yet
     const wmbusOk = !!model.wmbus_ok;
     const wmbusWarn = candidateCount > 0 && meterCount === 0;  // hearing but nothing configured
+    const haPublishedTime = fmtClock(pipe.discovery_published_at || "");
+    const haStatus = model.discovery_ok
+      ? (haPublishedTime
+          ? t("pipeline_ha_published_at", "published at {time}", {time: haPublishedTime})
+          : t("pipeline_ha_published", "published"))
+      : t("pipeline_ha_pending", "pending");
 
     return `
       <section class="section">
@@ -932,7 +949,7 @@
           <button class="${cls("ha")}" data-action="open-workspace" data-ws="ha" type="button">
             <div class="pipeline-icon">🏠</div>
             <div class="pipeline-title">HA</div>
-            <div class="pipeline-meta">${dot(!!model.discovery_ok, meterCount === 0, !!model.discovery_ok)} ${escapeHtml(model.discovery_ok ? t("pipeline_ha_published", "published") : t("pipeline_ha_pending", "pending"))}</div>
+            <div class="pipeline-meta">${dot(!!model.discovery_ok, meterCount === 0, !!model.discovery_ok)} ${escapeHtml(haStatus)}</div>
             <div class="pipeline-sub">${meterCount} ${escapeHtml(t("pipeline_ha_entities_short", "entit."))}</div>
           </button>
         </div>
@@ -1773,6 +1790,16 @@
     return text.slice(0, 140) || (payloadStr || "").slice(0, 80);
   }
 
+  function espDeviceFromTopic(topic) {
+    const parts = String(topic || "").split("/");
+    return parts.length >= 3 && parts[0] === "wmbus" ? parts[1] : "";
+  }
+
+  function filterEspEventsByActiveDevices(rows, activeDevices) {
+    if (!(activeDevices instanceof Set) || activeDevices.size === 0) return rows;
+    return rows.filter(row => activeDevices.has(espDeviceFromTopic(row.topic)));
+  }
+
   function espEventsTable(rows, activeDevices) {
     if (!rows.length) return `<div class="empty">${escapeHtml(t("webui_no_events", "No events yet."))}</div>`;
     // activeDevices may be a Set (new caller in espLogsPage) or a single
@@ -1780,10 +1807,10 @@
     const activeSet = activeDevices instanceof Set
       ? activeDevices
       : (typeof activeDevices === "string" && activeDevices ? new Set([activeDevices]) : new Set());
-    // All distinct devices in the event log. When >1 we dim "inactive" ones
-    // (i.e. devices that have NOT sent a summary in the active window).
-    const allDevices = new Set(rows.map(r => (r.topic || "").split("/")[1]).filter(Boolean));
-    const multiDevice = allDevices.size > 1;
+    const visibleRows = filterEspEventsByActiveDevices(rows, activeSet);
+    if (!visibleRows.length) {
+      return `<div class="empty">${escapeHtml(t("esp_no_active_events", "No events for the active ESP yet."))}</div>`;
+    }
     return `
       <div class="table-wrap">
         <table class="esp-events-tbl">
@@ -1796,20 +1823,19 @@
             </tr>
           </thead>
           <tbody>
-            ${rows.map(row => {
+            ${visibleRows.map(row => {
               const evtype     = row.evtype || "unknown";
               const color      = ESP_COLORS[evtype] || "#607a88";
               const icon       = ESP_ICONS[evtype]  || "·";
               const epoch      = Number(row.epoch || 0);
               const timeStr    = epoch ? new Date(epoch * 1000).toLocaleString() : "-";
               const topic      = (row.topic || "").split("/").slice(-3).join("/");
-              const rowDevice  = (row.topic || "").split("/")[1] || "";
+              const rowDevice  = espDeviceFromTopic(row.topic);
               const isActive   = rowDevice && activeSet.has(rowDevice);
-              const rowOpacity = multiDevice && !isActive ? "opacity:0.45;" : "";
               const activeDot  = isActive ? `<span style="color:#00e5ff;margin-left:3px;font-size:9px;" title="active ESP">●</span>` : "";
               const summary    = espEventSummary(row.payload || "", evtype);
               return `
-                <tr style="${rowOpacity}">
+                <tr>
                   <td style="white-space:nowrap;color:#9eafba;font-size:11px;">${escapeHtml(timeStr)}</td>
                   <td style="white-space:nowrap;">
                     <span style="color:${color};font-weight:700;">${icon} ${escapeHtml(evtype)}</span>
@@ -1880,12 +1906,13 @@
         .filter(d => d && d.active && d.name)
         .map(d => d.name)
     );
+    const visibleEvents = filterEspEventsByActiveDevices(events, activeDevices);
 
     // Badge — one pill per active device. When the list is empty we don't
     // render any badge.
     const activeDeviceBadges = devices
       .filter(d => d && d.active && d.name)
-      .map(d => `<span class="pill ${d.health === "warn" ? "warn" : "ok"}" style="font-size:11px;margin-left:6px;">📡 ${escapeHtml(d.name)}</span>`)
+      .map(d => `<span class="pill ${d.health === "warn" ? "warn" : "ok"}" style="font-size:11px;margin-left:6px;">📡 ${escapeHtml(t("active_filter", "Active"))}: ${escapeHtml(d.name)}</span>`)
       .join("");
 
     // Help notice — shown only when NO active ESP has diag enabled. When
@@ -1908,7 +1935,7 @@
       <section class="section">
         <div class="section-head">
           <h2>${escapeHtml(t("webui_esp_events", "ESP events"))}</h2>
-          <span>${events.length} ${escapeHtml(t("webui_rows", "rows"))}${activeDeviceBadges}</span>
+          <span>${visibleEvents.length} ${escapeHtml(t("webui_rows", "rows"))}${activeDeviceBadges}</span>
         </div>
         ${helpNotice}
         ${espEventsTable(events, activeDevices)}

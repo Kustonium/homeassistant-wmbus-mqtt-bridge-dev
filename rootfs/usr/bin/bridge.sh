@@ -65,6 +65,7 @@ STATUS_WMBUSMETERS_RUNNING="false"
 STATUS_RAW_COUNT=0
 STATUS_DECODED_COUNT=0
 STATUS_DISCOVERY_PUBLISHED="false"
+STATUS_DISCOVERY_PUBLISHED_AT=""
 STATUS_LAST_RAW_SEEN=""
 STATUS_LAST_DECODED_SEEN=""
 STATUS_LAST_ERROR=""
@@ -387,10 +388,15 @@ write_status_json() {
   # would overwrite raw_count back to 0.
   STATUS_RAW_COUNT="$(status_read_raw_count)"
   STATUS_LAST_RAW_SEEN="$(status_read_last_raw_seen)"
-  jq -n     --arg updated_at "$(iso_now)"     --arg raw_topic "${RAW_TOPIC:-}"     --arg state_prefix "${STATE_PREFIX:-}"     --arg discovery_prefix "${DISCOVERY_PREFIX:-}"     --arg search_mode "${SEARCH_MODE:-false}"     --arg loglevel "${LOGLEVEL:-}"     --arg mqtt_host "${MQTT_HOST:-}"     --arg mqtt_port "${MQTT_PORT:-}"     --arg mqtt_connected "${STATUS_MQTT_CONNECTED}"     --arg wmbusmeters_running "${STATUS_WMBUSMETERS_RUNNING}"     --arg raw_count "${STATUS_RAW_COUNT}"     --arg decoded_count "${STATUS_DECODED_COUNT}"     --arg discovery_published "${STATUS_DISCOVERY_PUBLISHED}"     --arg last_raw_seen "${STATUS_LAST_RAW_SEEN}"     --arg last_decoded_seen "${STATUS_LAST_DECODED_SEEN}"     --arg last_error "${STATUS_LAST_ERROR}"     --arg last_event "${STATUS_LAST_EVENT}"     '{updated_at:$updated_at,
+  jq -n     --arg updated_at "$(iso_now)"     --arg raw_topic "${RAW_TOPIC:-}"     --arg state_prefix "${STATE_PREFIX:-}"     --arg discovery_prefix "${DISCOVERY_PREFIX:-}"     --arg search_mode "${SEARCH_MODE:-false}"     --arg loglevel "${LOGLEVEL:-}"     --arg mqtt_host "${MQTT_HOST:-}"     --arg mqtt_port "${MQTT_PORT:-}"     --arg mqtt_connected "${STATUS_MQTT_CONNECTED}"     --arg wmbusmeters_running "${STATUS_WMBUSMETERS_RUNNING}"     --arg raw_count "${STATUS_RAW_COUNT}"     --arg decoded_count "${STATUS_DECODED_COUNT}"     --arg discovery_published "${STATUS_DISCOVERY_PUBLISHED}"     --arg discovery_published_at "${STATUS_DISCOVERY_PUBLISHED_AT}"     --arg last_raw_seen "${STATUS_LAST_RAW_SEEN}"     --arg last_decoded_seen "${STATUS_LAST_DECODED_SEEN}"     --arg last_error "${STATUS_LAST_ERROR}"     --arg last_event "${STATUS_LAST_EVENT}"     '{updated_at:$updated_at,
       config:{raw_topic:$raw_topic,state_prefix:$state_prefix,discovery_prefix:$discovery_prefix,search_mode:($search_mode=="true"),loglevel:$loglevel},
       mqtt:{host:$mqtt_host,port:$mqtt_port,connected:($mqtt_connected=="true")},
-      pipeline:{raw_count:($raw_count|tonumber? // 0),decoded_count:($decoded_count|tonumber? // 0),wmbusmeters_running:($wmbusmeters_running=="true"),discovery_published:($discovery_published=="true"),last_raw_seen:$last_raw_seen,last_decoded_seen:$last_decoded_seen,last_error:$last_error,last_event:$last_event}}'     > "${tmp}" 2>/dev/null && mv "${tmp}" "${STATUS_JSON}" 2>/dev/null || true
+      pipeline:{raw_count:($raw_count|tonumber? // 0),decoded_count:($decoded_count|tonumber? // 0),wmbusmeters_running:($wmbusmeters_running=="true"),discovery_published:($discovery_published=="true"),discovery_published_at:$discovery_published_at,last_raw_seen:$last_raw_seen,last_decoded_seen:$last_decoded_seen,last_error:$last_error,last_event:$last_event}}'     > "${tmp}" 2>/dev/null && mv "${tmp}" "${STATUS_JSON}" 2>/dev/null || true
+}
+
+status_mark_discovery_published() {
+  STATUS_DISCOVERY_PUBLISHED="true"
+  STATUS_DISCOVERY_PUBLISHED_AT="$(iso_now)"
 }
 
 status_raw_seen() {
@@ -1936,7 +1942,7 @@ run_once() {
             else
               mqtt_pub "${STATE_PREFIX}/${id}/state" "${line}" "${STATE_RETAIN}" || true
               emit_discovery_from_json "${line}"
-              STATUS_DISCOVERY_PUBLISHED="true"
+              status_mark_discovery_published
               write_status_json
             fi
           fi
@@ -1997,7 +2003,7 @@ else
             else
               mqtt_pub "${STATE_PREFIX}/${id}/state" "${line}" "${STATE_RETAIN}" || true
               emit_discovery_from_json "${line}"
-              STATUS_DISCOVERY_PUBLISHED="true"
+              status_mark_discovery_published
               write_status_json
             fi
           fi
