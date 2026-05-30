@@ -272,7 +272,10 @@ ensure_candidate_autodecode() {
     if [[ -f "${file}" ]]; then
       rm -f "${file}" 2>/dev/null || true
       if [[ "${reload}" == "true" ]]; then
-        touch "${BASE}/.reload_listen" "${RELOAD_FLAG:-${BASE}/.reload_pipeline}" 2>/dev/null || true
+        # Preview files live in LISTEN_METER_DIR — only the LISTEN instance
+        # needs reloading. Do NOT touch RELOAD_FLAG/.reload_pipeline here: that
+        # restarts the main DECODE pipeline on every new candidate (churn loop).
+        touch "${BASE}/.reload_listen" 2>/dev/null || true
       fi
     fi
     return 0
@@ -291,7 +294,10 @@ ensure_candidate_autodecode() {
   if [[ ! -f "${file}" ]] || ! cmp -s "${tmp}" "${file}" 2>/dev/null; then
     mv "${tmp}" "${file}" 2>/dev/null || true
     if [[ "${reload}" == "true" ]]; then
-      touch "${BASE}/.reload_listen" "${RELOAD_FLAG:-${BASE}/.reload_pipeline}" 2>/dev/null || true
+      # Only the LISTEN instance reads these preview files — reload just it.
+      # Touching RELOAD_FLAG/.reload_pipeline would needlessly restart the main
+      # DECODE pipeline on every newly heard candidate (the churn seen in logs).
+      touch "${BASE}/.reload_listen" 2>/dev/null || true
     fi
   else
     rm -f "${tmp}" 2>/dev/null || true
