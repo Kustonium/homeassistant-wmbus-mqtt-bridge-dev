@@ -1603,10 +1603,17 @@
     const filteredCandidates = applyMediaFilter(allCandidates, "type");
     const allMeters = asArray(data.meters);
     const filteredMeters = applyMediaFilter(allMeters, "media");
+    const knownIds = new Set(allMeters.map(m => normalizeMeterId(m.id)));
+    const optMeters = asArray((data.options || {}).meters);
+    const pending = optMeters.filter(m => {
+      const mid = normalizeMeterId(m.meter_id);
+      return mid && !knownIds.has(mid);
+    });
     const candidateCountLabel = `${filteredCandidates.length}${filteredCandidates.length !== allCandidates.length ? `/${allCandidates.length}` : ""} ${t("webui_visible", "visible")}`;
     return `
       ${discoverValueFilterBar(filteredMeters.length + filteredCandidates.length)}
       ${discoverConfiguredPanel(filteredMeters)}
+      ${pending.length ? pendingMetersSection(pending, data.analysis || {}) : ""}
       <section class="section">
         <div class="section-head">
           <h2>${escapeHtml(t("detected_candidates", "Detected candidates"))}</h2>
