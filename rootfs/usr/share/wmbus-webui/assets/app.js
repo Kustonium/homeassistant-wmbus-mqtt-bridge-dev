@@ -417,6 +417,11 @@
     }, 4800);
   }
 
+  function clearToast() {
+    state.toast = null;
+    window.clearTimeout(toast.timer);
+  }
+
   function currentLang() {
     return state.data?.i18n?.lang || liveLang || "";
   }
@@ -463,8 +468,10 @@
   // newly added/removed meters take effect WITHOUT a full container restart.
   // The webui process and MQTT broker connection stay alive — only the
   // decode wmbusmeters is recycled.
-  function triggerSoftReload() {
+  function triggerSoftReload(message = "") {
     state.softReloading = true;
+    state.softReloadingText = message || t("reloading_pipeline", "Applying meter changes…");
+    clearToast();
     render();
     (async () => {
       try {
@@ -472,9 +479,11 @@
       } catch (_) {
         // Endpoint failed — fall back to a normal refresh after a short wait.
       }
+      await fetchData(currentLang());
       // Give bridge.sh ~5 s: 2 s flag poll + 2-3 s decode pipeline respawn.
       await new Promise(r => setTimeout(r, 5000));
       state.softReloading = false;
+      state.softReloadingText = "";
       await fetchData(currentLang());
     })();
   }
@@ -612,7 +621,7 @@
       ${state.softReloading ? `
         <div style="position:fixed;right:18px;bottom:18px;background:#1d2a18;color:#a3d870;border:1px solid #4a7332;padding:10px 16px;border-radius:8px;z-index:35;display:flex;align-items:center;gap:10px;font-size:13px;">
           <span style="font-size:18px;">⏳</span>
-          <span>${escapeHtml(t("reloading_pipeline", "Loading new meter…"))}</span>
+          <span>${escapeHtml(state.softReloadingText || t("reloading_pipeline", "Applying meter changes…"))}</span>
         </div>` : ""}
       ${state.toast ? `<div class="toast ${state.toast.isError ? "error" : ""}">${escapeHtml(state.toast.message)}</div>` : ""}
     `;
@@ -2202,9 +2211,8 @@
       const id = target.dataset.id || "";
       if (!id || !window.confirm(t("webui_remove_confirm", "Remove meter {id}?", {id}))) return;
       try {
-        const result = await postApi("remove-meter", {meter_id: id});
-        toast(result.message || t("webui_meter_removed", "Meter removed."));
-        await fetchData(currentLang());
+        await postApi("remove-meter", {meter_id: id});
+        triggerSoftReload(`${t("webui_meter_removed", "Meter removed.")} ${t("reloading_pipeline", "Applying meter changes…")}`);
       } catch (error) {
         toast(error.message, true);
       }
@@ -2291,14 +2299,13 @@
       event.preventDefault();
       const form = new FormData(event.target);
       try {
-        const result = await postApi("add-meter", Object.fromEntries(form.entries()));
+        await postApi("add-meter", Object.fromEntries(form.entries()));
         state.modal = null;
-        toast(t("webui_meter_added", "Meter added."));
         // Soft pipeline reload so the new meter starts decoding without
         // a full container restart. bridge.sh's watcher picks up the
         // flag within 2 s, restarts the decode pipeline (~2-3 s), and
         // the new meter is live without touching the container.
-        triggerSoftReload();
+        triggerSoftReload(`${t("webui_meter_added", "Meter added.")} ${t("reloading_pipeline", "Applying meter changes…")}`);
       } catch (error) {
         toast(error.message, true);
       }

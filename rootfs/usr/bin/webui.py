@@ -502,7 +502,7 @@ def remove_meter_from_options(meter_id: str) -> tuple[bool, str]:
                     write_json_atomic(OPTIONS_JSON, options)
                     # Remove from TSV immediately — bridge.sh won't clean it on its own
                     _remove_meter_from_tsv(meter_id)
-                    msg = f"Meter {meter_id} removed. Restart addon to apply."
+                    msg = f"Meter {meter_id} removed. Reloading pipeline to apply."
                     webui_add_event("ok", msg)
                     return True, msg
                 body = resp.read().decode("utf-8", errors="replace")
@@ -514,7 +514,7 @@ def remove_meter_from_options(meter_id: str) -> tuple[bool, str]:
     # Fallback
     write_json_atomic(OPTIONS_JSON, options)
     _remove_meter_from_tsv(meter_id)
-    msg = f"Meter {meter_id} removed (file only — no SUPERVISOR_TOKEN)."
+    msg = f"Meter {meter_id} removed (file only — no SUPERVISOR_TOKEN). Reloading pipeline to apply."
     webui_add_event("warn", msg)
     return True, msg
 
