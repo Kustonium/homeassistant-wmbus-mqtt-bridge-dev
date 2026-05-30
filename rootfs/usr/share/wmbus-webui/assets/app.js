@@ -123,9 +123,9 @@
   }
 
   function normalizeMeterId(value) {
-    let mid = String(value || "").replace(/\s+/g, "").toLowerCase();
-    if (mid.startsWith("0x")) mid = mid.slice(2);
-    if (!/^[0-9a-f]+$/.test(mid)) return "";
+    let mid = String(value || "").replace(/\s+/g, "").toUpperCase();
+    if (mid.startsWith("0X")) mid = mid.slice(2);
+    if (!/^[0-9A-F]+$/.test(mid)) return "";
     return mid.length < 8 ? mid.padStart(8, "0") : mid;
   }
 
