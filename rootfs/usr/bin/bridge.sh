@@ -514,7 +514,7 @@ status_meter_seen() {
   # total_energy_consumption_kwh (not the live kW draw). Exclude production,
   # raw tariff registers and fault/alarm counters on the first pass; if an
   # electricity meter only publishes consumption tariffs, sum them below.
-  value_key="$(jq -r 'to_entries[] | select((.value|type)=="number") | select(.key|test("(^total|_m3$|kwh|wh$|energy|volume)";"i")) | select(.key|test("(backflow|fraud|leak|tamper|alarm|production|tariff)";"i")|not) | .key' <<<"${json_line}" 2>/dev/null | head -n 1 || true)"
+  value_key="$(jq -r 'to_entries[] | select((.value|type)=="number") | select(.key|test("(^total|_m3$|kwh|wh$|energy|volume)";"i")) | select(.key|test("(backflow|fraud|leak|tamper|alarm|production|tariff|target)";"i")|not) | .key' <<<"${json_line}" 2>/dev/null | head -n 1 || true)"
   if [[ -n "${value_key}" ]]; then
     value="$(jq -r --arg k "${value_key}" '.[$k] // empty' <<<"${json_line}" 2>/dev/null || true)"
   else
@@ -544,7 +544,7 @@ status_meter_seen() {
     IFS=$'\t' read -r prev_key prev_val prev_parts < <(awk -F '\t' -v id="${id}" '$1==id {print $5 "\t" $6 "\t" $13; exit}' "${STATUS_METERS_FILE}" 2>/dev/null || true)
     if [[ -n "${prev_key}" ]] \
        && printf '%s' "${prev_key}" | grep -qiE '(^total|_m3$|kwh|wh$|energy|volume)' \
-       && ! printf '%s' "${prev_key}" | grep -qiE '(backflow|fraud|leak|tamper|alarm|production|tariff)'; then
+       && ! printf '%s' "${prev_key}" | grep -qiE '(backflow|fraud|leak|tamper|alarm|production|tariff|target)'; then
       value_key="${prev_key}"
       value="${prev_val}"
       value_parts="${prev_parts}"
@@ -1854,7 +1854,7 @@ _store_candidate_value() {
   # Step 1 — cumulative meter reading. Excludes production/tariff registers and
   # fault counters that wmbusmeters sometimes emits with bogusly large values
   # (the bug that put 1291845 m³ of "backflow" in the WebGUI before).
-  value_key="$(jq -r 'to_entries[] | select((.value|type)=="number") | select(.key|test("(^total|_m3$|kwh|wh$|energy|volume)";"i")) | select(.key|test("(backflow|fraud|leak|tamper|alarm|production|tariff)";"i")|not) | .key' <<<"${json_line}" 2>/dev/null | head -n 1 || true)"
+  value_key="$(jq -r 'to_entries[] | select((.value|type)=="number") | select(.key|test("(^total|_m3$|kwh|wh$|energy|volume)";"i")) | select(.key|test("(backflow|fraud|leak|tamper|alarm|production|tariff|target)";"i")|not) | .key' <<<"${json_line}" 2>/dev/null | head -n 1 || true)"
   if [[ -z "${value_key}" ]]; then
     IFS=$'\t' read -r value_key value < <(
       jq -r '
