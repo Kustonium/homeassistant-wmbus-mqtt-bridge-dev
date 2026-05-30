@@ -125,10 +125,17 @@ status_add_event() {
 status_record_seen() {
   local id
   local kind="${2:-meter}"
-  local ts
+  local ts last_ts
   id="$(normalize_meter_id "$1")"
   [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]] || return 0
   ts="$(epoch_now)"
+  last_ts="$(awk -F '\t' -v id="${id}" -v kind="${kind}" '
+    $1 == id && $2 == kind && $3 ~ /^[0-9]+$/ { last = $3 + 0 }
+    END { if (last) print last; }
+  ' "${STATUS_SEEN_FILE}" 2>/dev/null || true)"
+  if [[ "${last_ts}" =~ ^[0-9]+$ ]] && (( ts - last_ts < 2 )); then
+    return 0
+  fi
   printf '%s\t%s\t%s\n' "${id}" "${kind}" "${ts}" >> "${STATUS_SEEN_FILE}" 2>/dev/null || true
   tail -n 5000 "${STATUS_SEEN_FILE}" > "${STATUS_SEEN_FILE}.tmp" 2>/dev/null && mv "${STATUS_SEEN_FILE}.tmp" "${STATUS_SEEN_FILE}" 2>/dev/null || true
 }
@@ -437,6 +444,7 @@ status_raw_seen() {
   STATUS_WMBUSMETERS_RUNNING="true"
   status_store_raw_seen "$(iso_now)"
   status_store_recent_raw "${raw}"
+  status_raw_candidate_seen "${raw}"
   if (( STATUS_RAW_COUNT == 1 || STATUS_RAW_COUNT % 25 == 0 )); then
     status_add_event "ok" "RAW telegram received (${#raw} hex chars)"
   fi
@@ -567,6 +575,7 @@ status_candidate_seen() {
   local id
   local driver="${2:-auto}"
   local type_line="${3:-}"
+  local update_status="${4:-true}"
   local now tmp
   STATUS_WMBUSMETERS_RUNNING="true"
   id="$(normalize_meter_id "$1")"
@@ -588,7 +597,7 @@ status_candidate_seen() {
   if [[ "${existed}" != "true" ]]; then
     status_add_event "candidate" "Candidate detected ${id} (${driver})"
   fi
-  write_status_json
+  [[ "${update_status}" == "true" ]] && write_status_json
 }
 
 json_get() {
@@ -940,6 +949,28 @@ meter_id_from_raw_hex() {
   # wMBus A-field stores the 4-byte meter ID little-endian after L/C/M-field.
   id_le="${raw:8:8}"
   echo "${id_le:6:2}${id_le:4:2}${id_le:2:2}${id_le:0:2}"
+}
+
+status_raw_candidate_seen() {
+  local raw="$1"
+  local id driver type_line mfr
+
+  raw="$(echo "${raw}" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
+  id="$(meter_id_from_raw_hex "${raw}")"
+  [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]] || return 0
+
+  driver="auto"
+  type_line="wMBus telegram"
+
+  # Diehl/SAP IZAR frames sometimes do not surface as listen candidates from
+  # wmbusmeters, but the link-layer A-field is still enough to show the meter.
+  mfr="${raw:4:4}"
+  if [[ "${mfr}" == "304C" ]]; then
+    driver="izarv2"
+    type_line="Water meter (0x07)"
+  fi
+
+  status_candidate_seen "${id}" "${driver}" "${type_line}" "false"
 }
 
 normalize_meter_id() {
