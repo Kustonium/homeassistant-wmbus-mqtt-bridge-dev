@@ -456,13 +456,14 @@ status_meter_seen() {
   if [[ -n "${value_key}" ]]; then
     value="$(jq -r --arg k "${value_key}" '.[$k] // empty' <<<"${json_line}" 2>/dev/null || true)"
   else
-    # This telegram carries NO cumulative total. Some meters (notably amiplus)
-    # send mostly instantaneous-only telegrams (current_power, voltage) and a
-    # total only occasionally. Do NOT downgrade a meter that already showed a
+    # This telegram carries NO cumulative total. Some electricity meters send
+    # mostly instantaneous-only telegrams (current_power, voltage) and a total
+    # only occasionally. Do NOT downgrade a meter that already showed a
     # total — reuse the last cumulative reading from the TSV so the value stays
     # the meter reading and does not flicker back to the live kW draw on every
-    # power-only telegram. Only fall back to an instantaneous field when this
-    # meter has never produced a cumulative reading yet.
+    # power-only telegram. For electricity, never show live power as the meter
+    # reading; leave the value empty until a cumulative total arrives. Other
+    # media keep the historical instantaneous fallback.
     local prev_key prev_val
     IFS=$'\t' read -r prev_key prev_val < <(awk -F '\t' -v id="${id}" '$1==id {print $5 "\t" $6; exit}' "${STATUS_METERS_FILE}" 2>/dev/null || true)
     if [[ -n "${prev_key}" ]] \
@@ -471,12 +472,21 @@ status_meter_seen() {
       value_key="${prev_key}"
       value="${prev_val}"
     else
-      value_key="$(jq -r 'to_entries[] | select((.value|type)=="number") | select(.key|test("(_kw$|_w$|_m3h$|_l_h$)";"i")) | .key' <<<"${json_line}" 2>/dev/null | head -n 1 || true)"
-      if [[ -n "${value_key}" ]]; then
-        value="$(jq -r --arg k "${value_key}" '.[$k] // empty' <<<"${json_line}" 2>/dev/null || true)"
+      local media_lc meter_lc
+      media_lc="$(printf '%s' "${media}" | tr '[:upper:]' '[:lower:]')"
+      meter_lc="$(printf '%s' "${meter}" | tr '[:upper:]' '[:lower:]')"
+      if [[ "${media_lc}" == *electric* || "${media_lc}" == *energy* || "${meter_lc}" == *electric* ]] \
+         || jq -e 'any(to_entries[]; (.key | test("(energy|power|voltage|current).*(_kwh|_wh|_kw|_w|_v|_a)$"; "i")))' <<<"${json_line}" >/dev/null 2>&1; then
+        value_key=""
+        value=""
       else
-        value_key="value"
-        value="$(jq -r 'to_entries[] | select((.value|type)=="number") | .value' <<<"${json_line}" 2>/dev/null | head -n 1 || true)"
+        value_key="$(jq -r 'to_entries[] | select((.value|type)=="number") | select(.key|test("(_kw$|_w$|_m3h$|_l_h$)";"i")) | .key' <<<"${json_line}" 2>/dev/null | head -n 1 || true)"
+        if [[ -n "${value_key}" ]]; then
+          value="$(jq -r --arg k "${value_key}" '.[$k] // empty' <<<"${json_line}" 2>/dev/null || true)"
+        else
+          value_key="value"
+          value="$(jq -r 'to_entries[] | select((.value|type)=="number") | .value' <<<"${json_line}" 2>/dev/null | head -n 1 || true)"
+        fi
       fi
     fi
   fi
@@ -1744,6 +1754,27 @@ _store_candidate_value() {
   mv "${tmp}" "${STATUS_CANDIDATE_VALUES_FILE}" 2>/dev/null || true
 }
 
+status_candidate_seen_from_json() {
+  local json_line="$1"
+  local id driver type_line existing_driver existing_type
+  id="$(jq -r '.id // empty' <<<"${json_line}" 2>/dev/null || true)"
+  [[ "${id}" =~ ^[0-9]{8}$ ]] || return 0
+
+  driver="$(jq -r '.meter // .driver // empty' <<<"${json_line}" 2>/dev/null || true)"
+  [[ -n "${driver}" && "${driver}" != "null" ]] || driver="auto"
+  type_line="$(jq -r '.media // empty' <<<"${json_line}" 2>/dev/null || true)"
+  [[ "${type_line}" != "null" ]] || type_line=""
+
+  IFS=$'\t' read -r existing_driver existing_type < <(
+    awk -F '\t' -v id="${id}" '$1==id {print $2 "\t" $3; exit}' "${STATUS_CANDIDATES_FILE}" 2>/dev/null || true
+  )
+  [[ -n "${existing_driver}" ]] && driver="${existing_driver}"
+  [[ -n "${existing_type}" ]] && type_line="${existing_type}"
+  [[ -n "${type_line}" ]] || type_line="decoded"
+
+  status_candidate_seen "${id}" "${driver}" "${type_line}"
+}
+
 parse_listen_candidates() {
   # Suppress status.json writes from this subshell to prevent races
   # with the parent shell's pipeline writes.
@@ -1755,6 +1786,9 @@ parse_listen_candidates() {
     # config matching this telegram's ID. Capture the primary numeric value
     # for the WebGUI "Preview value" feature.
     if [[ "${line}" == \{*\"_\":\"telegram\"* ]]; then
+      if [[ "${OFFICIAL_METERS_COUNT:-0}" -gt 0 ]]; then
+        status_candidate_seen_from_json "${line}"
+      fi
       _store_candidate_value "${line}"
       continue
     fi
