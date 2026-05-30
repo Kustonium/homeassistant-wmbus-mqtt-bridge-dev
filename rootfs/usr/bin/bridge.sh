@@ -285,7 +285,7 @@ ensure_candidate_autodecode() {
   tmp="${file}.tmp"
   {
     echo "name=preview_${id}"
-    echo "id=${id}"
+    echo "id=${id,,}"
     if [[ -n "${driver}" && "${driver}" != "auto" && "${driver}" != "unknown" ]]; then
       echo "driver=${driver}"
     fi
@@ -1382,7 +1382,7 @@ create_search_meter_files_from_cache() {
 
     {
       echo "name=search_${id}"
-      echo "id=${id}"
+      echo "id=${id,,}"
       if [[ "${safe_driver}" != "auto" ]]; then
         echo "driver=${safe_driver}"
       fi
@@ -1541,7 +1541,12 @@ refresh_meter_files() {
       file="$(printf '%s/meter-%04d' "${METER_DIR}" "${loaded_count}")"
       {
         echo "name=${friendly_name}"
-        echo "id=${mid}"
+        # wmbusmeters matches the telegram address case-sensitively in
+        # lowercase. meter_id is kept UPPERCASE for display, so lowercase it
+        # in the config file — otherwise ids with hex letters (e.g. izar
+        # 2156B4C2) never match and the meter silently doesn't decode, even
+        # though the file loads. Numeric-only ids were unaffected.
+        echo "id=${mid,,}"
         if [[ -n "${key}" ]]; then
           echo "key=${key}"
         fi
