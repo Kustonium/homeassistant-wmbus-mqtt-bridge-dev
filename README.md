@@ -160,6 +160,17 @@ Ważne zasady:
 
 ---
 
+### Aktualne / okresowe zużycie z `total_m3`
+
+Część wodomierzy (driver **apator162, hydrodigit, dme_07, itron, lse_07_17, qwater, qwaterv2, unismart**) wystawia **tylko `total_m3`** — narastający stan licznika, bez pola chwilowego przepływu (telegram po prostu go nie zawiera). To **nie jest błąd** — „aktualne zużycie" uzyskujesz z `total_m3` natywnie w Home Assistant:
+
+- **Utility Meter** (Ustawienia → Urządzenia i usługi → Pomocnicy → *Licznik zużycia*): wskaż encję `sensor.<id>_total_m3` i ustaw cykl (dobowy/miesięczny) → HA liczy zużycie w okresie. Stan **przeżywa restarty i aktualizacje** addonu.
+- **Derivative** (pomocnik *Pochodna*): chwilowy przepływ (np. m³/h) z przyrostu `total_m3` — rozdzielczość ograniczona interwałem telegramów licznika.
+
+`total_m3` jest publikowane z `device_class: water` i `state_class: total_increasing`, więc wchodzi też do statystyk wody / panelu Energii HA.
+
+---
+
 ### Docker standalone (bez Home Assistant)
 
 W trybie Docker konfiguracja odbywa się przez plik `options.json`.
@@ -404,6 +415,17 @@ Important rules:
 - Copy `SEARCH SUGGESTED CONFIG` into the `meters` section after finding the match.
 - Remove `/data/search_candidates.tsv` after searching if you want the next search to start from a clean candidate list.
 - Use a narrow tolerance for water meters in apartment blocks, for example `0.05`, because many nearby meters may have similar readings.
+
+---
+
+### Current / period consumption from `total_m3`
+
+Some water meters (drivers **apator162, hydrodigit, dme_07, itron, lse_07_17, qwater, qwaterv2, unismart**) expose **only `total_m3`** — the cumulative meter reading, with no instantaneous flow field (the telegram simply doesn't carry one). This is **not a bug** — derive "current consumption" from `total_m3` natively in Home Assistant:
+
+- **Utility Meter** (Settings → Devices & services → Helpers → *Utility meter*): point it at `sensor.<id>_total_m3` and pick a cycle (daily/monthly) → HA computes period consumption. Its state **survives add-on restarts and updates**.
+- **Derivative** helper: instantaneous flow (e.g. m³/h) from the `total_m3` increase — resolution limited by the meter's telegram interval.
+
+`total_m3` is published with `device_class: water` and `state_class: total_increasing`, so it also feeds HA water / Energy statistics.
 
 ---
 

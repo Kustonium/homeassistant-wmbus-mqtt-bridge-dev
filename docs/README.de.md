@@ -735,6 +735,8 @@ Für einen Wasserzähler ohne `volume_flow_m3h` (z. B. mkradio3) — `total_m3` 
 
 Die vollständige Auswahllogik [in bridge.sh — `status_meter_seen`](../rootfs/usr/bin/bridge.sh).
 
+**Wasserzähler mit nur `total_m3`** (Treiber `apator162`, `hydrodigit`, `dme_07`, `itron`, `lse_07_17`, `qwater`, `qwaterv2`, `unismart`) haben gar kein Momentan-Durchflussfeld — das Telegramm enthält keines (apator162 parst intern einen `flow`-Wert, aber als rohes, unskaliertes Wort, daher blendet wmbusmeters ihn aus). Aktuellen/periodischen Verbrauch in HA aus `total_m3` ableiten: ein **Utility-Meter**-Helfer (Tages-/Monatszyklus, übersteht Neustarts und Updates) und/oder ein **Derivative**-Helfer (m³/h aus dem steigenden Total). `total_m3` wird als `device_class: water` + `state_class: total_increasing` veröffentlicht und fließt so in HA-Wasser-/Energiestatistiken ein.
+
 ### „HA zeigt kein Add-on-Update"
 
 HA Supervisor erkennt eine neue Version nur, wenn sich `version:` in `config.yaml` ändert. Das Image-Tag auf GHCR wird aus `version:` abgeleitet. Siehe [§15](#15-versionierung-und-docker-images).

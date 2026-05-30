@@ -735,6 +735,8 @@ Pro vodoměr bez `volume_flow_m3h` (např. mkradio3) — `total_m3` je jediné s
 
 Úplná logika výběru [v bridge.sh — `status_meter_seen`](../rootfs/usr/bin/bridge.sh).
 
+**Vodoměry vystavující jen `total_m3`** (ovladače `apator162`, `hydrodigit`, `dme_07`, `itron`, `lse_07_17`, `qwater`, `qwaterv2`, `unismart`) nemají žádné pole okamžitého průtoku — telegram ho neobsahuje (apator162 interně parsuje hodnotu `flow`, ale jako surové, neškálované 2 bajty, takže ji wmbusmeters skrývá). Aktuální/periodickou spotřebu spočítej v HA z `total_m3`: pomocník **Utility Meter** (denní/měsíční cyklus, přežije restarty i aktualizace) a/nebo **Derivative** (m³/h z rostoucího totalu). `total_m3` je publikováno jako `device_class: water` + `state_class: total_increasing`, takže vstupuje i do statistik vody/energie v HA.
+
 ### „HA neukazuje aktualizaci add-onu"
 
 HA Supervisor detekuje novou verzi pouze když se `version:` v `config.yaml` změní. Tag image na GHCR je odvozen z `version:`. Viz [§15](#15-verzování-a-docker-image).
