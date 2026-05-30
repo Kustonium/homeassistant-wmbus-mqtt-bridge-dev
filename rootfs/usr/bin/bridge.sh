@@ -448,21 +448,37 @@ status_meter_seen() {
   media="$(jq -r '.media // empty' <<<"${json_line}" 2>/dev/null || true)"
   # Prefer the cumulative METER READING (what's shown on the meter's own
   # display) as the primary value — total_m3, total_energy_consumption_kwh,
-  # etc. This keeps the WebUI value consistent across media: water shows
-  # total_m3, electricity shows total_energy_consumption_kwh (not the live
-  # kW draw). Exclude production/tariff registers and fault/alarm counters so
-  # e.g. amiplus picks total_energy_consumption_kwh, not a zeroed production or
-  # tariff register. Fall back to an instantaneous field (current power / flow
-  # rate: _kw, _w, _m3h, _l_h) only when no cumulative total is published.
+  # etc. Consistent across media: water shows total_m3, electricity shows
+  # total_energy_consumption_kwh (not the live kW draw). Exclude production/
+  # tariff registers and fault/alarm counters so e.g. amiplus picks
+  # total_energy_consumption_kwh, not a zeroed production or tariff register.
   value_key="$(jq -r 'to_entries[] | select((.value|type)=="number") | select(.key|test("(^total|_m3$|kwh|wh$|energy|volume)";"i")) | select(.key|test("(backflow|fraud|leak|tamper|alarm|production|tariff)";"i")|not) | .key' <<<"${json_line}" 2>/dev/null | head -n 1 || true)"
-  if [[ -z "${value_key}" ]]; then
-    value_key="$(jq -r 'to_entries[] | select((.value|type)=="number") | select(.key|test("(_kw$|_w$|_m3h$|_l_h$)";"i")) | .key' <<<"${json_line}" 2>/dev/null | head -n 1 || true)"
-  fi
   if [[ -n "${value_key}" ]]; then
     value="$(jq -r --arg k "${value_key}" '.[$k] // empty' <<<"${json_line}" 2>/dev/null || true)"
   else
-    value_key="value"
-    value="$(jq -r 'to_entries[] | select((.value|type)=="number") | .value' <<<"${json_line}" 2>/dev/null | head -n 1 || true)"
+    # This telegram carries NO cumulative total. Some meters (notably amiplus)
+    # send mostly instantaneous-only telegrams (current_power, voltage) and a
+    # total only occasionally. Do NOT downgrade a meter that already showed a
+    # total — reuse the last cumulative reading from the TSV so the value stays
+    # the meter reading and does not flicker back to the live kW draw on every
+    # power-only telegram. Only fall back to an instantaneous field when this
+    # meter has never produced a cumulative reading yet.
+    local prev_key prev_val
+    IFS=$'\t' read -r prev_key prev_val < <(awk -F '\t' -v id="${id}" '$1==id {print $5 "\t" $6; exit}' "${STATUS_METERS_FILE}" 2>/dev/null || true)
+    if [[ -n "${prev_key}" ]] \
+       && printf '%s' "${prev_key}" | grep -qiE '(^total|_m3$|kwh|wh$|energy|volume)' \
+       && ! printf '%s' "${prev_key}" | grep -qiE '(backflow|fraud|leak|tamper|alarm|production|tariff)'; then
+      value_key="${prev_key}"
+      value="${prev_val}"
+    else
+      value_key="$(jq -r 'to_entries[] | select((.value|type)=="number") | select(.key|test("(_kw$|_w$|_m3h$|_l_h$)";"i")) | .key' <<<"${json_line}" 2>/dev/null | head -n 1 || true)"
+      if [[ -n "${value_key}" ]]; then
+        value="$(jq -r --arg k "${value_key}" '.[$k] // empty' <<<"${json_line}" 2>/dev/null || true)"
+      else
+        value_key="value"
+        value="$(jq -r 'to_entries[] | select((.value|type)=="number") | .value' <<<"${json_line}" 2>/dev/null | head -n 1 || true)"
+      fi
+    fi
   fi
   status_record_seen "${id}" "meter"
   last_seen="$(iso_now)"
