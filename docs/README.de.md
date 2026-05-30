@@ -729,7 +729,7 @@ Prüfe der Reihe nach:
 
 ### „Der Wert zeigt eine Zahl, die nur wächst, nicht eine Momentanzahl"
 
-Die WebUI zeigt als Hauptwert den **kumulativen Zählerstand** (z. B. `total_m3`, `total_energy_consumption_kwh`) — einheitlich über alle Medien. Ein Momentanwert (`_kw$`/`_w$`/`_m3h$`/`_l_h$`) wird nur genutzt, wenn der Zähler kein Total veröffentlicht. Production-/Tarif-Register werden übersprungen, sodass z. B. amiplus `total_energy_consumption_kwh` zeigt, nicht den Live-kW-Bezug.
+Seit Version **1.5.2-dev** bevorzugt die UI Momentanwerte (`current_power_kw`, `volume_flow_m3h`, `_kw$`/`_w$`/`_m3h$`/`_l_h$`) gegenüber Totals (`total_energy_consumption_kwh`).
 
 Für einen Wasserzähler ohne `volume_flow_m3h` (z. B. mkradio3) — `total_m3` ist das einzige sinnvolle Feld und das wird angezeigt. Es ist der **Zählerstand** (wie auf dem Display des Wasserzählers), nicht der kumulative Verbrauch — obwohl die Zahl wächst, ist sie aktuell für heute.
 

@@ -728,7 +728,7 @@ Sprawdź po kolei:
 
 ### „Wartość pokazuje liczbę która tylko rośnie, nie chwilową"
 
-WebUI pokazuje jako wartość główną **stan licznika (kumulatywny)** — np. `total_m3`, `total_energy_consumption_kwh` — spójnie dla wszystkich mediów. Pole chwilowe (`_kw$`/`_w$`/`_m3h$`/`_l_h$`) jest brane tylko gdy licznik nie publikuje żadnego totalu. Rejestry `production`/`tariff` są pomijane, więc np. amiplus pokazuje `total_energy_consumption_kwh`, a nie chwilowy pobór w kW.
+Od wersji **1.5.2-dev** UI preferuje pola chwilowe (`current_power_kw`, `volume_flow_m3h`, `_kw$`/`_w$`/`_m3h$`/`_l_h$`) nad totals (`total_energy_consumption_kwh`).
 
 Dla wodomierza bez `volume_flow_m3h` (np. mkradio3) — `total_m3` jest jedynym sensownym polem i to ono się pokazuje. To **stan licznika** (jak na wyświetlaczu wodomierza), nie kumulatywne zużycie — chociaż liczba rośnie, jest aktualna na dziś.
 

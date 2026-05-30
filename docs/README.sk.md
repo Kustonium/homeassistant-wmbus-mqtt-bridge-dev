@@ -729,7 +729,7 @@ Skontroluj postupne:
 
 ### „Hodnota ukazuje číslo, ktoré iba rastie, nie okamžité"
 
-WebUI zobrazuje ako hlavnú hodnotu **kumulatívny stav merača** (napr. `total_m3`, `total_energy_consumption_kwh`) — jednotne pre všetky médiá. Okamžité pole (`_kw$`/`_w$`/`_m3h$`/`_l_h$`) sa použije len keď merač žiadny total nepublikuje. Registre `production`/`tariff` sa preskakujú, takže napr. amiplus ukazuje `total_energy_consumption_kwh`, nie okamžitý odber v kW.
+Od verzie **1.5.2-dev** UI preferuje okamžité polia (`current_power_kw`, `volume_flow_m3h`, `_kw$`/`_w$`/`_m3h$`/`_l_h$`) pred totals (`total_energy_consumption_kwh`).
 
 Pre vodomer bez `volume_flow_m3h` (napr. mkradio3) — `total_m3` je jediné zmysluplné pole a to sa zobrazuje. Je to **stav merača** (ako na displeji vodomera), nie kumulatívna spotreba — aj keď číslo rastie, je aktuálne pre dnešok.
 

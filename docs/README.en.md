@@ -728,7 +728,7 @@ Check in order:
 
 ### "The value shows a number that only grows, not an instantaneous one"
 
-The WebUI shows the **cumulative meter reading** as the main value (e.g. `total_m3`, `total_energy_consumption_kwh`) — consistently across all media. An instantaneous field (`_kw$`/`_w$`/`_m3h$`/`_l_h$`) is used only when the meter publishes no total. Production and tariff registers are skipped, so e.g. amiplus shows `total_energy_consumption_kwh`, not the live kW draw.
+Since version **1.5.2-dev** the UI prefers instantaneous fields (`current_power_kw`, `volume_flow_m3h`, `_kw$`/`_w$`/`_m3h$`/`_l_h$`) over totals (`total_energy_consumption_kwh`).
 
 For a water meter without `volume_flow_m3h` (e.g. mkradio3) — `total_m3` is the only sensible field and that's what's shown. It's the **meter reading** (as on the water meter's display), not cumulative consumption — although the number grows, it is current as of today.
 
