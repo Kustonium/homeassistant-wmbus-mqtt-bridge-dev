@@ -588,7 +588,7 @@ def state(include_ignored: bool = False) -> dict:
     options = read_options()
     meters = read_tsv(
         METERS_TSV,
-        ["id", "name", "driver", "media", "value_key", "value", "last_seen", "discovery", "seen_count", "avg_interval_s", "seen_15m", "seen_60m"],
+        ["id", "name", "driver", "media", "value_key", "value", "last_seen", "discovery", "seen_count", "avg_interval_s", "seen_15m", "seen_60m", "value_parts"],
     )
     candidates = read_tsv(
         CANDIDATES_TSV,

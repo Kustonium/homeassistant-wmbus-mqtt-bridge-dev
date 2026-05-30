@@ -440,12 +440,24 @@ status_raw_seen() {
 
 status_meter_seen() {
   local json_line="$1"
-  local id name meter media value_key value last_seen tmp
+  local id name meter media value_key value value_parts last_seen tmp
   id="$(jq -r '.id // empty' <<<"${json_line}" 2>/dev/null || true)"
   [[ -n "${id}" ]] || return 0
   name="$(jq -r '.name // empty' <<<"${json_line}" 2>/dev/null || true)"
   meter="$(jq -r '.meter // empty' <<<"${json_line}" 2>/dev/null || true)"
   media="$(jq -r '.media // empty' <<<"${json_line}" 2>/dev/null || true)"
+  value_parts="$(jq -rc '
+    [to_entries[]
+      | select((.value|type)=="number")
+      | select(.key|test("^total_energy_consumption_tariff_[0-9]+_kwh$";"i"))
+      | . as $entry
+      | ($entry.key | capture("^total_energy_consumption_tariff_(?<tariff>[0-9]+)_kwh$";"i")) as $m
+      | {label: ("T" + $m.tariff), key: $entry.key, value: $entry.value, order: ($m.tariff|tonumber)}
+    ]
+    | sort_by(.order)
+    | map(del(.order))
+    | if length > 0 then . else empty end
+  ' <<<"${json_line}" 2>/dev/null || true)"
   # Prefer the cumulative METER READING (what's shown on the meter's own
   # display) as the primary value — total_m3, total_energy_consumption_kwh,
   # etc. Consistent across media: water shows total_m3, electricity shows
@@ -478,13 +490,14 @@ status_meter_seen() {
     # power-only telegram. For electricity, never show live power as the meter
     # reading; leave the value empty until a cumulative total arrives. Other
     # media keep the historical instantaneous fallback.
-    local prev_key prev_val
-    IFS=$'\t' read -r prev_key prev_val < <(awk -F '\t' -v id="${id}" '$1==id {print $5 "\t" $6; exit}' "${STATUS_METERS_FILE}" 2>/dev/null || true)
+    local prev_key prev_val prev_parts
+    IFS=$'\t' read -r prev_key prev_val prev_parts < <(awk -F '\t' -v id="${id}" '$1==id {print $5 "\t" $6 "\t" $13; exit}' "${STATUS_METERS_FILE}" 2>/dev/null || true)
     if [[ -n "${prev_key}" ]] \
        && printf '%s' "${prev_key}" | grep -qiE '(^total|_m3$|kwh|wh$|energy|volume)' \
        && ! printf '%s' "${prev_key}" | grep -qiE '(backflow|fraud|leak|tamper|alarm|production|tariff)'; then
       value_key="${prev_key}"
       value="${prev_val}"
+      value_parts="${prev_parts}"
     else
       local media_lc meter_lc
       media_lc="$(printf '%s' "${media}" | tr '[:upper:]' '[:lower:]')"
@@ -509,8 +522,8 @@ status_meter_seen() {
   IFS=$'\t' read -r seen_count avg_interval_s seen_15m seen_60m < <(status_seen_stats "${id}" "meter")
   tmp="${STATUS_METERS_FILE}.tmp"
   awk -F '	' -v id="${id}" '$1 != id {print}' "${STATUS_METERS_FILE}" 2>/dev/null > "${tmp}" || true
-  printf '%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s
-' "${id}" "${name}" "${meter}" "${media}" "${value_key}" "${value}" "${last_seen}" "published" "${seen_count}" "${avg_interval_s}" "${seen_15m}" "${seen_60m}" >> "${tmp}"
+  printf '%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s
+' "${id}" "${name}" "${meter}" "${media}" "${value_key}" "${value}" "${last_seen}" "published" "${seen_count}" "${avg_interval_s}" "${seen_15m}" "${seen_60m}" "${value_parts}" >> "${tmp}"
   mv "${tmp}" "${STATUS_METERS_FILE}" 2>/dev/null || true
 }
 

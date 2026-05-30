@@ -236,6 +236,69 @@
     return "";
   }
 
+  function parseValueParts(row) {
+    const raw = String(row?.value_parts || "").trim();
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .map((part) => {
+          const label = String(part?.label || "").trim();
+          const key = String(part?.key || "").trim();
+          const value = Number(part?.value);
+          if (!label || !Number.isFinite(value)) return null;
+          return {label, key, value};
+        })
+        .filter(Boolean);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function formatFlowValue(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return String(value ?? "");
+    return n.toFixed(3).replace(/\.?0+$/, "");
+  }
+
+  function tariffFlowHtml(row) {
+    const key = String(row?.value_key || "").toLowerCase();
+    if (!key.includes("total_energy_consumption")) return "";
+    const parts = parseValueParts(row);
+    if (!parts.length) return "";
+    const totalValue = row?.value && row.value !== "-" ? formatFlowValue(row.value) : "";
+    const totalLabel = t("webui_total", "total");
+    const chips = parts.map((part) => `
+      <span title="${escapeHtml(part.key)}" style="display:inline-flex;align-items:center;gap:3px;padding:2px 5px;border:1px solid #264859;border-radius:4px;background:#0c1820;color:#8fb5c8;">
+        <span style="color:#6f8796;">${escapeHtml(part.label)}</span>
+        <strong style="color:#cfe9f7;font-weight:700;">${escapeHtml(formatFlowValue(part.value))}</strong>
+      </span>
+    `).join(`<span style="color:#4a6070;">+</span>`);
+    return `
+      <div class="mono" style="margin-top:5px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;font-size:10px;line-height:1.35;">
+        ${chips}
+        <span style="color:#4a6070;">=</span>
+        <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 5px;border:1px solid #1c6b50;border-radius:4px;background:#082017;color:#4df08d;font-weight:700;">
+          <span>${escapeHtml(totalLabel)}</span>
+          ${totalValue ? `<strong style="color:#d8ffe8;font-weight:700;">${escapeHtml(totalValue)}</strong>` : ""}
+        </span>
+      </div>
+    `;
+  }
+
+  function meterValueCell(row) {
+    const unit = unitFromKey(row.value_key || "");
+    const hasValue = !!(row.value && row.value !== "-");
+    const valueStr = hasValue ? row.value : "—";
+    const valueColor = hasValue ? "#4df08d" : "#9eafba";
+    return `
+      <span style="font-weight:700;color:${valueColor};">${escapeHtml(valueStr)}</span>${unit ? ` <span class="mono" style="color:#9eafba;font-size:11px;">${escapeHtml(unit)}</span>` : ""}
+      ${tariffFlowHtml(row)}
+      ${row.value_key ? `<div class="mono" style="font-size:10px;color:#4a6070;">${escapeHtml(row.value_key)}</div>` : ""}
+    `;
+  }
+
   // ── #5 Signal bars + meter health ────────────────────────────────────────
   function signalBars(seen15m) {
     const n = seen15m >= 10 ? 4 : seen15m >= 5 ? 3 : seen15m >= 2 ? 2 : seen15m > 0 ? 1 : 0;
@@ -1197,8 +1260,6 @@
                 const seen15m = ageS > 15 * 60 ? 0 : Number(row.seen_15m || 0);
                 const seen60m = ageS > 60 * 60 ? 0 : Number(row.seen_60m || 0);
                 const {label: statusLabel, color: statusColor} = meterStatusLabel(seen15m, seen60m);
-                const unit    = unitFromKey(row.value_key || "");
-                const valueStr = (row.value && row.value !== "-") ? row.value : "—";
                 const {icon: mIcon} = mediaIcon(row.media || "", row.driver || "");
                 return `
                   <tr>
@@ -1206,8 +1267,7 @@
                     <td><span style="margin-right:5px;font-size:15px;vertical-align:middle;">${mIcon}</span>${escapeHtml(row.name || row.id || "-")}</td>
                     <td>${escapeHtml(row.driver || "-")}</td>
                     <td>
-                      <span>${escapeHtml(valueStr)}${unit ? ` <span class="mono" style="color:#9eafba;font-size:11px;">${escapeHtml(unit)}</span>` : ""}</span>
-                      ${row.value_key ? `<div class="mono" style="font-size:10px;color:#4a6070;">${escapeHtml(row.value_key)}</div>` : ""}
+                      ${meterValueCell(row)}
                     </td>
                     <td>${fmtTime(row.last_seen)}</td>
                     <td style="white-space:nowrap;">
@@ -1464,7 +1524,6 @@
                 const seen60mAdj = ageS > 60 * 60 ? 0 : Number(row.seen_60m || 0);
                 const {icon: mIcon, mc} = mediaIcon(row.media || "", row.driver || "");
                 const mediaLabel = t(`media_${mc}`, mc);
-                const unit       = unitFromKey(row.value_key || "");
                 const valueStr   = (row.value && row.value !== "-") ? row.value : "—";
                 // data-value carries the parsed numeric value for the filter.
                 // Non-numeric ("—") becomes empty so the row is hidden when
@@ -1478,8 +1537,7 @@
                     <td>${escapeHtml(row.driver || "-")}</td>
                     <td>${escapeHtml(mediaLabel)}</td>
                     <td>
-                      <span style="font-weight:700;">${escapeHtml(valueStr)}</span>${unit ? ` <span class="mono" style="color:#9eafba;font-size:11px;">${escapeHtml(unit)}</span>` : ""}
-                      ${row.value_key ? `<div class="mono" style="font-size:10px;color:#4a6070;">${escapeHtml(row.value_key)}</div>` : ""}
+                      ${meterValueCell(row)}
                     </td>
                     <td>${fmtTime(row.last_seen)}</td>
                     <td>${escapeHtml(String(seen15mAdj))}</td>
