@@ -277,11 +277,10 @@
     return `~${(n / 3600).toFixed(1)} h`;
   }
 
-  // ── #7 Pending-restart banner ─────────────────────────────────────────────
-  // Shown when:
-  //   a) options.json is newer than status.json (mtime check), OR
-  //   b) options.json contains meters that are not yet decoded (reliable signal
-  //      even when bridge.sh frequently re-writes status.json resetting the mtime flag).
+  // ── #7 Pending meter banner ───────────────────────────────────────────────
+  // Shows a restart action only when the backend explicitly says the running
+  // bridge has not applied current options. Otherwise pending meters are simply
+  // waiting for their first decoded telegram after the soft reload.
   function pendingRestartBanner() {
     const data  = state.data || {};
     const model = data.model || {};
@@ -293,17 +292,23 @@
       return mid && !decodedIds.has(mid);
     }).length;
 
-    if (!model.pending_restart && pendingCount === 0) return "";
+    const needsRestart = !!model.pending_restart;
+    if (!needsRestart && pendingCount === 0) return "";
 
-    const detail = t("pending_text", "These meters are saved in options.json but the add-on hasn't picked them up yet. Restart the add-on to apply.");
+    const title = needsRestart
+      ? t("pending_title", "Pending changes — waiting for restart")
+      : t("waiting_for_telegrams_title", "Waiting for first telegram");
+    const detail = needsRestart
+      ? t("pending_text", "These meters are saved in options.json but the add-on hasn't picked them up yet. Restart the add-on to apply.")
+      : t("waiting_for_telegrams_text", "These meters are configured but haven't sent a telegram yet.");
 
     return `
       <div class="notice warn" style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
         <div>
-          <strong>⚠ ${escapeHtml(t("pending_title", "Pending changes — waiting for restart"))}</strong>
+          <strong>${escapeHtml(title)}</strong>
           <div style="font-size:11px;color:#b0a060;margin-top:3px;">${escapeHtml(detail)}</div>
         </div>
-        <button class="btn warn" data-action="restart" style="white-space:nowrap;flex-shrink:0;">${escapeHtml(t("restart_addon", "Restart add-on"))}</button>
+        ${needsRestart ? `<button class="btn warn" data-action="restart" style="white-space:nowrap;flex-shrink:0;">${escapeHtml(t("restart_addon", "Restart add-on"))}</button>` : ""}
       </div>
     `;
   }
@@ -1251,7 +1256,7 @@
               ${withActions ? "<th></th>" : ""}
             </tr>
           </thead>
-          <tbody>
+          <tbody id="discover-candidates-tbody">
             ${rows
               .map((row) => {
                 const id     = row.id || "";
@@ -1397,21 +1402,16 @@
   // The value column lets the user identify which configured ID is which
   // physical meter by just reading the live counter.
   //
-  // The "filter by value" input above the table replaces the legacy SEARCH-mode
-  // workflow: instead of typing an expected value blind, the user sees all
-  // live values and types a target — matching rows stay visible, others hide.
-  // Filtering is pure client-side DOM (rows have data-value); no re-render,
-  // no focus loss on every keystroke.
-  function discoverConfiguredPanel(rows) {
-    if (!rows.length) return "";
+  // The "filter by value" bar on the Discover page replaces the legacy
+  // SEARCH-mode workflow: instead of typing an expected value blind, the user
+  // sees all live values and types a target — matching rows stay visible,
+  // others hide. Filtering is pure client-side DOM (rows have data-value);
+  // no re-render, no focus loss on every keystroke.
+  function discoverValueFilterBar(rowCount) {
+    if (!rowCount) return "";
     return `
       <section class="section">
-        <div class="section-head">
-          <h2>${escapeHtml(t("configured_meters_panel_title", "Configured meters on air"))}</h2>
-          <span id="discover-configured-count">${rows.length}</span>
-        </div>
-        <p style="font-size:11px;color:#607a88;margin:0 0 10px;">${escapeHtml(t("configured_meters_panel_sub", "These IDs are already in your options.json. The parallel listen instance keeps their reception stats live."))}</p>
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px 12px;background:#0e1a23;border:1px solid #1e3040;border-radius:6px;">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 12px;background:#0e1a23;border:1px solid #1e3040;border-radius:6px;">
           <label for="discover-search-value" style="font-size:12px;color:#9eafba;">${escapeHtml(t("filter_by_value", "Filter by value"))}:</label>
           <input id="discover-search-value" type="text" inputmode="decimal" placeholder="e.g. 23.91"
             style="background:#0a1217;border:1px solid #2a4555;color:#e8f1f8;border-radius:4px;padding:5px 8px;font-size:12px;width:120px;font-family:monospace;"
@@ -1422,8 +1422,21 @@
             oninput="window.__discoverFilterByValue && window.__discoverFilterByValue()">
           <button type="button" class="btn"
             style="font-size:11px;padding:4px 10px;"
-            onclick="var v=document.getElementById('discover-search-value'); if(v){v.value='';} window.__discoverFilterByValue && window.__discoverFilterByValue();">${escapeHtml(t("filter_clear", "Clear"))}</button>
+            onclick="window.__discoverClearValueFilter && window.__discoverClearValueFilter();">${escapeHtml(t("filter_clear", "Clear"))}</button>
         </div>
+      </section>
+    `;
+  }
+
+  function discoverConfiguredPanel(rows) {
+    if (!rows.length) return "";
+    return `
+      <section class="section">
+        <div class="section-head">
+          <h2>${escapeHtml(t("configured_meters_panel_title", "Configured meters on air"))}</h2>
+          <span id="discover-configured-count" data-default="${rows.length}">${rows.length}</span>
+        </div>
+        <p style="font-size:11px;color:#607a88;margin:0 0 10px;">${escapeHtml(t("configured_meters_panel_sub", "These IDs are already in your options.json. The parallel listen instance keeps their reception stats live."))}</p>
         <div class="table-wrap">
           <table>
             <thead>
@@ -1482,7 +1495,7 @@
     `;
   }
 
-  // Live value filter for the discover-configured table.
+  // Live value filter for the Discover page tables.
   // Exposed on window so inline `oninput=` handlers in the rendered HTML
   // can call it without going through the IIFE closure. Operates on DOM
   // directly (display:none on non-matching rows) — no re-render, no focus
@@ -1490,35 +1503,40 @@
   window.__discoverFilterByValue = function () {
     const valInp = document.getElementById("discover-search-value");
     const tolInp = document.getElementById("discover-search-tolerance");
-    const tbody  = document.getElementById("discover-configured-tbody");
-    const countEl = document.getElementById("discover-configured-count");
-    if (!tbody) return;
-    const trs = Array.from(tbody.querySelectorAll("tr"));
-    const total = trs.length;
+    const tables = [
+      {tbody: document.getElementById("discover-configured-tbody"), count: document.getElementById("discover-configured-count"), suffix: ""},
+      {tbody: document.getElementById("discover-candidates-tbody"), count: document.getElementById("discover-candidate-count"), suffix: ` ${t("webui_visible", "visible")}`},
+    ].filter(x => x.tbody);
 
     const searchStr = ((valInp && valInp.value) || "").trim();
-    if (searchStr === "") {
-      trs.forEach(r => { r.style.display = ""; });
-      if (countEl) countEl.textContent = String(total);
-      return;
-    }
     const searchVal = parseFloat(searchStr.replace(",", "."));
     const tolerance = parseFloat(((tolInp && tolInp.value) || "0.05").replace(",", ".")) || 0.05;
-    if (!Number.isFinite(searchVal)) {
-      // Invalid input — show all rows so the user isn't left with an empty table.
-      trs.forEach(r => { r.style.display = ""; });
-      if (countEl) countEl.textContent = String(total);
-      return;
-    }
+    const active = searchStr !== "" && Number.isFinite(searchVal);
 
-    let matched = 0;
-    trs.forEach(r => {
-      const rowVal = parseFloat(r.dataset.value);
-      const match  = Number.isFinite(rowVal) && Math.abs(rowVal - searchVal) <= tolerance;
-      r.style.display = match ? "" : "none";
-      if (match) matched++;
+    tables.forEach(({tbody, count, suffix}) => {
+      const trs = Array.from(tbody.querySelectorAll("tr"));
+      const total = trs.length;
+      if (!active) {
+        trs.forEach(r => { r.style.display = ""; });
+        if (count) count.textContent = count.dataset.default || `${total}${suffix}`;
+        return;
+      }
+
+      let matched = 0;
+      trs.forEach(r => {
+        const rowVal = parseFloat(r.dataset.value);
+        const match  = Number.isFinite(rowVal) && Math.abs(rowVal - searchVal) <= tolerance;
+        r.style.display = match ? "" : "none";
+        if (match) matched++;
+      });
+      if (count) count.textContent = `${matched} / ${total}${suffix}`;
     });
-    if (countEl) countEl.textContent = `${matched} / ${total}`;
+  };
+
+  window.__discoverClearValueFilter = function () {
+    const valInp = document.getElementById("discover-search-value");
+    if (valInp) valInp.value = "";
+    window.__discoverFilterByValue && window.__discoverFilterByValue();
   };
 
   function discoverPage() {
@@ -1527,12 +1545,14 @@
     const filteredCandidates = applyMediaFilter(allCandidates, "type");
     const allMeters = asArray(data.meters);
     const filteredMeters = applyMediaFilter(allMeters, "media");
+    const candidateCountLabel = `${filteredCandidates.length}${filteredCandidates.length !== allCandidates.length ? `/${allCandidates.length}` : ""} ${t("webui_visible", "visible")}`;
     return `
+      ${discoverValueFilterBar(filteredMeters.length + filteredCandidates.length)}
       ${discoverConfiguredPanel(filteredMeters)}
       <section class="section">
         <div class="section-head">
           <h2>${escapeHtml(t("detected_candidates", "Detected candidates"))}</h2>
-          <span>${filteredCandidates.length}${filteredCandidates.length !== allCandidates.length ? `/${allCandidates.length}` : ""} ${escapeHtml(t("webui_visible", "visible"))}</span>
+          <span id="discover-candidate-count" data-default="${escapeHtml(candidateCountLabel)}">${escapeHtml(candidateCountLabel)}</span>
         </div>
         ${filterChips()}
         ${candidateTable(filteredCandidates, true)}
@@ -2053,6 +2073,9 @@
       // Fallback when morphdom.min.js failed to load.
       app.innerHTML = newHtml;
     }
+    if (state.route === "discover" && window.__discoverFilterByValue) {
+      window.__discoverFilterByValue();
+    }
   }
 
   document.addEventListener("click", async (event) => {
@@ -2205,7 +2228,7 @@
       try {
         const result = await postApi("add-meter", Object.fromEntries(form.entries()));
         state.modal = null;
-        toast(result.message || t("webui_meter_added", "Meter added."));
+        toast(t("webui_meter_added", "Meter added."));
         // Soft pipeline reload so the new meter starts decoding without
         // a full container restart. bridge.sh's watcher picks up the
         // flag within 2 s, restarts the decode pipeline (~2-3 s), and
