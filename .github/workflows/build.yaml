@@ -24,30 +24,23 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build:
-    name: Build wmbus_mqtt_bridge_dev (${{ matrix.arch }})
-    runs-on: ${{ matrix.runs_on }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            platform: linux/amd64
-            base_image: ghcr.io/home-assistant/amd64-base:3.20
-            runs_on: ubuntu-latest
-          - arch: aarch64
-            platform: linux/arm64
-            base_image: ghcr.io/home-assistant/aarch64-base:3.20
-            runs_on: ubuntu-24.04-arm
-
+  # ---------------------------------------------------------------------------
+  # Gate — decide once whether this push needs an image rebuild. The `skip`
+  # output is honoured by both build and bump jobs, so docs-only pushes do
+  # nothing (no build, no version bump).
+  # ---------------------------------------------------------------------------
+  gate:
+    name: Gate (path-aware)
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.gate.outputs.skip }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
           fetch-depth: 2
 
-      - name: Gate (path-aware)
+      - name: Gate
         id: gate
         shell: bash
         run: |
@@ -78,37 +71,37 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Debug GitHub context
-        if: steps.gate.outputs.skip != 'true'
-        shell: bash
-        run: |
-          echo "GITHUB_REPOSITORY=${GITHUB_REPOSITORY}"
-          echo "GITHUB_REPOSITORY_OWNER=${GITHUB_REPOSITORY_OWNER}"
-          echo "GITHUB_REF=${GITHUB_REF}"
-          echo "arch=${{ matrix.arch }}"
+  # ---------------------------------------------------------------------------
+  # Build — build + push BOTH arch images tagged :dev and :dev.<run_number>.
+  # Crucially this job does NOT commit the version. The version is only written
+  # to config.yaml afterwards by the `bump` job, and only if every arch image
+  # was pushed. A failed build therefore never leaves config.yaml pointing at a
+  # version whose image is missing in GHCR (the "image doesn't exist" bug).
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build wmbus_mqtt_bridge_dev (${{ matrix.arch }})
+    needs: gate
+    if: needs.gate.outputs.skip != 'true'
+    runs-on: ${{ matrix.runs_on }}
 
-      - name: Bump dev version in config.yaml and push
-        if: steps.gate.outputs.skip != 'true' && matrix.arch == 'amd64'
-        shell: bash
-        run: |
-          set -euo pipefail
-          CFG="config.yaml"
-          RAW_VER="$(sed -nE 's/^version:[[:space:]]*"?([^"[:space:]]+)"?[[:space:]]*$/\1/p' "${CFG}" | head -n1)"
-          CORE_VER="$(echo "${RAW_VER}" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
-          NEW_VER="${CORE_VER}-dev.${{ github.run_number }}"
-          echo "Bumping dev version: ${RAW_VER} → ${NEW_VER}"
-          sed -i -E "s/^(version:[[:space:]]*\").*\"/\1${NEW_VER}\"/" "${CFG}"
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "${CFG}"
-          git commit -m "ci(dev): bump version to ${NEW_VER} [skip ci]"
-          git pull --rebase origin main
-          git push origin main
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            base_image: ghcr.io/home-assistant/amd64-base:3.20
+            runs_on: ubuntu-latest
+          - arch: aarch64
+            platform: linux/arm64
+            base_image: ghcr.io/home-assistant/aarch64-base:3.20
+            runs_on: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
 
       - name: Prepare build variables
-        if: steps.gate.outputs.skip != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -121,12 +114,15 @@ jobs:
             exit 1
           fi
           CORE_VER="$(echo "${RAW_VER}" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
+          if [[ -z "${CORE_VER}" ]]; then
+            echo "ERROR: cannot derive core X.Y.Z from version '${RAW_VER}'"
+            exit 1
+          fi
           VER="${CORE_VER}-dev.${{ github.run_number }}"
           echo "ADDON_VERSION=${VER}" >> "$GITHUB_ENV"
-          echo "Building dev version ${VER}"
+          echo "Building dev version ${VER} (arch=${{ matrix.arch }})"
 
       - name: Check GHCR token
-        if: steps.gate.outputs.skip != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -136,7 +132,6 @@ jobs:
           fi
 
       - name: Login to GHCR
-        if: steps.gate.outputs.skip != 'true'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -144,11 +139,9 @@ jobs:
           password: ${{ secrets.GHCR_TOKEN }}
 
       - name: Set up Docker Buildx
-        if: steps.gate.outputs.skip != 'true'
         uses: docker/setup-buildx-action@v4
 
       - name: Build and push
-        if: steps.gate.outputs.skip != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -162,3 +155,46 @@ jobs:
             -t ghcr.io/${OWNER_LC}/${{ matrix.arch }}-addon-wmbus_mqtt_bridge-dev:${ADDON_VERSION} \
             -f Dockerfile \
             .
+
+  # ---------------------------------------------------------------------------
+  # Bump — runs ONLY after BOTH arch images were pushed successfully
+  # (needs: build, which waits for every matrix leg). Writes the just-built
+  # version into config.yaml so Home Assistant never sees a version that has
+  # no image. If any arch build failed, this job is skipped and config.yaml
+  # keeps pointing at the previous, still-available image.
+  # ---------------------------------------------------------------------------
+  bump:
+    name: Bump dev version in config.yaml
+    needs: [gate, build]
+    if: needs.gate.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Bump version and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          CFG="config.yaml"
+          RAW_VER="$(sed -nE 's/^version:[[:space:]]*"?([^"[:space:]]+)"?[[:space:]]*$/\1/p' "${CFG}" | head -n1)"
+          CORE_VER="$(echo "${RAW_VER}" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
+          NEW_VER="${CORE_VER}-dev.${{ github.run_number }}"
+          echo "Bumping dev version: ${RAW_VER} → ${NEW_VER}"
+          sed -i -E "s/^(version:[[:space:]]*\").*\"/\1${NEW_VER}\"/" "${CFG}"
+
+          if git diff --quiet -- "${CFG}"; then
+            echo "config.yaml already at ${NEW_VER} — nothing to commit."
+            exit 0
+          fi
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${CFG}"
+          git commit -m "ci(dev): bump version to ${NEW_VER} [skip ci]"
+          git pull --rebase origin main
+          git push origin main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
