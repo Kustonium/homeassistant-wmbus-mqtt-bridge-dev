@@ -2208,10 +2208,18 @@ while true; do
   if [[ "${RESTART_ON_EXIT}" != "true" ]]; then
     exit ${rc}
   fi
-  warn "Pipeline exited (rc=${rc}), restarting in 2s..."
   STATUS_WMBUSMETERS_RUNNING="false"
-  STATUS_LAST_ERROR="pipeline exited rc=${rc}"
-  status_add_event "error" "Pipeline exited rc=${rc}"
+  if [[ "${rc}" -eq 0 ]]; then
+    # rc=0 is a clean, intentional exit — typically a soft pipeline reload
+    # requested via the WebUI (.reload_pipeline) to pick up added/removed
+    # meters. Not an error: the loop just respawns the pipeline.
+    log "Pipeline exited cleanly (rc=0), reloading in 2s..."
+    status_add_event "ok" "Pipeline reloaded"
+  else
+    warn "Pipeline exited (rc=${rc}), restarting in 2s..."
+    STATUS_LAST_ERROR="pipeline exited rc=${rc}"
+    status_add_event "error" "Pipeline exited rc=${rc}"
+  fi
   write_status_json
   sleep 2
   # continue
