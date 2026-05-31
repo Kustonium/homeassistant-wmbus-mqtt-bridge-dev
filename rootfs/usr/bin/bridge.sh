@@ -2331,14 +2331,14 @@ while true; do
   # one more telegram to create its meter-preview file.
   sync_candidate_autodecode_files
 
-  # LISTEN is needed when DECODE is active, and also when preview files exist.
-  # In pure LISTEN mode the primary pipeline sees candidates, but only this
-  # separate config dir contains meter-preview-* files for value preview.
-  if [[ "${METERS_COUNT}" -gt 0 || "$(listen_preview_count)" -gt 0 ]]; then
-    start_listen_instance
-  else
-    stop_listen_instance
-  fi
+  # Parallel LISTEN always starts unconditionally, including pure LISTEN /
+  # Discover mode with no configured meters and no preview files yet.
+  # Without this, no supervisor is alive when the first candidate triggers
+  # ensure_candidate_autodecode() + _request_listen_reload(), so .reload_listen
+  # is never handled and preview decoding never begins.
+  # Double-counting in pure LISTEN mode is prevented inside parse_listen_candidates()
+  # by the OFFICIAL_METERS_COUNT guard — not at the instance-start level.
+  start_listen_instance
 
   run_once
   rc=$?
