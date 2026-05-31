@@ -131,7 +131,7 @@ rm -f "${STATUS_CANDIDATES_FILE}"
 touch "${STATUS_CANDIDATES_FILE}"
 
 PIDS=()
-for rep in $(seq 1 10); do
+for _ in {1..10}; do
   for i in $(seq 1 20); do
     id="$(printf 'DDEEFF%02d' "${i}")"
     write_candidate "${id}" "auto" & PIDS+=($!)
