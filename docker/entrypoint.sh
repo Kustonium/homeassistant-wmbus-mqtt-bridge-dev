@@ -25,7 +25,7 @@ if [[ ! -f "${OPTIONS_JSON}" ]]; then
 
   "search_mode": false,
   "search_expected_value_m3": 0,
-  "search_tolerance_m3": 1,
+  "search_tolerance_m3": 0.05,
   "search_delta_mode": false,
   "search_min_delta_m3": 0.001,
   "search_topic": "wmbus/search/candidates",

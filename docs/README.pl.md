@@ -538,37 +538,37 @@ mosquitto_pub -h broker -t 'wmbus/esp32-strych/telegram' \
 #### State (zdekodowane wartości)
 
 ```
-<state_prefix>/<id>/state
+<state_prefix>/<meter_id>/state
 ```
 
-Np. dla licznika `id=woda_zimna_lazienka`:
+Np. dla licznika o sprzętowym numerze seryjnym `meter_id=41553221` (etykieta użytkownika `id=woda_zimna_lazienka`):
 
 ```
-wmbusmeters/woda_zimna_lazienka/state
-  →  {"id":"woda_zimna_lazienka","name":"...","media":"water","total_m3":123.456,"flow_m3h":0.0,"timestamp":"2026-05-17T10:00:00+02:00"}
+wmbusmeters/41553221/state
+  →  {"id":"41553221","name":"woda_zimna_lazienka","media":"water","total_m3":123.456,"flow_m3h":0.0,"timestamp":"2026-05-17T10:00:00+02:00"}
 ```
 
-Cały zdekodowany telegram jest publikowany jako payload JSON na jednym temacie state na licznik; HA wybiera poszczególne pola z niego przez `value_template` w Discovery.
+Cały zdekodowany telegram jest publikowany jako payload JSON na jednym temacie state na licznik; HA wybiera poszczególne pola z niego przez `value_template` w Discovery. Temat używa sprzętowego numeru seryjnego (`.id`), a nie etykiety użytkownika (`.name`).
 
 #### Home Assistant Discovery
 
 ```
-<discovery_prefix>/sensor/<id>_<field>/config
+<discovery_prefix>/sensor/wmbus_<meter_id>/<field>/config
 ```
 
 Np.:
 
 ```
-homeassistant/sensor/wmbus_woda_zimna_lazienka/total_m3/config
+homeassistant/sensor/wmbus_41553221/total_m3/config
   →  {"name":"woda_zimna_lazienka total_m3",
-      "state_topic":"wmbusmeters/woda_zimna_lazienka/state",
+      "state_topic":"wmbusmeters/41553221/state",
       "value_template":"{{ value_json.get('total_m3') | default(none) }}",
-      "json_attributes_topic":"wmbusmeters/woda_zimna_lazienka/state",
+      "json_attributes_topic":"wmbusmeters/41553221/state",
       "expire_after":3600,
       "unit_of_measurement":"m³",
       "device_class":"water",
       "state_class":"total_increasing",
-      "unique_id":"wmbus_woda_zimna_lazienka_total_m3",
+      "unique_id":"wmbus_41553221_total_m3",
       ...}
 ```
 

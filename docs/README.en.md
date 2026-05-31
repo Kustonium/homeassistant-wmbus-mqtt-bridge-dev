@@ -538,37 +538,37 @@ mosquitto_pub -h broker -t 'wmbus/esp32-attic/telegram' \
 #### State (decoded values)
 
 ```
-<state_prefix>/<id>/state
+<state_prefix>/<meter_id>/state
 ```
 
-E.g. for a meter `id=cold_water_bathroom`:
+E.g. for a meter with hardware serial `meter_id=41553221` (user label `id=cold_water_bathroom`):
 
 ```
-wmbusmeters/cold_water_bathroom/state
-  →  {"id":"cold_water_bathroom","name":"...","media":"water","total_m3":123.456,"flow_m3h":0.0,"timestamp":"2026-05-17T10:00:00+02:00"}
+wmbusmeters/41553221/state
+  →  {"id":"41553221","name":"cold_water_bathroom","media":"water","total_m3":123.456,"flow_m3h":0.0,"timestamp":"2026-05-17T10:00:00+02:00"}
 ```
 
-The entire decoded telegram is published as a JSON payload on a single state topic per meter; HA picks individual fields from it via `value_template` in Discovery.
+The entire decoded telegram is published as a JSON payload on a single state topic per meter; HA picks individual fields from it via `value_template` in Discovery. The topic uses the hardware serial (`.id`), not the user label (`.name`).
 
 #### Home Assistant Discovery
 
 ```
-<discovery_prefix>/sensor/<id>_<field>/config
+<discovery_prefix>/sensor/wmbus_<meter_id>/<field>/config
 ```
 
 E.g.:
 
 ```
-homeassistant/sensor/wmbus_cold_water_bathroom/total_m3/config
+homeassistant/sensor/wmbus_41553221/total_m3/config
   →  {"name":"cold_water_bathroom total_m3",
-      "state_topic":"wmbusmeters/cold_water_bathroom/state",
+      "state_topic":"wmbusmeters/41553221/state",
       "value_template":"{{ value_json.get('total_m3') | default(none) }}",
-      "json_attributes_topic":"wmbusmeters/cold_water_bathroom/state",
+      "json_attributes_topic":"wmbusmeters/41553221/state",
       "expire_after":3600,
       "unit_of_measurement":"m³",
       "device_class":"water",
       "state_class":"total_increasing",
-      "unique_id":"wmbus_cold_water_bathroom_total_m3",
+      "unique_id":"wmbus_41553221_total_m3",
       ...}
 ```
 

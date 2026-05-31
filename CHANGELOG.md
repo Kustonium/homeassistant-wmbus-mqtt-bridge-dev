@@ -1,3 +1,38 @@
+## 1.5.18-dev
+
+PRD §14 follow-up batch (FU-001, FU-002, FU-005). Verification-only
+items FU-003 and FU-004 needed no code change (current behaviour already
+correct; reference PRD updated).
+
+### Fixed
+- FU-001: unified the `search_tolerance_m3` default to `0.05` across all
+  runtime and Docker fallbacks. `bridge.sh` used a stale `1` fallback in
+  two spots (`json_get '.search_tolerance_m3' '1'` and
+  `float_or_default "${SEARCH_TOLERANCE_M3}" "1"`) and
+  `docker/entrypoint.sh` seeded the default `options.json` with `1`.
+  Without an explicit value, Docker users (and anyone clearing the option)
+  got a 20× wider match tolerance than the documented `0.05`, risking
+  false matches in multi-dwelling buildings. `config.yaml` was already
+  correct.
+
+- FU-005: the "Restart add-on" button no longer silently fakes success in
+  Docker standalone mode. Without a Supervisor API, `/api/restart-bridge`
+  can only return a 400, yet the frontend swallowed the error, entered the
+  "restarting" overlay and — because the WebUI process never actually went
+  down — reported "Add-on restarted successfully". The handler now detects
+  `meta.runtime === "docker"` and shows a clear instruction to run
+  `docker restart <container>` on the host instead. New i18n key
+  `restart_docker_manual` (EN/PL/DE/CS/SK). HA behaviour unchanged.
+
+### Docs
+- FU-002: corrected the published MQTT state/Discovery topic examples in
+  all READMEs (EN/PL/DE/SK/CS). The topic uses the hardware serial
+  (`.id`, e.g. `wmbusmeters/41553221/state`), not the user label — docs
+  previously showed `wmbusmeters/cold_water_bathroom/state`. Discovery
+  topic and `unique_id` now use `wmbus_<meter_id>`; the user label is kept
+  only in the sensor `name`. Placeholders fixed: `<id>` → `<meter_id>`,
+  `sensor/<id>_<field>` → `sensor/wmbus_<meter_id>/<field>`.
+
 ## 1.5.3-dev
 
 Development snapshot ahead of the next stable cut. Bundles the

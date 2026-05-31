@@ -539,37 +539,37 @@ mosquitto_pub -h broker -t 'wmbus/esp32-attic/telegram' \
 #### State (dekódované hodnoty)
 
 ```
-<state_prefix>/<id>/state
+<state_prefix>/<meter_id>/state
 ```
 
-Napr. pre merač `id=cold_water_bathroom`:
+Napr. pre merač s hardvérovým sériovým číslom `meter_id=41553221` (používateľský štítok `id=cold_water_bathroom`):
 
 ```
-wmbusmeters/cold_water_bathroom/state
-  →  {"id":"cold_water_bathroom","name":"...","media":"water","total_m3":123.456,"flow_m3h":0.0,"timestamp":"2026-05-17T10:00:00+02:00"}
+wmbusmeters/41553221/state
+  →  {"id":"41553221","name":"cold_water_bathroom","media":"water","total_m3":123.456,"flow_m3h":0.0,"timestamp":"2026-05-17T10:00:00+02:00"}
 ```
 
-Celý dekódovaný telegram je publikovaný ako JSON payload na jednom state topicu na merač; HA vyberá jednotlivé polia z neho cez `value_template` v Discovery.
+Celý dekódovaný telegram je publikovaný ako JSON payload na jednom state topicu na merač; HA vyberá jednotlivé polia z neho cez `value_template` v Discovery. Topic používa hardvérové sériové číslo (`.id`), nie používateľský štítok (`.name`).
 
 #### Home Assistant Discovery
 
 ```
-<discovery_prefix>/sensor/<id>_<field>/config
+<discovery_prefix>/sensor/wmbus_<meter_id>/<field>/config
 ```
 
 Napr.:
 
 ```
-homeassistant/sensor/wmbus_cold_water_bathroom/total_m3/config
+homeassistant/sensor/wmbus_41553221/total_m3/config
   →  {"name":"cold_water_bathroom total_m3",
-      "state_topic":"wmbusmeters/cold_water_bathroom/state",
+      "state_topic":"wmbusmeters/41553221/state",
       "value_template":"{{ value_json.get('total_m3') | default(none) }}",
-      "json_attributes_topic":"wmbusmeters/cold_water_bathroom/state",
+      "json_attributes_topic":"wmbusmeters/41553221/state",
       "expire_after":3600,
       "unit_of_measurement":"m³",
       "device_class":"water",
       "state_class":"total_increasing",
-      "unique_id":"wmbus_cold_water_bathroom_total_m3",
+      "unique_id":"wmbus_41553221_total_m3",
       ...}
 ```
 
