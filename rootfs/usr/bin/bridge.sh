@@ -1549,7 +1549,6 @@ process_search_json() {
 refresh_meter_files() {
   rm -f "${METER_DIR}/meter-"* 2>/dev/null || true
 
-  METERS_COUNT=0
   OFFICIAL_METERS_COUNT=0
   local configured_count=0
   if [[ -f "${OPTIONS_JSON}" ]] && jq -e '.meters and (.meters|length>0)' "${OPTIONS_JSON}" >/dev/null 2>&1; then
@@ -1561,7 +1560,6 @@ refresh_meter_files() {
     local cached_count
     cached_count="$(create_search_meter_files_from_cache)"
     if [[ "${cached_count}" =~ ^[0-9]+$ && "${cached_count}" -gt 0 ]]; then
-      METERS_COUNT="${cached_count}"
       SEARCH_USING_TEMP_METERS="true"
       SEARCH_TEMP_METERS_LOADED="${cached_count}"
       warn "No user meters configured -> SEARCH MODE (temporary cached candidates=${cached_count}, expected=${SEARCH_EXPECTED_VALUE_M3} m3, tolerance=${SEARCH_TOLERANCE_M3} m3)."
@@ -1629,7 +1627,6 @@ refresh_meter_files() {
 
       log "meter: ${friendly_name} id=${mid} driver=${driver}"
     done < <(jq -c '.meters[]' "${OPTIONS_JSON}" 2>/dev/null || true)
-    METERS_COUNT="${loaded_count}"
     OFFICIAL_METERS_COUNT="${loaded_count}"
     if [[ "${loaded_count}" -gt 0 ]]; then
       write_search_status "configured" "official_meters_configured"
@@ -1648,8 +1645,8 @@ RELOAD_FLAG="${BASE}/.reload_pipeline"
 rm -f "${RELOAD_FLAG}" 2>/dev/null || true
 
 # Initial meter registration before the restart loop kicks in. Without
-# this, METERS_COUNT and OFFICIAL_METERS_COUNT would stay at their
-# default (0), and the first iteration would unconditionally go LISTEN.
+# this, OFFICIAL_METERS_COUNT would stay at 0 and parse_listen_candidates
+# would mis-guard candidate double-counting on the first pipeline start.
 refresh_meter_files
 
 # ------------------------------------------------------------
