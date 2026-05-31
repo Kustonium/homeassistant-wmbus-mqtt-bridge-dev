@@ -258,12 +258,17 @@ _request_listen_reload() {
   now="$(date +%s 2>/dev/null || echo 0)"
   last="$(cat "${gate}" 2>/dev/null || echo 0)"
   if (( now - last >= 10 )); then
+    log "[DIAG] reload_listen: immediate (elapsed=$(( now - last ))s >= 10s)"
     printf '%s\n' "${now}" > "${gate}"
     touch "${BASE}/.reload_listen" 2>/dev/null || true
+    log "[DIAG] reload_listen: touched .reload_listen"
   elif mkdir "${pending}" 2>/dev/null; then
     remaining=$(( 10 - (now - last) ))
     (( remaining < 1 )) && remaining=1
-    ( sleep "${remaining}"; rmdir "${pending}" 2>/dev/null; printf '%s\n' "$(date +%s)" > "${gate}"; touch "${BASE}/.reload_listen" 2>/dev/null ) >/dev/null 2>&1 &
+    log "[DIAG] reload_listen: deferred in ${remaining}s (elapsed=$(( now - last ))s < 10s)"
+    ( sleep "${remaining}"; rmdir "${pending}" 2>/dev/null; printf '%s\n' "$(date +%s)" > "${gate}"; touch "${BASE}/.reload_listen" 2>/dev/null; log "[DIAG] reload_listen: deferred fired, touched .reload_listen" ) 2>/dev/null &
+  else
+    log "[DIAG] reload_listen: suppressed (pending already set, elapsed=$(( now - last ))s)"
   fi
 }
 
@@ -307,7 +312,10 @@ ensure_candidate_autodecode() {
   [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]] || return 0
   file="$(candidate_autodecode_file "${id}")"
 
+  log "[DIAG] autodecode ${id}: file=${file} driver=${driver:-auto} type=${type_line:-?} reload=${reload}"
+
   if candidate_type_requires_aes "${type_line}"; then
+    log "[DIAG] autodecode ${id}: AES required, skipping preview"
     if [[ -f "${file}" ]]; then
       rm -f "${file}" 2>/dev/null || true
       if [[ "${reload}" == "true" ]]; then
@@ -332,6 +340,7 @@ ensure_candidate_autodecode() {
 
   if [[ ! -f "${file}" ]] || ! cmp -s "${tmp}" "${file}" 2>/dev/null; then
     mv "${tmp}" "${file}" 2>/dev/null || true
+    log "[DIAG] autodecode ${id}: wrote ${file} (driver=${driver:-auto})"
     if [[ "${reload}" == "true" ]]; then
       # Only the LISTEN instance reads these preview files — reload just it.
       # Touching RELOAD_FLAG/.reload_pipeline would needlessly restart the main
@@ -342,6 +351,7 @@ ensure_candidate_autodecode() {
     fi
   else
     rm -f "${tmp}" 2>/dev/null || true
+    log "[DIAG] autodecode ${id}: ${file} unchanged, no reload triggered"
   fi
 }
 
@@ -1954,10 +1964,15 @@ _store_candidate_value() {
       ' <<<"${json_line}" 2>/dev/null | head -n 1
     )
   fi
-  [[ -n "${value}" ]] || return 0
+  if [[ -z "${value}" ]]; then
+    log "[DIAG] _store_candidate_value ${id}: no numeric value found, skipping"
+    return 0
+  fi
+  log "[DIAG] _store_candidate_value ${id}: value_key=${value_key} value=${value}"
   now="$(iso_now)"
   _tsv_upsert "${STATUS_CANDIDATE_VALUES_FILE}" "${id}" \
     "$(printf '%s\t%s\t%s\t%s' "${id}" "${value}" "${value_key}" "${now}")"
+  log "[DIAG] _store_candidate_value ${id}: wrote to status_candidate_values.tsv"
 }
 
 status_candidate_seen_from_json() {
@@ -2000,9 +2015,11 @@ parse_listen_candidates() {
     # config matching this telegram's ID. Capture the primary numeric value
     # for the WebGUI "Preview value" feature.
     if [[ "${line}" == \{*\"_\":\"telegram\"* ]]; then
+      log "[DIAG] LISTEN-parse: JSON telegram received: ${line:0:160}"
       if [[ "${OFFICIAL_METERS_COUNT:-0}" -gt 0 ]]; then
         status_candidate_seen_from_json "${line}"
       fi
+      log "[DIAG] LISTEN-parse: calling _store_candidate_value"
       _store_candidate_value "${line}"
       continue
     fi
@@ -2223,6 +2240,8 @@ start_listen_instance() {
     # files in /data/listen/etc/wmbusmeters.d/ without touching the DECODE
     # pipeline. Reload cycle ~2-3 s.
     while true; do
+      _diag_preview_count="$(find "${LISTEN_METER_DIR}" -maxdepth 1 -name 'meter-preview-*' 2>/dev/null | wc -l | tr -d ' ')"
+      log "[DIAG] LISTEN supervisor: starting pipeline (meter-preview-* count=${_diag_preview_count} in ${LISTEN_METER_DIR})"
       ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" "${SUB_EXTRA[@]}" -t "${RAW_TOPIC}" -F '%p' \
         | awk '
             function ishex(s) { return (s ~ /^[0-9A-Fa-f]+$/) }
@@ -2238,13 +2257,16 @@ start_listen_instance() {
         | ${STDBUF_BIN} /usr/bin/wmbusmeters --useconfig="${LISTEN_BASE}" 2>&1 \
         | parse_listen_candidates &
       pipeline_pid=$!
+      log "[DIAG] LISTEN supervisor: pipeline started (pid=${pipeline_pid})"
       # Poll for reload flag or natural exit.
       while kill -0 "${pipeline_pid}" 2>/dev/null; do
         if [[ -f "${BASE}/.reload_listen" ]]; then
+          log "[DIAG] LISTEN supervisor: .reload_listen detected, killing pid=${pipeline_pid}"
           rm -f "${BASE}/.reload_listen" 2>/dev/null || true
           pkill -TERM -P "${pipeline_pid}" 2>/dev/null || true
           kill -TERM "${pipeline_pid}" 2>/dev/null || true
           wait "${pipeline_pid}" 2>/dev/null || true
+          log "[DIAG] LISTEN supervisor: pipeline stopped, restarting"
           break
         fi
         sleep 2
