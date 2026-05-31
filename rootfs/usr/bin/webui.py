@@ -50,6 +50,8 @@ STATUS_ESP_BOOT_FILE = BASE / "status_esp_boot.json"
 # Per-candidate preview values written by bridge.sh's parallel LISTEN instance
 # when it has a meter-preview-<id> file in LISTEN_BASE/etc/wmbusmeters.d/.
 STATUS_CANDIDATE_VALUES_FILE = BASE / "status_candidate_values.tsv"
+# Per-candidate preview lifecycle state: pending | decoded_value | decoded_without_numeric_value
+STATUS_CANDIDATE_PREVIEW_STATE_FILE = BASE / "status_candidate_preview_state.tsv"
 # Per-ESP-device telegram tracking — written by bridge.sh's background
 # subscriber listening to RAW_TOPIC. The PRIMARY source of truth for which
 # ESPs were seen in the current bridge session (works without ESP diagnostics).
@@ -631,6 +633,11 @@ def state(include_ignored: bool = False) -> dict:
         ["id", "preview_value", "preview_value_key", "preview_ts"],
     )
     preview_by_id = {normalize_meter_id(r.get("id")): r for r in preview_rows if normalize_meter_id(r.get("id"))}
+    preview_state_rows = read_tsv(
+        STATUS_CANDIDATE_PREVIEW_STATE_FILE,
+        ["id", "state", "ts", "note"],
+    )
+    preview_state_by_id = {normalize_meter_id(r.get("id")): r for r in preview_state_rows if normalize_meter_id(r.get("id"))}
     for c in candidates:
         c["ignored"] = "true" if c.get("id") in ignored else "false"
         c["analysis"] = analysis.get(c.get("id") or "", {})
@@ -646,6 +653,8 @@ def state(include_ignored: bool = False) -> dict:
                 c["preview_value"]     = pv.get("preview_value", "")
                 c["preview_value_key"] = pv.get("preview_value_key", "")
                 c["preview_ts"]        = pv.get("preview_ts", "")
+            ps = preview_state_by_id.get(cid)
+            c["preview_state"] = ps.get("state", "") if ps else ""
 
     # Build normalized options_meter_ids early — used both for TSV filtering and
     # candidate dedup. Do not write back to status_meters.tsv from this read path.

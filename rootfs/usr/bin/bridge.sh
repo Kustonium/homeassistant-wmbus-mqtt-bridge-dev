@@ -49,6 +49,9 @@ STATUS_CANDIDATE_RAW_FILE="${BASE}/status_candidate_raw.tsv"
 # the parallel LISTEN instance has a meter-preview-<id> file in its config dir.
 # Format: id<TAB>value<TAB>value_key<TAB>iso_timestamp
 STATUS_CANDIDATE_VALUES_FILE="${BASE}/status_candidate_values.tsv"
+# Per-candidate preview lifecycle state: pending | decoded_value | decoded_without_numeric_value
+# Format: id<TAB>state<TAB>iso_timestamp<TAB>note
+STATUS_CANDIDATE_PREVIEW_STATE_FILE="${BASE}/status_candidate_preview_state.tsv"
 # Per-ESP-device telegram tracking — written by the background MQTT subscriber
 # that listens to the RAW topic itself. The "+" wildcard segment carries the
 # device name (e.g. wmbus/xiaoseed/telegram → "xiaoseed"). Lets the WebGUI
@@ -91,7 +94,7 @@ RAW_RATE_CUR_MIN_EPOCH=0
 RAW_RATE_CUR_MIN_COUNT=0
 RAW_RATE_PREV_MIN_COUNT=0
 
-touch "${STATUS_METERS_FILE}" "${STATUS_CANDIDATES_FILE}" "${STATUS_EVENTS_FILE}" "${STATUS_SEEN_FILE}" "${STATUS_LAST_RAW_FILE}" "${STATUS_RECENT_RAW_FILE}" "${STATUS_CANDIDATE_ANALYSIS_FILE}" "${STATUS_CANDIDATE_RAW_FILE}" "${STATUS_RATE_HISTORY_FILE}" "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" "${SEARCH_MATCHES_FILE}" "${SEARCH_STATUS_FILE}"
+touch "${STATUS_METERS_FILE}" "${STATUS_CANDIDATES_FILE}" "${STATUS_EVENTS_FILE}" "${STATUS_SEEN_FILE}" "${STATUS_LAST_RAW_FILE}" "${STATUS_RECENT_RAW_FILE}" "${STATUS_CANDIDATE_ANALYSIS_FILE}" "${STATUS_CANDIDATE_RAW_FILE}" "${STATUS_RATE_HISTORY_FILE}" "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" "${SEARCH_MATCHES_FILE}" "${SEARCH_STATUS_FILE}" "${STATUS_CANDIDATE_PREVIEW_STATE_FILE}"
 # Remove any orphaned pending-reload marker left by a hard stop during deferred sleep.
 rm -rf "${BASE}/.reload_listen_pending" 2>/dev/null || true
 : > "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" 2>/dev/null || true
@@ -242,6 +245,14 @@ _tsv_upsert() {
   ) 9>"${file}.lock"
 }
 
+# Write or update a per-candidate preview lifecycle state row.
+# States: pending | decoded_value | decoded_without_numeric_value
+_set_preview_state() {
+  local id="$1" state="$2" note="${3:-}"
+  _tsv_upsert "${STATUS_CANDIDATE_PREVIEW_STATE_FILE}" "${id}" \
+    "$(printf '%s\t%s\t%s\t%s' "${id}" "${state}" "$(iso_now)" "${note}")"
+}
+
 # Debounced .reload_listen trigger — at most one LISTEN restart per 10 seconds.
 # When called within the cooldown window a single deferred fire is scheduled via
 # a background sleep so all meter-preview-<id> files written during the burst are
@@ -341,6 +352,7 @@ ensure_candidate_autodecode() {
   if [[ ! -f "${file}" ]] || ! cmp -s "${tmp}" "${file}" 2>/dev/null; then
     mv "${tmp}" "${file}" 2>/dev/null || true
     log "[DIAG] autodecode ${id}: wrote ${file} (driver=${driver:-auto})"
+    _set_preview_state "${id}" "pending"
     if [[ "${reload}" == "true" ]]; then
       # Only the LISTEN instance reads these preview files — reload just it.
       # Touching RELOAD_FLAG/.reload_pipeline would needlessly restart the main
@@ -1966,12 +1978,14 @@ _store_candidate_value() {
   fi
   if [[ -z "${value}" ]]; then
     log "[DIAG] _store_candidate_value ${id}: no numeric value found, skipping"
+    _set_preview_state "${id}" "decoded_without_numeric_value"
     return 0
   fi
   log "[DIAG] _store_candidate_value ${id}: value_key=${value_key} value=${value}"
   now="$(iso_now)"
   _tsv_upsert "${STATUS_CANDIDATE_VALUES_FILE}" "${id}" \
     "$(printf '%s\t%s\t%s\t%s' "${id}" "${value}" "${value_key}" "${now}")"
+  _set_preview_state "${id}" "decoded_value"
   log "[DIAG] _store_candidate_value ${id}: wrote to status_candidate_values.tsv"
 }
 

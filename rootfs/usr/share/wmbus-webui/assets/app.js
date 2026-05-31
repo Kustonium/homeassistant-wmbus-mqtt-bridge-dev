@@ -335,10 +335,12 @@
   function encBadge(enc, note) {
     const e = (enc || "").toLowerCase();
     if (!e) return `<span class="pill muted" title="${escapeHtml(t("enc_unknown", "Not yet analyzed"))}">?</span>`;
-    const bad  = ["encrypted", "aes_required", "aes"].includes(e);
-    const good = ["not_encrypted", "no_aes", "plain", "unencrypted", "unknown"].includes(e);
-    const label = bad ? t("enc_aes_req", "AES req.") : t("enc_no_aes", "no AES");
-    const cls   = bad ? "bad" : "ok";
+    const bad     = ["encrypted", "aes_required", "aes"].includes(e);
+    const unknown = e === "unknown";
+    const label   = bad     ? t("enc_aes_req", "AES req.")
+                  : unknown ? t("enc_unknown", "Not yet analyzed")
+                  :            t("enc_no_aes", "no AES");
+    const cls     = bad ? "bad" : unknown ? "muted" : "ok";
     const title = note ? ` title="${escapeHtml(note)}"` : "";
     return `<span class="pill ${cls}"${title}>${escapeHtml(label)}</span>`;
   }
@@ -1384,9 +1386,12 @@
                 const previewVal    = String(row.preview_value || "").trim();
                 const previewKey    = String(row.preview_value_key || "").trim();
                 const previewUnit   = previewKey ? unitFromKey(previewKey) : "";
-                const aesRequired = enc === "encrypted" || enc === "aes_required" || enc === "aes";
+                const previewState  = String(row.preview_state || "").trim();
+                const aesRequired   = enc === "encrypted" || enc === "aes_required" || enc === "aes";
                 const previewCell   = previewVal
                   ? `<span style="font-weight:700;color:#4df08d;">${escapeHtml(previewVal)}</span>${previewUnit ? ` <span class="mono" style="color:#9eafba;font-size:11px;">${escapeHtml(previewUnit)}</span>` : ""}${previewKey ? `<div class="mono" style="font-size:10px;color:#4a6070;">${escapeHtml(previewKey)}</div>` : ""}`
+                  : previewState === "decoded_without_numeric_value"
+                      ? `<span style="font-size:11px;color:#9eafba;">${escapeHtml(t("preview_no_value", "no value in telegram"))}</span>`
                   : (!aesRequired
                       ? `<span style="font-size:11px;color:#f3c84b;">${escapeHtml(t("preview_pending", "decoding…"))}</span>`
                       : `<span style="color:#4a6070;">—</span>`);
