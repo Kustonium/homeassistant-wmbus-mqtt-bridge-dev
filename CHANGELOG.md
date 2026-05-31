@@ -1,3 +1,18 @@
+## 1.5.19-dev
+
+### Fixed
+- FU-008: Diehl/SAP (mfct 0x304C) RAW fallback no longer hardcodes
+  `izarv2 / Water meter (0x07)` for every SAP telegram. The A/TYPE byte
+  (raw[18:20]) is now read: type `0x07` keeps the unchanged izarv2 water
+  path, any other type registers as `auto` + a mapped label via the new
+  `map_device_type()` (known OMS types + `Unknown meter type (0xXX)`
+  fallback, no full 0x00–0xFF table). Added a hard LISTEN-over-RAW
+  priority: if the candidate already has a concrete (non-`auto`) driver
+  from a real LISTEN classification, the RAW fallback returns without
+  overwriting it — fixing the alternating overwrite race (e.g. non-water
+  Diehl flapping auto → sharky → auto). bridge.sh only; IZAR water path
+  and lowercase-ID handling unchanged.
+
 ## 1.5.18-dev
 
 PRD §14 follow-up batch (FU-001, FU-002, FU-005). Verification-only
