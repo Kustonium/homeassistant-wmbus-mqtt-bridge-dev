@@ -92,6 +92,8 @@ RAW_RATE_CUR_MIN_COUNT=0
 RAW_RATE_PREV_MIN_COUNT=0
 
 touch "${STATUS_METERS_FILE}" "${STATUS_CANDIDATES_FILE}" "${STATUS_EVENTS_FILE}" "${STATUS_SEEN_FILE}" "${STATUS_LAST_RAW_FILE}" "${STATUS_RECENT_RAW_FILE}" "${STATUS_CANDIDATE_ANALYSIS_FILE}" "${STATUS_CANDIDATE_RAW_FILE}" "${STATUS_RATE_HISTORY_FILE}" "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" "${SEARCH_MATCHES_FILE}" "${SEARCH_STATUS_FILE}"
+# Remove any orphaned pending-reload marker left by a hard stop during deferred sleep.
+rm -rf "${BASE}/.reload_listen_pending" 2>/dev/null || true
 : > "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" 2>/dev/null || true
 # Preview values are session-scoped — clear stale entries from previous runs
 # so the WebGUI doesn't show outdated readings (or the legacy first-numeric-field
@@ -225,6 +227,46 @@ status_find_recent_raw_for_id() {
   done
 }
 
+# Atomic, serialized replace-or-insert for a single-keyed TSV file.
+# Holds an exclusive flock on FILE.lock for the entire read-modify-write.
+# Uses mktemp so concurrent writers never collide on a shared .tmp path.
+_tsv_upsert() {
+  local file="$1" id="$2" row="$3"
+  (
+    flock -x 9
+    local _tmp
+    _tmp="$(mktemp "${file}.tmp.XXXXXX")" || return 1
+    awk -F '\t' -v id="${id}" '$1 != id {print}' "${file}" 2>/dev/null > "${_tmp}" || true
+    printf '%s\n' "${row}" >> "${_tmp}"
+    mv "${_tmp}" "${file}" 2>/dev/null || { rm -f "${_tmp}"; true; }
+  ) 9>"${file}.lock"
+}
+
+# Debounced .reload_listen trigger — at most one LISTEN restart per 10 seconds.
+# When called within the cooldown window a single deferred fire is scheduled via
+# a background sleep so all meter-preview-<id> files written during the burst are
+# picked up on the next restart (supervisor loop polls every 2 s).
+#
+# Pending marker: mkdir is atomic on POSIX — exactly one concurrent caller wins
+# the race and schedules the background worker; the others are silently no-ops.
+# The worker sleeps only the remaining cooldown time (not a full 10 s), so a
+# candidate detected near the end of a window reloads as soon as the gate opens.
+_request_listen_reload() {
+  local gate="${BASE}/.reload_listen_gate"
+  local pending="${BASE}/.reload_listen_pending"
+  local now last remaining
+  now="$(date +%s 2>/dev/null || echo 0)"
+  last="$(cat "${gate}" 2>/dev/null || echo 0)"
+  if (( now - last >= 10 )); then
+    printf '%s\n' "${now}" > "${gate}"
+    touch "${BASE}/.reload_listen" 2>/dev/null || true
+  elif mkdir "${pending}" 2>/dev/null; then
+    remaining=$(( 10 - (now - last) ))
+    (( remaining < 1 )) && remaining=1
+    ( sleep "${remaining}"; rmdir "${pending}" 2>/dev/null; printf '%s\n' "$(date +%s)" > "${gate}"; touch "${BASE}/.reload_listen" 2>/dev/null ) >/dev/null 2>&1 &
+  fi
+}
+
 status_upsert_candidate_analysis() {
   local id
   local encryption="$2"
@@ -233,16 +275,13 @@ status_upsert_candidate_analysis() {
   local security="${5:-}"
   local raw_len="${6:-0}"
   local last_seen="${7:-}"
-  local tmp
 
   id="$(normalize_meter_id "$1")"
   [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]] || return 0
   [[ -n "${last_seen}" ]] || last_seen="$(iso_now)"
 
-  tmp="${STATUS_CANDIDATE_ANALYSIS_FILE}.tmp"
-  awk -F '\t' -v id="${id}" '$1 != id {print}' "${STATUS_CANDIDATE_ANALYSIS_FILE}" 2>/dev/null > "${tmp}" || true
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${id}" "${encryption:-unknown}" "${note:-}" "${ci:-}" "${security:-}" "${raw_len:-0}" "${last_seen}" >> "${tmp}"
-  mv "${tmp}" "${STATUS_CANDIDATE_ANALYSIS_FILE}" 2>/dev/null || true
+  _tsv_upsert "${STATUS_CANDIDATE_ANALYSIS_FILE}" "${id}" \
+    "$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s' "${id}" "${encryption:-unknown}" "${note:-}" "${ci:-}" "${security:-}" "${raw_len:-0}" "${last_seen}")"
 }
 
 candidate_autodecode_file() {
@@ -275,7 +314,7 @@ ensure_candidate_autodecode() {
         # Preview files live in LISTEN_METER_DIR — only the LISTEN instance
         # needs reloading. Do NOT touch RELOAD_FLAG/.reload_pipeline here: that
         # restarts the main DECODE pipeline on every new candidate (churn loop).
-        touch "${BASE}/.reload_listen" 2>/dev/null || true
+        _request_listen_reload
       fi
     fi
     return 0
@@ -297,7 +336,9 @@ ensure_candidate_autodecode() {
       # Only the LISTEN instance reads these preview files — reload just it.
       # Touching RELOAD_FLAG/.reload_pipeline would needlessly restart the main
       # DECODE pipeline on every newly heard candidate (the churn seen in logs).
-      touch "${BASE}/.reload_listen" 2>/dev/null || true
+      # _request_listen_reload debounces bursts (many new candidates at once)
+      # to at most one restart per 10 s, with a deferred fire for late arrivals.
+      _request_listen_reload
     fi
   else
     rm -f "${tmp}" 2>/dev/null || true
@@ -318,16 +359,13 @@ status_record_candidate_raw() {
   local id
   local raw="$2"
   local ts="${3:-}"
-  local tmp
   id="$(normalize_meter_id "$1")"
   [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]] || return 0
   [[ -n "${raw}" ]] || return 0
   [[ -n "${ts}" ]] || ts="$(iso_now)"
 
-  tmp="${STATUS_CANDIDATE_RAW_FILE}.tmp"
-  awk -F '\t' -v id="${id}" '$1 != id {print}' "${STATUS_CANDIDATE_RAW_FILE}" 2>/dev/null > "${tmp}" || true
-  printf '%s\t%s\t%s\t%s\n' "${id}" "${ts}" "${#raw}" "${raw}" >> "${tmp}"
-  mv "${tmp}" "${STATUS_CANDIDATE_RAW_FILE}" 2>/dev/null || true
+  _tsv_upsert "${STATUS_CANDIDATE_RAW_FILE}" "${id}" \
+    "$(printf '%s\t%s\t%s\t%s' "${id}" "${ts}" "${#raw}" "${raw}")"
 }
 
 status_analyze_candidate_from_text() {
@@ -490,7 +528,7 @@ status_raw_seen() {
 
 status_meter_seen() {
   local json_line="$1"
-  local id name meter media value_key value value_parts last_seen tmp
+  local id name meter media value_key value value_parts last_seen
   id="$(normalize_meter_id "$(jq -r '.id // empty' <<<"${json_line}" 2>/dev/null || true)")"
   [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]] || return 0
   name="$(jq -r '.name // empty' <<<"${json_line}" 2>/dev/null || true)"
@@ -570,11 +608,8 @@ status_meter_seen() {
   status_record_seen "${id}" "meter"
   last_seen="$(iso_now)"
   IFS=$'\t' read -r seen_count avg_interval_s seen_15m seen_60m < <(status_seen_stats "${id}" "meter")
-  tmp="${STATUS_METERS_FILE}.tmp"
-  awk -F '	' -v id="${id}" '$1 != id {print}' "${STATUS_METERS_FILE}" 2>/dev/null > "${tmp}" || true
-  printf '%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s
-' "${id}" "${name}" "${meter}" "${media}" "${value_key}" "${value}" "${last_seen}" "published" "${seen_count}" "${avg_interval_s}" "${seen_15m}" "${seen_60m}" "${value_parts}" >> "${tmp}"
-  mv "${tmp}" "${STATUS_METERS_FILE}" 2>/dev/null || true
+  _tsv_upsert "${STATUS_METERS_FILE}" "${id}" \
+    "$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "${id}" "${name}" "${meter}" "${media}" "${value_key}" "${value}" "${last_seen}" "published" "${seen_count}" "${avg_interval_s}" "${seen_15m}" "${seen_60m}" "${value_parts}")"
 }
 
 status_candidate_seen() {
@@ -582,7 +617,7 @@ status_candidate_seen() {
   local driver="${2:-auto}"
   local type_line="${3:-}"
   local update_status="${4:-true}"
-  local now tmp
+  local now
   STATUS_WMBUSMETERS_RUNNING="true"
   id="$(normalize_meter_id "$1")"
   [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]] || return 0
@@ -593,11 +628,8 @@ status_candidate_seen() {
   status_record_seen "${id}" "candidate"
   now="$(iso_now)"
   IFS=$'\t' read -r seen_count avg_interval_s seen_15m seen_60m < <(status_seen_stats "${id}" "candidate")
-  tmp="${STATUS_CANDIDATES_FILE}.tmp"
-  awk -F '	' -v id="${id}" '$1 != id {print}' "${STATUS_CANDIDATES_FILE}" 2>/dev/null > "${tmp}" || true
-  printf '%s	%s	%s	%s	%s	%s	%s	%s
-' "${id}" "${driver}" "${type_line}" "${now}" "${seen_count}" "${avg_interval_s}" "${seen_15m}" "${seen_60m}" >> "${tmp}"
-  mv "${tmp}" "${STATUS_CANDIDATES_FILE}" 2>/dev/null || true
+  _tsv_upsert "${STATUS_CANDIDATES_FILE}" "${id}" \
+    "$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "${id}" "${driver}" "${type_line}" "${now}" "${seen_count}" "${avg_interval_s}" "${seen_15m}" "${seen_60m}")"
   status_analyze_candidate_from_text "${id}" "${driver}" "${type_line}"
   ensure_candidate_autodecode "${id}" "${driver:-auto}" "${type_line:-}"
   if [[ "${existed}" != "true" ]]; then
@@ -1888,7 +1920,7 @@ emit_snippet_if_new() {
 #   3. last resort: first numeric field
 _store_candidate_value() {
   local json_line="$1"
-  local id value_key value now tmp
+  local id value_key value now
   id="$(normalize_meter_id "$(jq -r '.id // empty' <<<"${json_line}" 2>/dev/null)")"
   [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]] || return 0
   # Step 1 — cumulative meter reading. Excludes production/tariff registers and
@@ -1927,11 +1959,8 @@ _store_candidate_value() {
   fi
   [[ -n "${value}" ]] || return 0
   now="$(iso_now)"
-  tmp="${STATUS_CANDIDATE_VALUES_FILE}.tmp"
-  # Remove any previous row for this id, then append the new one.
-  awk -F '\t' -v id="${id}" '$1 != id {print}' "${STATUS_CANDIDATE_VALUES_FILE}" 2>/dev/null > "${tmp}" || true
-  printf '%s\t%s\t%s\t%s\n' "${id}" "${value}" "${value_key}" "${now}" >> "${tmp}"
-  mv "${tmp}" "${STATUS_CANDIDATE_VALUES_FILE}" 2>/dev/null || true
+  _tsv_upsert "${STATUS_CANDIDATE_VALUES_FILE}" "${id}" \
+    "$(printf '%s\t%s\t%s\t%s' "${id}" "${value}" "${value_key}" "${now}")"
 }
 
 status_candidate_seen_from_json() {
