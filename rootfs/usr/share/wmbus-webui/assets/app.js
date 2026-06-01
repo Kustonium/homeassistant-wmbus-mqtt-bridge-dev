@@ -1387,7 +1387,15 @@
                 const previewKey    = String(row.preview_value_key || "").trim();
                 const previewUnit   = previewKey ? unitFromKey(previewKey) : "";
                 const previewState  = String(row.preview_state || "").trim();
-                const aesRequired   = enc === "encrypted" || enc === "aes_required" || enc === "aes";
+                // Parallel LISTEN decoded a valid JSON telegram without an AES key →
+                // encryption is resolved as no_aes. Override "unknown" for display only;
+                // status_candidate_analysis.tsv is updated asynchronously by bridge.sh.
+                const effectiveEnc  = (enc === "unknown" &&
+                                       (previewState === "decoded_value" ||
+                                        previewState === "decoded_without_numeric_value"))
+                                      ? "no_aes"
+                                      : enc;
+                const aesRequired   = effectiveEnc === "encrypted" || effectiveEnc === "aes_required" || effectiveEnc === "aes";
                 const previewCell   = previewVal
                   ? `<span style="font-weight:700;color:#4df08d;">${escapeHtml(previewVal)}</span>${previewUnit ? ` <span class="mono" style="color:#9eafba;font-size:11px;">${escapeHtml(previewUnit)}</span>` : ""}${previewKey ? `<div class="mono" style="font-size:10px;color:#4a6070;">${escapeHtml(previewKey)}</div>` : ""}`
                   : previewState === "decoded_without_numeric_value"
@@ -1403,7 +1411,7 @@
                     <td>${escapeHtml(driver)}</td>
                     <td style="color:#9eafba;font-size:12px;">${escapeHtml(row.type || "-")}</td>
                     <td>${mediaIconHtml(row.type || "", driver)} ${escapeHtml(mediaLabel)}</td>
-                    <td>${encBadge(enc, note)}</td>
+                    <td>${encBadge(effectiveEnc, note)}</td>
                     <td>${previewCell}</td>
                     <td>${fmtTime(row.last_seen)}</td>
                     <td>${escapeHtml(String(seen15mAdj))}</td>
