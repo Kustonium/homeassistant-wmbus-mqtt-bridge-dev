@@ -373,6 +373,19 @@ ensure_candidate_autodecode() {
   [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]] || return 0
   file="$(candidate_autodecode_file "${id}")"
 
+  # Skip preview for officially configured meters — they decode via the primary pipeline.
+  # Checked via METER_DIR on disk so the guard works in LISTEN subshell forks where
+  # in-memory variables from the parent process are stale after a soft pipeline reload.
+  if grep -ql "^id=${id,,}$" "${METER_DIR}"/meter-* 2>/dev/null; then
+    if [[ -f "${file}" ]]; then
+      rm -f "${file}" 2>/dev/null || true
+      rm -f "${BASE}/.preview_attempts/${id}" 2>/dev/null || true
+      log "[DIAG] autodecode ${id}: skipped (official meter), pruned orphaned preview"
+      [[ "${reload}" == "true" ]] && _request_listen_reload
+    fi
+    return 0
+  fi
+
   log "[DIAG] autodecode ${id}: file=${file} driver=${driver:-auto} type=${type_line:-?} reload=${reload}"
 
   if candidate_type_requires_aes "${type_line}"; then
@@ -427,6 +440,29 @@ sync_candidate_autodecode_files() {
     [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]] || continue
     ensure_candidate_autodecode "${id}" "${driver:-auto}" "${type_line:-}" "false"
   done < "${STATUS_CANDIDATES_FILE}"
+}
+
+# Remove meter-preview-<id> files for IDs that are now official configured meters.
+# Called after sync_candidate_autodecode_files() to override any preview file it may
+# have written for a candidate that was concurrently promoted to official status.
+# Also removes the corresponding .preview_attempts/<id> counter.
+# Does NOT touch status_candidate_values.tsv or status_candidate_preview_state.tsv.
+prune_official_meter_previews() {
+  local mid pf _pruned=0
+  [[ -d "${METER_DIR}" ]] || return 0
+  for mf in "${METER_DIR}"/meter-*; do
+    [[ -f "${mf}" ]] || continue
+    mid="$(grep -m1 '^id=' "${mf}" | cut -d= -f2 | tr '[:lower:]' '[:upper:]')"
+    [[ "${mid}" =~ ^[0-9A-Fa-f]{8}$ ]] || continue
+    pf="${LISTEN_METER_DIR}/meter-preview-${mid}"
+    if [[ -f "${pf}" ]]; then
+      rm -f "${pf}" 2>/dev/null || true
+      rm -f "${BASE}/.preview_attempts/${mid}" 2>/dev/null || true
+      log "pruned orphaned meter-preview-${mid} (now official configured meter)"
+      _pruned=1
+    fi
+  done
+  [[ "${_pruned}" -eq 1 ]] && _request_listen_reload
 }
 
 status_record_candidate_raw() {
@@ -2499,6 +2535,12 @@ while true; do
   # secondary LISTEN immediately after restart, not only after each one sends
   # one more telegram to create its meter-preview file.
   sync_candidate_autodecode_files
+
+  # Remove any meter-preview-<id> that sync_candidate_autodecode_files just wrote
+  # for an ID that is already an official configured meter. Keeps the LISTEN
+  # instance free of redundant preview configs for meters the primary pipeline
+  # already decodes.
+  prune_official_meter_previews
 
   # Parallel LISTEN always starts unconditionally, including pure LISTEN /
   # Discover mode with no configured meters and no preview files yet.

@@ -444,7 +444,10 @@
           ? `<span class="pill ok">${escapeHtml(t("aes_key_set", "AES key set"))}</span>`
           : `<span class="pill muted">${escapeHtml(t("no_key", "No key"))}</span>`}
         </td>
-        <td><button class="btn danger" data-action="remove-meter" data-id="${escapeHtml(mid)}">${escapeHtml(t("webui_remove", "Remove"))}</button></td>
+        <td><div class="actions">
+          ${row.preview_active === "true" ? `<button class="btn" data-action="cancel-preview" data-id="${escapeHtml(mid)}">${escapeHtml(t("cancel_preview", "Cancel preview"))}</button>` : ""}
+          <button class="btn danger" data-action="remove-meter" data-id="${escapeHtml(mid)}">${escapeHtml(t("webui_remove", "Remove"))}</button>
+        </div></td>
       </tr>
     `;
   }
@@ -1493,6 +1496,7 @@
                         ? `<td><div class="actions">
                             <button class="btn primary" data-action="open-add" data-id="${escapeHtml(id)}" data-driver="${escapeHtml(driver)}">${escapeHtml(t("webui_add", "Add"))}</button>
                             <button class="btn" data-action="ignore" data-id="${escapeHtml(id)}">${escapeHtml(t("ignore", "Ignore"))}</button>
+                            ${row.preview_active === "true" ? `<button class="btn" data-action="cancel-preview" data-id="${escapeHtml(id)}">${escapeHtml(t("cancel_preview", "Cancel preview"))}</button>` : ""}
                           </div></td>`
                         : ""
                     }
@@ -1643,7 +1647,10 @@
                     <td>${escapeHtml(String(seen15mAdj))}</td>
                     <td>${escapeHtml(String(seen60mAdj))}</td>
                     <td style="color:#607a88;font-size:12px;">${escapeHtml(fmtInterval(row.avg_interval_s))}</td>
-                    <td><button class="btn danger" data-action="remove-meter" data-id="${escapeHtml(id)}">${escapeHtml(t("remove_from_config", "Remove from config"))}</button></td>
+                    <td><div class="actions">
+                      ${row.preview_active === "true" ? `<button class="btn" data-action="cancel-preview" data-id="${escapeHtml(id)}">${escapeHtml(t("cancel_preview", "Cancel preview"))}</button>` : ""}
+                      <button class="btn danger" data-action="remove-meter" data-id="${escapeHtml(id)}">${escapeHtml(t("remove_from_config", "Remove from config"))}</button>
+                    </div></td>
                   </tr>`;
               }).join("")}
             </tbody>
@@ -2339,6 +2346,19 @@
       try {
         const result = await postApi(action, {id: target.dataset.id || ""});
         toast(result.message || t("webui_updated_ok", "Updated."));
+        await fetchData(currentLang());
+      } catch (error) {
+        toast(error.message, true);
+      }
+      return;
+    }
+
+    if (action === "cancel-preview") {
+      const id = target.dataset.id || "";
+      if (!id) return;
+      try {
+        await postApi("cancel-preview", {id});
+        toast(t("preview_removed", "Preview removed."));
         await fetchData(currentLang());
       } catch (error) {
         toast(error.message, true);

@@ -745,6 +745,7 @@ def state(include_ignored: bool = False) -> dict:
                 "preview_value_key": preview.get("preview_value_key", ""),
                 "preview_state": preview_state.get("state", ""),
                 "preview_ts": preview.get("preview_ts", "") or preview_state.get("ts", ""),
+                "preview_active": "true" if (LISTEN_METER_DIR / f"meter-preview-{mid}").exists() else "false",
                 "encryption": candidate_analysis.get("encryption", ""),
                 "analysis_note": candidate_analysis.get("note", ""),
                 "last_seen": candidate.get("last_seen", ""),
@@ -762,6 +763,10 @@ def state(include_ignored: bool = False) -> dict:
     if not include_ignored:
         candidates = [c for c in candidates if c.get("ignored") != "true"]
     meters = sorted(meters, key=lambda m: (m.get("last_seen") or ""), reverse=True)
+    for m in meters:
+        mid = normalize_meter_id(m.get("id") or "")
+        if mid:
+            m["preview_active"] = "true" if (LISTEN_METER_DIR / f"meter-preview-{mid}").exists() else "false"
     candidates = sorted(
         candidates,
         key=lambda c: (
