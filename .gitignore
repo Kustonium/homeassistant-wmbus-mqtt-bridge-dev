@@ -1,7 +1,10 @@
 __pycache__/
 *.pyc
 *.pyo
+# Local AI / agent workflow files
+.agents/
 .claude/
+CLAUDE.md
 _bmad/
 _bmad\
 _bmad-output/
