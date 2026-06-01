@@ -249,6 +249,88 @@ _tsv_upsert() {
   ) 9>"${file}.lock"
 }
 
+_store_candidate_manufacturer() {
+  local _id _mfr _file
+  _id="$(normalize_meter_id "${1:-}")"
+  _mfr="${2:-}"
+  [[ -n "${_id}" && -n "${_mfr}" ]] || return 0
+  [[ "${_id}" =~ ^[0-9A-Fa-f]{8}$ ]] || return 0
+  _file="${STATUS_CANDIDATES_FILE}"
+  (
+    flock -x 9
+    local _tmp
+    if ! awk -F $'\t' -v id="${_id}" '
+      $1 == id {
+        if (NF < 9 || $9 == "") found = 1
+        exit
+      }
+      END { exit found ? 0 : 1 }
+    ' "${_file}" 2>/dev/null; then
+      return 0
+    fi
+    _tmp="$(mktemp "${_file}.tmp.XXXXXX")" || return 1
+    if ! awk -F $'\t' -v OFS=$'\t' -v id="${_id}" -v mfr="${_mfr}" '
+      $1 == id {
+        if (NF < 9) {
+          for (i = NF + 1; i <= 9; i++) $i = ""
+        }
+        if ($9 == "") {
+          $9 = mfr
+          changed = 1
+        }
+      }
+      { print }
+    ' "${_file}" > "${_tmp}"; then
+      rm -f "${_tmp}"
+      return 1
+    fi
+    if ! mv "${_tmp}" "${_file}"; then
+      rm -f "${_tmp}"
+      return 1
+    fi
+  ) 9>"${STATUS_CANDIDATES_FILE}.lock"
+}
+
+_upsert_candidate_row() {
+  local _id="$1" _driver="$2" _type="$3" _last_seen="$4" _seen_count="$5"
+  local _avg_interval_s="$6" _seen_15m="$7" _seen_60m="$8" _manufacturer="${9:-}"
+  local _file="${STATUS_CANDIDATES_FILE}"
+  (
+    flock -x 9
+    local _tmp
+    _tmp="$(mktemp "${_file}.tmp.XXXXXX")" || return 1
+    if ! awk -F $'\t' -v OFS=$'\t' \
+      -v id="${_id}" \
+      -v driver="${_driver}" \
+      -v type_line="${_type}" \
+      -v last_seen="${_last_seen}" \
+      -v seen_count="${_seen_count}" \
+      -v avg_interval_s="${_avg_interval_s}" \
+      -v seen_15m="${_seen_15m}" \
+      -v seen_60m="${_seen_60m}" \
+      -v manufacturer="${_manufacturer}" '
+        BEGIN { final_manufacturer = manufacturer }
+        $1 == id {
+          if (final_manufacturer == "" && NF >= 9 && $9 != "") {
+            final_manufacturer = $9
+          }
+          next
+        }
+        { print }
+        END {
+          print id, driver, type_line, last_seen, seen_count, avg_interval_s, seen_15m, seen_60m, final_manufacturer
+        }
+      ' "${_file}" > "${_tmp}"; then
+      rm -f "${_tmp}"
+      return 1
+    fi
+    if ! mv "${_tmp}" "${_file}"; then
+      rm -f "${_tmp}"
+      return 1
+    fi
+  ) 9>"${STATUS_CANDIDATES_FILE}.lock"
+}
+
 # Write or update a per-candidate preview lifecycle state row.
 # States: pending | decoded_value | decoded_without_numeric_value | no_decode_result
 _set_preview_state() {
@@ -660,17 +742,10 @@ status_candidate_seen() {
   if grep -q "^${id}	" "${STATUS_CANDIDATES_FILE}" 2>/dev/null; then
     existed="true"
   fi
-  # Preserve the previously stored manufacturer when this call path does not
-  # supply one (e.g. status_raw_candidate_seen, status_candidate_seen_from_json).
-  if [[ -z "${manufacturer}" ]]; then
-    manufacturer="$(awk -F '\t' -v id="${id}" '$1==id{if(NF>=9)print $9;exit}' \
-      "${STATUS_CANDIDATES_FILE}" 2>/dev/null || true)"
-  fi
   status_record_seen "${id}" "candidate"
   now="$(iso_now)"
   IFS=$'\t' read -r seen_count avg_interval_s seen_15m seen_60m < <(status_seen_stats "${id}" "candidate")
-  _tsv_upsert "${STATUS_CANDIDATES_FILE}" "${id}" \
-    "$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "${id}" "${driver}" "${type_line}" "${now}" "${seen_count}" "${avg_interval_s}" "${seen_15m}" "${seen_60m}" "${manufacturer}")"
+  _upsert_candidate_row "${id}" "${driver}" "${type_line}" "${now}" "${seen_count}" "${avg_interval_s}" "${seen_15m}" "${seen_60m}" "${manufacturer}"
   status_analyze_candidate_from_text "${id}" "${driver}" "${type_line}"
   ensure_candidate_autodecode "${id}" "${driver:-auto}" "${type_line:-}"
   if [[ "${existed}" != "true" ]]; then
@@ -2055,6 +2130,9 @@ _process_listen_text_block() {
     else
       emit_snippet_if_new "${_id}" "${_drv}" "${_type}" "${_mfr}"
     fi
+  elif [[ -n "${_mfr}" ]]; then
+    log "[DIAG] candidate manufacturer id=${_id} mfr=${_mfr}"
+    _store_candidate_manufacturer "${_id}" "${_mfr}"
   fi
   # Track text-only telegrams (no JSON) for preview candidates.
   # When a preview file exists but wmbusmeters never emits JSON (driver not
