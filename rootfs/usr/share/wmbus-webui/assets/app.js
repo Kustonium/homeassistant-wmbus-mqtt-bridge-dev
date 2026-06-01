@@ -345,7 +345,19 @@
     return `<span class="pill ${cls}"${title}>${escapeHtml(label)}</span>`;
   }
 
-  // ── #6 Reception interval formatter ──────────────────────────────────────
+  // ── #6 Manufacturer compact formatter ────────────────────────────────────
+  // "(MAD) Maddalena, Italy (0x3424)" → "MAD · Maddalena"
+  // Returns empty string for missing/empty input (caller shows "—").
+  function compactManufacturer(mfr) {
+    if (!mfr) return "";
+    const m = mfr.match(/^\(([^)]+)\)\s*(.*)/);
+    if (!m) return mfr.split(",")[0].trim();
+    const code = m[1];
+    const name = m[2].split(",")[0].trim();
+    return (code && name) ? `${code} · ${name}` : (name || code || mfr);
+  }
+
+  // ── #7 Reception interval formatter ──────────────────────────────────────
   function fmtInterval(seconds) {
     const n = Number(seconds);
     if (!n || n <= 0) return t("not_enough_data", "not enough data");
@@ -1351,6 +1363,7 @@
               <th>${escapeHtml(t("driver", "Driver"))}</th>
               <th>${escapeHtml(t("webui_type", "Type"))}</th>
               <th>${escapeHtml(t("media", "Medium"))}</th>
+              <th>${escapeHtml(t("manufacturer_col", "Manufacturer"))}</th>
               <th>${escapeHtml(t("encryption_label", "Encryption"))}</th>
               <th>${escapeHtml(t("preview_value_col", "Preview value"))}</th>
               <th>${escapeHtml(t("webui_last_seen", "Last seen"))}</th>
@@ -1405,12 +1418,18 @@
                   : (!aesRequired
                       ? `<span style="font-size:11px;color:#f3c84b;">${escapeHtml(t("preview_pending", "decoding…"))}</span>`
                       : `<span style="color:#4a6070;">—</span>`);
+                const mfrRaw     = String(row.manufacturer || "").trim();
+                const mfrCompact = compactManufacturer(mfrRaw);
+                const mfrCell    = mfrCompact
+                  ? `<span style="font-size:12px;color:#9eafba;" title="${escapeHtml(mfrRaw)}">${escapeHtml(mfrCompact)}</span>`
+                  : `<span style="color:#4a6070;">—</span>`;
                 return `
                   <tr data-value="${escapeHtml(previewVal)}">
                     <td><strong>${escapeHtml(id)}</strong></td>
                     <td>${escapeHtml(driver)}</td>
                     <td style="color:#9eafba;font-size:12px;">${escapeHtml(row.type || "-")}</td>
                     <td>${mediaIconHtml(row.type || "", driver)} ${escapeHtml(mediaLabel)}</td>
+                    <td>${mfrCell}</td>
                     <td>${encBadge(effectiveEnc, note)}</td>
                     <td>${previewCell}</td>
                     <td>${fmtTime(row.last_seen)}</td>

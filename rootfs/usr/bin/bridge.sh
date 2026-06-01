@@ -651,6 +651,7 @@ status_candidate_seen() {
   local driver="${2:-auto}"
   local type_line="${3:-}"
   local update_status="${4:-true}"
+  local manufacturer="${5:-}"
   local now
   STATUS_WMBUSMETERS_RUNNING="true"
   id="$(normalize_meter_id "$1")"
@@ -659,11 +660,17 @@ status_candidate_seen() {
   if grep -q "^${id}	" "${STATUS_CANDIDATES_FILE}" 2>/dev/null; then
     existed="true"
   fi
+  # Preserve the previously stored manufacturer when this call path does not
+  # supply one (e.g. status_raw_candidate_seen, status_candidate_seen_from_json).
+  if [[ -z "${manufacturer}" ]]; then
+    manufacturer="$(awk -F '\t' -v id="${id}" '$1==id{if(NF>=9)print $9;exit}' \
+      "${STATUS_CANDIDATES_FILE}" 2>/dev/null || true)"
+  fi
   status_record_seen "${id}" "candidate"
   now="$(iso_now)"
   IFS=$'\t' read -r seen_count avg_interval_s seen_15m seen_60m < <(status_seen_stats "${id}" "candidate")
   _tsv_upsert "${STATUS_CANDIDATES_FILE}" "${id}" \
-    "$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "${id}" "${driver}" "${type_line}" "${now}" "${seen_count}" "${avg_interval_s}" "${seen_15m}" "${seen_60m}")"
+    "$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "${id}" "${driver}" "${type_line}" "${now}" "${seen_count}" "${avg_interval_s}" "${seen_15m}" "${seen_60m}" "${manufacturer}")"
   status_analyze_candidate_from_text "${id}" "${driver}" "${type_line}"
   ensure_candidate_autodecode "${id}" "${driver:-auto}" "${type_line:-}"
   if [[ "${existed}" != "true" ]]; then
@@ -1900,13 +1907,14 @@ emit_snippet_if_new() {
   local id
   local driver="$2"
   local type_line="${3:-}"
+  local manufacturer="${4:-}"
   id="$(normalize_meter_id "$1")"
   [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]] || return 0
 
   # Update dashboard stats every time this candidate is heard.
   # Pass the real type_line from wmbusmeters output so the webui can
   # show encryption status (e.g. "Electricity meter (0x02) encrypted").
-  status_candidate_seen "${id}" "${driver:-auto}" "${type_line:-listen}"
+  status_candidate_seen "${id}" "${driver:-auto}" "${type_line:-listen}" "true" "${manufacturer}"
 
   if ! grep -qx "${id}" "${SNIPPET_STATE}" 2>/dev/null; then
     echo "${id}" >> "${SNIPPET_STATE}"
@@ -2030,12 +2038,73 @@ status_candidate_seen_from_json() {
   status_candidate_seen "${id}" "${driver}" "${type_line}"
 }
 
+# Process one completed text-output block from the parallel LISTEN instance.
+# Called with a delayed flush — when the next "Received telegram from:" line
+# arrives — so manufacturer: (which follows driver: in wmbusmeters output)
+# is always captured before the block is dispatched.
+# Arguments: id  driver  type  manufacturer
+_process_listen_text_block() {
+  local _id="$1" _drv="$2" _type="$3" _mfr="$4"
+  [[ -n "${_id}" && -n "${_drv}" ]] || return 0
+  # When there are no official meters, the primary pipeline already runs in
+  # LISTEN mode and updates candidate stats. A secondary LISTEN may still be
+  # running for preview decoding; do not double-count candidate receptions.
+  if [[ "${OFFICIAL_METERS_COUNT:-0}" -gt 0 ]]; then
+    if [[ "${SEARCH_MODE}" == "true" && "${SEARCH_EXPECTED_VALUE_M3}" != "0" ]]; then
+      search_cache_candidate "${_id}" "${_drv}" "${_type}"
+    else
+      emit_snippet_if_new "${_id}" "${_drv}" "${_type}" "${_mfr}"
+    fi
+  fi
+  # Track text-only telegrams (no JSON) for preview candidates.
+  # When a preview file exists but wmbusmeters never emits JSON (driver not
+  # recognised or unsupported telegram variant), the state stays "pending"
+  # forever. After count >= 3 AND elapsed >= 60 s, set no_decode_result so
+  # the UI shows "brak wyniku dekodowania" instead of "dekoduję..." forever.
+  # JSON arriving later still overrides via _store_candidate_value → decoded_value
+  # or decoded_without_numeric_value (both use _tsv_upsert which replaces the row).
+  if ! candidate_type_requires_aes "${_type}"; then
+    local _pf _cur_state _cnt_file _cnt _start _now _elapsed _cnt_tmp
+    _pf="${LISTEN_METER_DIR}/meter-preview-${_id}"
+    if [[ -f "${_pf}" ]]; then
+      _cur_state="$(awk -F '\t' -v id="${_id}" '$1==id {print $2; exit}' \
+        "${STATUS_CANDIDATE_PREVIEW_STATE_FILE}" 2>/dev/null || true)"
+      if [[ "${_cur_state}" == "pending" ]]; then
+        _cnt_file="${BASE}/.preview_attempts/${_id}"
+        _cnt=0
+        _start=0
+        if [[ -f "${_cnt_file}" ]]; then
+          IFS=$'\t' read -r _cnt _start < "${_cnt_file}" 2>/dev/null || true
+          [[ "${_cnt}" =~ ^[0-9]+$ ]] || _cnt=0
+          [[ "${_start}" =~ ^[0-9]+$ ]] || _start=0
+        fi
+        _now="$(date +%s 2>/dev/null || echo 0)"
+        (( _start > 0 )) || _start="${_now}"
+        _cnt=$(( _cnt + 1 ))
+        _elapsed=$(( _now - _start ))
+        _cnt_tmp="$(mktemp "${_cnt_file}.tmp.XXXXXX" 2>/dev/null)" || true
+        if [[ -n "${_cnt_tmp}" ]]; then
+          printf '%d\t%d\n' "${_cnt}" "${_start}" > "${_cnt_tmp}"
+          mv "${_cnt_tmp}" "${_cnt_file}" 2>/dev/null \
+            || { rm -f "${_cnt_tmp}" 2>/dev/null || true; }
+        fi
+        if (( _cnt >= 3 && _elapsed >= 60 )); then
+          log "[DIAG] LISTEN-parse: no JSON after ${_cnt} text-only telegrams (${_elapsed}s) for ${_id} → no_decode_result"
+          _set_preview_state "${_id}" "no_decode_result"
+        else
+          log "[DIAG] LISTEN-parse: text-only telegram #${_cnt} for preview ${_id} (elapsed=${_elapsed}s, need count>=3 AND elapsed>=60)"
+        fi
+      fi
+    fi
+  fi
+}
+
 parse_listen_candidates() {
   # Suppress status.json writes from this subshell to prevent races
   # with the parent shell's pipeline writes.
   write_status_json() { :; }
 
-  local last_id="" last_driver="" last_type=""
+  local last_id="" last_driver="" last_type="" last_manufacturer=""
   while IFS= read -r line; do
     # Decoded JSON output — present only when LISTEN has a meter-preview-<id>
     # config matching this telegram's ID. Capture the primary numeric value
@@ -2050,72 +2119,24 @@ parse_listen_candidates() {
       continue
     fi
     # Plain listen-mode text output — extract candidate metadata.
+    # Flush the previous block when a new telegram starts so manufacturer:
+    # (which follows driver: in wmbusmeters output) is captured before dispatch.
     if [[ "${line}" =~ ^Received\ telegram\ from:\ ([0-9A-Fa-f]{8}) ]]; then
+      _process_listen_text_block "${last_id}" "${last_driver}" "${last_type}" "${last_manufacturer}"
       last_id="$(normalize_meter_id "${BASH_REMATCH[1]}")"
       last_type=""
       last_driver=""
+      last_manufacturer=""
     elif [[ "${line}" =~ ^[[:space:]]*type:[[:space:]]*(.*)$ ]]; then
       last_type="${BASH_REMATCH[1]}"
     elif [[ "${line}" =~ ^[[:space:]]*driver:\ ([a-zA-Z0-9_]+) ]]; then
       last_driver="${BASH_REMATCH[1]}"
-    fi
-    if [[ -n "${last_id}" && -n "${last_driver}" ]]; then
-      # When there are no official meters, the primary pipeline already runs in
-      # LISTEN mode and updates candidate stats. A secondary LISTEN may still be
-      # running for preview decoding; do not double-count candidate receptions.
-      if [[ "${OFFICIAL_METERS_COUNT:-0}" -gt 0 ]]; then
-        if [[ "${SEARCH_MODE}" == "true" && "${SEARCH_EXPECTED_VALUE_M3}" != "0" ]]; then
-          search_cache_candidate "${last_id}" "${last_driver}" "${last_type}"
-        else
-          emit_snippet_if_new "${last_id}" "${last_driver}" "${last_type}"
-        fi
-      fi
-      # Track text-only telegrams (no JSON) for preview candidates.
-      # When a preview file exists but wmbusmeters never emits JSON (driver not
-      # recognised or unsupported telegram variant), the state stays "pending"
-      # forever. After count >= 3 AND elapsed >= 60 s, set no_decode_result so
-      # the UI shows "brak wyniku dekodowania" instead of "dekoduję..." forever.
-      # JSON arriving later still overrides via _store_candidate_value → decoded_value
-      # or decoded_without_numeric_value (both use _tsv_upsert which replaces the row).
-      if ! candidate_type_requires_aes "${last_type}"; then
-        local _pf _cur_state _cnt_file _cnt _start _now _elapsed _cnt_tmp
-        _pf="${LISTEN_METER_DIR}/meter-preview-${last_id}"
-        if [[ -f "${_pf}" ]]; then
-          _cur_state="$(awk -F '\t' -v id="${last_id}" '$1==id {print $2; exit}' \
-            "${STATUS_CANDIDATE_PREVIEW_STATE_FILE}" 2>/dev/null || true)"
-          if [[ "${_cur_state}" == "pending" ]]; then
-            _cnt_file="${BASE}/.preview_attempts/${last_id}"
-            _cnt=0
-            _start=0
-            if [[ -f "${_cnt_file}" ]]; then
-              IFS=$'\t' read -r _cnt _start < "${_cnt_file}" 2>/dev/null || true
-              [[ "${_cnt}" =~ ^[0-9]+$ ]] || _cnt=0
-              [[ "${_start}" =~ ^[0-9]+$ ]] || _start=0
-            fi
-            _now="$(date +%s 2>/dev/null || echo 0)"
-            (( _start > 0 )) || _start="${_now}"
-            _cnt=$(( _cnt + 1 ))
-            _elapsed=$(( _now - _start ))
-            _cnt_tmp="$(mktemp "${_cnt_file}.tmp.XXXXXX" 2>/dev/null)" || true
-            if [[ -n "${_cnt_tmp}" ]]; then
-              printf '%d\t%d\n' "${_cnt}" "${_start}" > "${_cnt_tmp}"
-              mv "${_cnt_tmp}" "${_cnt_file}" 2>/dev/null \
-                || { rm -f "${_cnt_tmp}" 2>/dev/null || true; }
-            fi
-            if (( _cnt >= 3 && _elapsed >= 60 )); then
-              log "[DIAG] LISTEN-parse: no JSON after ${_cnt} text-only telegrams (${_elapsed}s) for ${last_id} → no_decode_result"
-              _set_preview_state "${last_id}" "no_decode_result"
-            else
-              log "[DIAG] LISTEN-parse: text-only telegram #${_cnt} for preview ${last_id} (elapsed=${_elapsed}s, need count>=3 AND elapsed>=60)"
-            fi
-          fi
-        fi
-      fi
-      last_id=""
-      last_driver=""
-      last_type=""
+    elif [[ "${line}" =~ ^[[:space:]]*manufacturer:[[:space:]]*(.*)$ ]]; then
+      last_manufacturer="${BASH_REMATCH[1]}"
     fi
   done
+  # Flush the last block after the stream ends.
+  _process_listen_text_block "${last_id}" "${last_driver}" "${last_type}" "${last_manufacturer}"
 }
 
 # ------------------------------------------------------------

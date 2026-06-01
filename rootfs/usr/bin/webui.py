@@ -618,7 +618,7 @@ def state(include_ignored: bool = False) -> dict:
     )
     candidates = read_tsv(
         CANDIDATES_TSV,
-        ["id", "driver", "type", "last_seen", "seen_count", "avg_interval_s", "seen_15m", "seen_60m"],
+        ["id", "driver", "type", "last_seen", "seen_count", "avg_interval_s", "seen_15m", "seen_60m", "manufacturer"],
     )
     events = read_tsv(EVENTS_TSV, ["time", "level", "message"], limit=80, reverse=True)
     search_candidates = read_search_candidates()
