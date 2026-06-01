@@ -249,48 +249,6 @@ _tsv_upsert() {
   ) 9>"${file}.lock"
 }
 
-_store_candidate_manufacturer() {
-  local _id _mfr _file
-  _id="$(normalize_meter_id "${1:-}")"
-  _mfr="${2:-}"
-  [[ -n "${_id}" && -n "${_mfr}" ]] || return 0
-  [[ "${_id}" =~ ^[0-9A-Fa-f]{8}$ ]] || return 0
-  _file="${STATUS_CANDIDATES_FILE}"
-  (
-    flock -x 9
-    local _tmp
-    if ! awk -F $'\t' -v id="${_id}" '
-      $1 == id {
-        if (NF < 9 || $9 == "") found = 1
-        exit
-      }
-      END { exit found ? 0 : 1 }
-    ' "${_file}" 2>/dev/null; then
-      return 0
-    fi
-    _tmp="$(mktemp "${_file}.tmp.XXXXXX")" || return 1
-    if ! awk -F $'\t' -v OFS=$'\t' -v id="${_id}" -v mfr="${_mfr}" '
-      $1 == id {
-        if (NF < 9) {
-          for (i = NF + 1; i <= 9; i++) $i = ""
-        }
-        if ($9 == "") {
-          $9 = mfr
-          changed = 1
-        }
-      }
-      { print }
-    ' "${_file}" > "${_tmp}"; then
-      rm -f "${_tmp}"
-      return 1
-    fi
-    if ! mv "${_tmp}" "${_file}"; then
-      rm -f "${_tmp}"
-      return 1
-    fi
-  ) 9>"${STATUS_CANDIDATES_FILE}.lock"
-}
-
 _upsert_candidate_row() {
   local _id="$1" _driver="$2" _type="$3" _last_seen="$4" _seen_count="$5"
   local _avg_interval_s="$6" _seen_15m="$7" _seen_60m="$8" _manufacturer="${9:-}"
@@ -2130,9 +2088,6 @@ _process_listen_text_block() {
     else
       emit_snippet_if_new "${_id}" "${_drv}" "${_type}" "${_mfr}"
     fi
-  elif [[ -n "${_mfr}" ]]; then
-    log "[DIAG] candidate manufacturer id=${_id} mfr=${_mfr}"
-    _store_candidate_manufacturer "${_id}" "${_mfr}"
   fi
   # Track text-only telegrams (no JSON) for preview candidates.
   # When a preview file exists but wmbusmeters never emits JSON (driver not
@@ -2226,6 +2181,7 @@ run_once() {
   last_id=""
   last_driver=""
   last_type=""
+  last_manufacturer=""
 
   # ─── Soft-reload flag watcher ────────────────────────────────────────
   # Polls for ${RELOAD_FLAG} every 2 s. When present, removes it and kills
@@ -2309,9 +2265,13 @@ run_once() {
             last_id="$(normalize_meter_id "${BASH_REMATCH[1]}")"
             last_type=""
             last_driver=""
+            last_manufacturer=""
           fi
           if [[ "${line}" =~ ^[[:space:]]*type:[[:space:]]*(.*)$ ]]; then
             last_type="${BASH_REMATCH[1]}"
+          fi
+          if [[ "${line}" =~ ^[[:space:]]*manufacturer:[[:space:]]*(.*)$ ]]; then
+            last_manufacturer="${BASH_REMATCH[1]}"
           fi
           if [[ "${line}" =~ ^[[:space:]]*driver:\ ([a-zA-Z0-9_]+) ]]; then
             last_driver="${BASH_REMATCH[1]}"
@@ -2320,11 +2280,12 @@ run_once() {
             if [[ "${SEARCH_MODE}" == "true" && "${SEARCH_EXPECTED_VALUE_M3}" != "0" ]]; then
               search_cache_candidate "${last_id}" "${last_driver}" "${last_type}"
             else
-              emit_snippet_if_new "${last_id}" "${last_driver}" "${last_type}"
+              emit_snippet_if_new "${last_id}" "${last_driver}" "${last_type}" "${last_manufacturer}"
             fi
             last_id=""
             last_driver=""
             last_type=""
+            last_manufacturer=""
           fi
         fi
 
