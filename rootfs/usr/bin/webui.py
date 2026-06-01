@@ -505,7 +505,8 @@ def remove_meter_from_options(meter_id: str) -> tuple[bool, str]:
     before = len(meters)
     meters = [m for m in meters if not (isinstance(m, dict) and normalize_meter_id(m.get("meter_id")) == meter_id)]
     if len(meters) == before:
-        return False, f"Meter {meter_id} not found in options."
+        _remove_meter_from_tsv(meter_id)
+        return True, f"Meter {meter_id} was already absent from options; removed stale runtime row if present."
 
     options["meters"] = meters
 
@@ -659,15 +660,17 @@ def state(include_ignored: bool = False) -> dict:
     # Build normalized options_meter_ids early — used both for TSV filtering and
     # candidate dedup. Do not write back to status_meters.tsv from this read path.
     options_meters_list = options.get("meters") if isinstance(options, dict) and "meters" in options else None
+    options_meters_valid = isinstance(options_meters_list, list)
     options_meter_ids = {
         normalize_meter_id(m.get("meter_id"))
-        for m in (options_meters_list or [])
+        for m in (options_meters_list if options_meters_valid else [])
         if isinstance(m, dict) and normalize_meter_id(m.get("meter_id"))
     }
 
-    # Filter in memory only when options contain meter ids. Empty/default options
-    # must not hide or delete live decoded rows from a previous valid runtime.
-    if options_meter_ids:
+    # Filter in memory whenever options.json contains a valid meters list.
+    # An empty list is a valid empty config; missing/invalid options keep the
+    # cautious fallback and do not hide runtime rows automatically.
+    if options_meters_valid:
         meters = [m for m in meters if normalize_meter_id(m.get("id")) in options_meter_ids]
 
     # Remove candidates that are already in configured meters (decoded)
