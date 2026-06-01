@@ -43,6 +43,8 @@ assert_key() {
   local actual_key actual_value
 
   IFS=$'\t' read -r actual_key actual_value < <(_select_primary_meter_value "${json_line}") || true
+  actual_key="${actual_key%$'\r'}"
+  actual_value="${actual_value%$'\r'}"
   if [[ "${actual_key}" == "${expected_key}" && -n "${actual_value}" ]]; then
     pass "${label}: ${actual_key}=${actual_value}"
   else
@@ -50,10 +52,31 @@ assert_key() {
   fi
 }
 
+assert_key_value() {
+  local label="$1"
+  local expected_key="$2"
+  local expected_value="$3"
+  local json_line="$4"
+  local actual_key actual_value
+
+  IFS=$'\t' read -r actual_key actual_value < <(_select_primary_meter_value "${json_line}") || true
+  actual_key="${actual_key%$'\r'}"
+  actual_value="${actual_value%$'\r'}"
+  if [[ "${actual_key}" == "${expected_key}" && "${actual_value}" == "${expected_value}" ]]; then
+    pass "${label}: ${actual_key}=${actual_value}"
+  else
+    fail "${label}: expected ${expected_key}=${expected_value}, got ${actual_key:-<empty>}=${actual_value:-<empty>}"
+  fi
+}
+
 assert_key "izar keeps current total when last_month is first" "total_m3" \
   '{"meter":"izar","last_month_total_m3":91.2,"total_m3":12.345}'
 assert_key "izar keeps current total when total is first" "total_m3" \
   '{"meter":"izar","total_m3":12.345,"last_month_total_m3":91.2}'
+assert_key_value "izar decoded JSON keeps current total when last_month is first" "total_m3" "430.142" \
+  '{"meter":"izar","id":"215f908a","last_month_total_m3":407.603,"total_m3":430.142}'
+assert_key_value "izar decoded JSON keeps current total when total is first" "total_m3" "430.142" \
+  '{"meter":"izar","id":"215f908a","total_m3":430.142,"last_month_total_m3":407.603}'
 assert_key "izarv2 keeps current total when last_month is first" "total_m3" \
   '{"meter":"izarv2","last_month_total_m3":77.7,"total_m3":21.509}'
 assert_key "izarv2 keeps current total when total is first" "total_m3" \
