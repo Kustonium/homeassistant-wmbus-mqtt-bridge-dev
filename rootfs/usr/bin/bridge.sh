@@ -97,6 +97,10 @@ RAW_RATE_PREV_MIN_COUNT=0
 touch "${STATUS_METERS_FILE}" "${STATUS_CANDIDATES_FILE}" "${STATUS_EVENTS_FILE}" "${STATUS_SEEN_FILE}" "${STATUS_LAST_RAW_FILE}" "${STATUS_RECENT_RAW_FILE}" "${STATUS_CANDIDATE_ANALYSIS_FILE}" "${STATUS_CANDIDATE_RAW_FILE}" "${STATUS_RATE_HISTORY_FILE}" "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" "${SEARCH_MATCHES_FILE}" "${SEARCH_STATUS_FILE}" "${STATUS_CANDIDATE_PREVIEW_STATE_FILE}"
 # Remove any orphaned pending-reload marker left by a hard stop during deferred sleep.
 rm -rf "${BASE}/.reload_listen_pending" 2>/dev/null || true
+# Session-scoped attempt counter dir — counts text-only telegrams per preview candidate
+# without JSON. Cleared on every bridge start so stale counts never carry over.
+rm -rf "${BASE}/.preview_attempts" 2>/dev/null || true
+mkdir -p "${BASE}/.preview_attempts" 2>/dev/null || true
 : > "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" 2>/dev/null || true
 # Preview values are session-scoped — clear stale entries from previous runs
 # so the WebGUI doesn't show outdated readings (or the legacy first-numeric-field
@@ -246,11 +250,17 @@ _tsv_upsert() {
 }
 
 # Write or update a per-candidate preview lifecycle state row.
-# States: pending | decoded_value | decoded_without_numeric_value
+# States: pending | decoded_value | decoded_without_numeric_value | no_decode_result
 _set_preview_state() {
   local id="$1" state="$2" note="${3:-}"
   _tsv_upsert "${STATUS_CANDIDATE_PREVIEW_STATE_FILE}" "${id}" \
     "$(printf '%s\t%s\t%s\t%s' "${id}" "${state}" "$(iso_now)" "${note}")"
+  # Discard the attempt counter once a terminal decode outcome is known.
+  case "${state}" in
+    decoded_value|decoded_without_numeric_value|no_decode_result)
+      rm -f "${BASE}/.preview_attempts/${id}" 2>/dev/null || true
+      ;;
+  esac
 }
 
 # Debounced .reload_listen trigger — at most one LISTEN restart per 10 seconds.
@@ -329,6 +339,7 @@ ensure_candidate_autodecode() {
     log "[DIAG] autodecode ${id}: AES required, skipping preview"
     if [[ -f "${file}" ]]; then
       rm -f "${file}" 2>/dev/null || true
+      rm -f "${BASE}/.preview_attempts/${id}" 2>/dev/null || true
       if [[ "${reload}" == "true" ]]; then
         # Preview files live in LISTEN_METER_DIR — only the LISTEN instance
         # needs reloading. Do NOT touch RELOAD_FLAG/.reload_pipeline here: that
@@ -353,6 +364,7 @@ ensure_candidate_autodecode() {
     mv "${tmp}" "${file}" 2>/dev/null || true
     log "[DIAG] autodecode ${id}: wrote ${file} (driver=${driver:-auto})"
     _set_preview_state "${id}" "pending"
+    rm -f "${BASE}/.preview_attempts/${id}" 2>/dev/null || true
     if [[ "${reload}" == "true" ]]; then
       # Only the LISTEN instance reads these preview files — reload just it.
       # Touching RELOAD_FLAG/.reload_pipeline would needlessly restart the main
@@ -2056,6 +2068,47 @@ parse_listen_candidates() {
           search_cache_candidate "${last_id}" "${last_driver}" "${last_type}"
         else
           emit_snippet_if_new "${last_id}" "${last_driver}" "${last_type}"
+        fi
+      fi
+      # Track text-only telegrams (no JSON) for preview candidates.
+      # When a preview file exists but wmbusmeters never emits JSON (driver not
+      # recognised or unsupported telegram variant), the state stays "pending"
+      # forever. After count >= 3 AND elapsed >= 60 s, set no_decode_result so
+      # the UI shows "brak wyniku dekodowania" instead of "dekoduję..." forever.
+      # JSON arriving later still overrides via _store_candidate_value → decoded_value
+      # or decoded_without_numeric_value (both use _tsv_upsert which replaces the row).
+      if ! candidate_type_requires_aes "${last_type}"; then
+        local _pf _cur_state _cnt_file _cnt _start _now _elapsed _cnt_tmp
+        _pf="${LISTEN_METER_DIR}/meter-preview-${last_id}"
+        if [[ -f "${_pf}" ]]; then
+          _cur_state="$(awk -F '\t' -v id="${last_id}" '$1==id {print $2; exit}' \
+            "${STATUS_CANDIDATE_PREVIEW_STATE_FILE}" 2>/dev/null || true)"
+          if [[ "${_cur_state}" == "pending" ]]; then
+            _cnt_file="${BASE}/.preview_attempts/${last_id}"
+            _cnt=0
+            _start=0
+            if [[ -f "${_cnt_file}" ]]; then
+              IFS=$'\t' read -r _cnt _start < "${_cnt_file}" 2>/dev/null || true
+              [[ "${_cnt}" =~ ^[0-9]+$ ]] || _cnt=0
+              [[ "${_start}" =~ ^[0-9]+$ ]] || _start=0
+            fi
+            _now="$(date +%s 2>/dev/null || echo 0)"
+            (( _start > 0 )) || _start="${_now}"
+            _cnt=$(( _cnt + 1 ))
+            _elapsed=$(( _now - _start ))
+            _cnt_tmp="$(mktemp "${_cnt_file}.tmp.XXXXXX" 2>/dev/null)" || true
+            if [[ -n "${_cnt_tmp}" ]]; then
+              printf '%d\t%d\n' "${_cnt}" "${_start}" > "${_cnt_tmp}"
+              mv "${_cnt_tmp}" "${_cnt_file}" 2>/dev/null \
+                || { rm -f "${_cnt_tmp}" 2>/dev/null || true; }
+            fi
+            if (( _cnt >= 3 && _elapsed >= 60 )); then
+              log "[DIAG] LISTEN-parse: no JSON after ${_cnt} text-only telegrams (${_elapsed}s) for ${last_id} → no_decode_result"
+              _set_preview_state "${last_id}" "no_decode_result"
+            else
+              log "[DIAG] LISTEN-parse: text-only telegram #${_cnt} for preview ${last_id} (elapsed=${_elapsed}s, need count>=3 AND elapsed>=60)"
+            fi
+          fi
         fi
       fi
       last_id=""

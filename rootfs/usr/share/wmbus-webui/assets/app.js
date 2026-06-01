@@ -1392,6 +1392,8 @@
                   ? `<span style="font-weight:700;color:#4df08d;">${escapeHtml(previewVal)}</span>${previewUnit ? ` <span class="mono" style="color:#9eafba;font-size:11px;">${escapeHtml(previewUnit)}</span>` : ""}${previewKey ? `<div class="mono" style="font-size:10px;color:#4a6070;">${escapeHtml(previewKey)}</div>` : ""}`
                   : previewState === "decoded_without_numeric_value"
                       ? `<span style="font-size:11px;color:#9eafba;">${escapeHtml(t("preview_no_value", "no value in telegram"))}</span>`
+                  : previewState === "no_decode_result"
+                      ? `<span style="font-size:11px;color:#607a88;">${escapeHtml(t("preview_no_decode_result", "no decode result"))}</span>`
                   : (!aesRequired
                       ? `<span style="font-size:11px;color:#f3c84b;">${escapeHtml(t("preview_pending", "decoding…"))}</span>`
                       : `<span style="color:#4a6070;">—</span>`);

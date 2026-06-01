@@ -1295,13 +1295,26 @@ class Handler(BaseHTTPRequestHandler):
                 pf = LISTEN_METER_DIR / f"meter-preview-{cid}"
                 if pf.exists():
                     pf.unlink()
-                # Best-effort: also strip the row from the TSV so the WebGUI
-                # stops showing a stale value while waiting for LISTEN reload.
+                # Best-effort: also strip the row from the TSVs so the WebGUI
+                # stops showing stale value / state while waiting for LISTEN reload.
                 try:
                     if STATUS_CANDIDATE_VALUES_FILE.exists():
                         lines = STATUS_CANDIDATE_VALUES_FILE.read_text(encoding='utf-8', errors='replace').splitlines()
                         kept = [l for l in lines if normalize_meter_id(l.split('\t')[0]) != cid]
                         STATUS_CANDIDATE_VALUES_FILE.write_text('\n'.join(kept) + ('\n' if kept else ''), encoding='utf-8')
+                except OSError:
+                    pass
+                try:
+                    if STATUS_CANDIDATE_PREVIEW_STATE_FILE.exists():
+                        lines = STATUS_CANDIDATE_PREVIEW_STATE_FILE.read_text(encoding='utf-8', errors='replace').splitlines()
+                        kept = [l for l in lines if normalize_meter_id(l.split('\t')[0]) != cid]
+                        STATUS_CANDIDATE_PREVIEW_STATE_FILE.write_text('\n'.join(kept) + ('\n' if kept else ''), encoding='utf-8')
+                except OSError:
+                    pass
+                try:
+                    attempt_file = BASE / ".preview_attempts" / cid
+                    if attempt_file.exists():
+                        attempt_file.unlink()
                 except OSError:
                     pass
                 RELOAD_LISTEN_FLAG.touch()
