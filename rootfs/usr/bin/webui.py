@@ -767,6 +767,8 @@ def state(include_ignored: bool = False) -> dict:
         mid = normalize_meter_id(m.get("id") or "")
         if mid:
             m["preview_active"] = "true" if (LISTEN_METER_DIR / f"meter-preview-{mid}").exists() else "false"
+            if not m.get("manufacturer"):
+                m["manufacturer"] = candidate_by_id.get(mid, {}).get("manufacturer", "")
     candidates = sorted(
         candidates,
         key=lambda c: (

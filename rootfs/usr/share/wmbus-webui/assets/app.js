@@ -1352,6 +1352,7 @@
               <th>${escapeHtml(t("webui_id", "ID"))}</th>
               <th>${escapeHtml(t("webui_name", "Name"))}</th>
               <th>${escapeHtml(t("driver", "Driver"))}</th>
+              <th>${escapeHtml(t("manufacturer_col", "Manufacturer"))}</th>
               <th>${escapeHtml(t("webui_value", "Value"))}</th>
               <th>${escapeHtml(t("webui_last_seen", "Last seen"))}</th>
               <th>${escapeHtml(t("reception", "Reception"))}</th>
@@ -1372,11 +1373,17 @@
                 const seen60m = ageS > 60 * 60 ? 0 : Number(row.seen_60m || 0);
                 const {label: statusLabel, color: statusColor} = meterStatusLabel(seen15m, seen60m);
                 const {icon: mIcon} = mediaIcon(row.media || "", row.driver || "");
+                const mfrRaw     = String(row.manufacturer || "").trim();
+                const mfrCompact = compactManufacturer(mfrRaw);
+                const mfrCell    = mfrCompact
+                  ? `<span style="font-size:12px;color:#9eafba;" title="${escapeHtml(mfrRaw)}">${escapeHtml(mfrCompact)}</span>`
+                  : `<span style="color:#4a6070;">—</span>`;
                 return `
                   <tr>
                     <td><strong>${escapeHtml(id)}</strong></td>
                     <td><span style="margin-right:5px;font-size:15px;vertical-align:middle;">${mIcon}</span>${escapeHtml(row.name || row.id || "-")}</td>
                     <td>${escapeHtml(row.driver || "-")}</td>
+                    <td>${mfrCell}</td>
                     <td>
                       ${meterValueCell(row)}
                     </td>
@@ -1608,6 +1615,7 @@
                 <th>${escapeHtml(t("webui_id", "ID"))}</th>
                 <th>${escapeHtml(t("webui_name", "Name"))}</th>
                 <th>${escapeHtml(t("driver", "Driver"))}</th>
+                <th>${escapeHtml(t("manufacturer_col", "Manufacturer"))}</th>
                 <th>${escapeHtml(t("media", "Medium"))}</th>
                 <th>${escapeHtml(t("value_label", "Value"))}</th>
                 <th>${escapeHtml(t("webui_last_seen", "Last seen"))}</th>
@@ -1634,11 +1642,17 @@
                 // any filter is active (no value to compare against).
                 const numericVal = parseFloat(valueStr);
                 const dataVal    = Number.isFinite(numericVal) ? String(numericVal) : "";
+                const mfrRaw     = String(row.manufacturer || "").trim();
+                const mfrCompact = compactManufacturer(mfrRaw);
+                const mfrCell    = mfrCompact
+                  ? `<span style="font-size:12px;color:#9eafba;" title="${escapeHtml(mfrRaw)}">${escapeHtml(mfrCompact)}</span>`
+                  : `<span style="color:#4a6070;">—</span>`;
                 return `
                   <tr data-value="${escapeHtml(dataVal)}">
                     <td><strong>${escapeHtml(id)}</strong></td>
                     <td><span style="margin-right:5px;font-size:15px;vertical-align:middle;">${mIcon}</span>${escapeHtml(row.name || id || "-")}</td>
                     <td>${escapeHtml(row.driver || "-")}</td>
+                    <td>${mfrCell}</td>
                     <td>${escapeHtml(mediaLabel)}</td>
                     <td>
                       ${meterValueCell(row)}
