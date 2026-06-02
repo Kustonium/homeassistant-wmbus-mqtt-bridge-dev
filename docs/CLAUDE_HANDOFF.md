@@ -176,6 +176,50 @@ Logi `[DIAG]` są **celowo pozostawione** w tej wersji do dalszej weryfikacji. P
 
 ---
 
+## Walidacja lokalna w WSL
+
+WSL jest dostępny i nadaje się do walidacji bash/testów:
+
+```
+Ubuntu WSL2
+bash: /usr/bin/bash
+flock: /usr/bin/flock
+jq: /snap/bin/jq
+shellcheck: /snap/bin/shellcheck
+awk: /usr/bin/awk
+mktemp: /usr/bin/mktemp
+```
+
+Windowsowy working tree ma CRLF w części plików, więc nie uruchamiać `bash -n`
+bezpośrednio na plikach z `/mnt/c/...`. Do walidacji używać tymczasowego
+checkoutu LF z `git archive HEAD`.
+
+Praktyczna komenda z Windows przez `cmd.exe -> WSL`:
+
+```cmd
+cmd.exe /d /s /c "wsl -d Ubuntu -- bash -lc ""set -euo pipefail; rm -rf ~/hawmq-validate; mkdir -p ~/hawmq-validate; cd /mnt/c/Users/foszt/Documents/GitHub/homeassistant-wmbus-mqtt-bridge-dev; git archive HEAD | tar -x -C ~/hawmq-validate; cd ~/hawmq-validate; bash -n rootfs/usr/bin/bridge.sh; bash -n rootfs/usr/bin/run.sh; bash -n docker/entrypoint.sh; bash -n tests/test_candidate_race.sh; shellcheck -s bash docker/entrypoint.sh rootfs/usr/bin/bridge.sh rootfs/usr/bin/run.sh tests/test_candidate_race.sh; bash tests/test_candidate_race.sh; cd /mnt/c/Users/foszt/Documents/GitHub/homeassistant-wmbus-mqtt-bridge-dev; git diff --check; git diff --stat; git status --short --untracked-files=all"""
+```
+
+Uzasadnienie `shellcheck -s bash`: `rootfs/usr/bin/run.sh` ma shebang
+`#!/usr/bin/with-contenv bashio`, którego ShellCheck nie rozpoznaje bez jawnego
+trybu powłoki (`SC1008`). Z `-s bash` ShellCheck przechodzi czysto.
+
+Ostatni potwierdzony wynik tej komendy:
+
+```
+bash -n rootfs/usr/bin/bridge.sh        OK
+bash -n rootfs/usr/bin/run.sh           OK
+bash -n docker/entrypoint.sh            OK
+bash -n tests/test_candidate_race.sh    OK
+shellcheck -s bash                      OK
+tests/test_candidate_race.sh            7 passed, 0 failed
+git diff --check                        OK
+git diff --stat                         brak zmian
+git status                              ?? AGENTS.md
+```
+
+---
+
 ## Prompt startowy do nowej sesji
 
 ```

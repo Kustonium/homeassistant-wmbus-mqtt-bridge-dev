@@ -1,22 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ── Source modules ────────────────────────────────────────────
+BRIDGE_LIB_DIR="${0%/*}/bridge-lib"
+# shellcheck source=bridge-lib/00-logging.sh
+source "${BRIDGE_LIB_DIR}/00-logging.sh"
+# shellcheck source=bridge-lib/01-utils.sh
+source "${BRIDGE_LIB_DIR}/01-utils.sh"
+
 # ============================================================
 # wMBus MQTT Bridge (core)
 # - MQTT RAW HEX (payload-only) -> wmbusmeters stdin:hex
 # - wmbusmeters JSON telegram -> MQTT state: <state_prefix>/<id>/state
 # - Home Assistant MQTT Discovery (generic): sensor per numeric JSON field
 # ============================================================
-
-log()         { echo "[wmbus-bridge] $*"; }
-warn()        { echo "[wmbus-bridge][WARN] $*" >&2; }
-err()         { echo "[wmbus-bridge][ERR] $*" >&2; }
-log_verbose() { [[ "${LOGLEVEL}" == "verbose" || "${LOGLEVEL}" == "debug" ]] && echo "[wmbus-bridge] $*" || true; }
-log_debug()   { [[ "${LOGLEVEL}" == "debug" ]] && echo "[wmbus-bridge] $*" || true; }
-
-need_bin() {
-  command -v "$1" >/dev/null 2>&1 || { err "Missing binary: $1"; exit 1; }
-}
 
 need_bin jq
 need_bin mosquitto_sub
@@ -110,14 +107,6 @@ mkdir -p "${BASE}/.preview_attempts" 2>/dev/null || true
 # next telegram arrives. New correct values appear ~2 min later on first decode.
 : > "${STATUS_CANDIDATE_VALUES_FILE}" 2>/dev/null || touch "${STATUS_CANDIDATE_VALUES_FILE}"
 [[ -f "${STATUS_RAW_COUNT_FILE}" ]] || echo "0" > "${STATUS_RAW_COUNT_FILE}"
-
-iso_now() {
-  date -Iseconds 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S%z'
-}
-
-epoch_now() {
-  date +%s 2>/dev/null || echo 0
-}
 
 # Record bridge start time for the WebGUI rate denominator fix.
 printf '%s\n' "$(epoch_now)" > "${STATUS_BRIDGE_START_FILE}" 2>/dev/null || true
@@ -1280,12 +1269,6 @@ normalize_meter_id() {
   fi
 }
 
-sanitize_obj_id() {
-  echo "$1" \
-    | tr '[:upper:]' '[:lower:]' \
-    | sed -e 's/[^a-z0-9_]/_/g' -e 's/__*/_/g' -e 's/^_//' -e 's/_$//'
-}
-
 guess_unit() {
   local k
   k="$(echo "$1" | tr '[:upper:]' '[:lower:]')"
@@ -1420,24 +1403,6 @@ guess_state_class() {
 # ------------------------------------------------------------
 # Search mode helpers
 # ------------------------------------------------------------
-float_or_default() {
-  local value="$1"
-  local def="$2"
-  local normalized
-
-  # Accept both decimal separators in add-on UI/options:
-  #   22.901 and 22,901 are treated as the same value.
-  # Spaces are ignored so pasted values like "22,901 " do not break search mode.
-  normalized="$(echo "${value}" | tr -d '[:space:]' | tr ',' '.')"
-
-  if [[ "${normalized}" =~ ^-?[0-9]+([.][0-9]+)?$ ]]; then
-    echo "${normalized}"
-  else
-    warn "Invalid numeric value '${value}', using default '${def}'. Use 22.901 or 22,901 format."
-    echo "${def}"
-  fi
-}
-
 SEARCH_EXPECTED_VALUE_M3="$(float_or_default "${SEARCH_EXPECTED_VALUE_M3}" "0")"
 SEARCH_TOLERANCE_M3="$(float_or_default "${SEARCH_TOLERANCE_M3}" "0.05")"
 SEARCH_MIN_DELTA_M3="$(float_or_default "${SEARCH_MIN_DELTA_M3}" "0.001")"
