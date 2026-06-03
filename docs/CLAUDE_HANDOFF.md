@@ -361,6 +361,40 @@ Wazne inwarianty zachowane w Stage 11:
 
 ---
 
+## Stage 12 - pipeline helper extraction
+
+Stage 12 przenosi zachowawczo tylko pomocniki pipeline do modulu:
+
+```
+rootfs/usr/bin/bridge-lib/12-pipeline.sh
+```
+
+Przeniesione definicje:
+
+- `mqtt_pub`
+- `wait_for_mqtt`
+
+Celowo pozostawione w `bridge.sh`:
+
+- `run_once`
+- `MQTT_WAIT_RETRIES="${MQTT_WAIT_RETRIES:-30}"`
+- `MQTT_WAIT_DELAY="${MQTT_WAIT_DELAY:-2}"`
+
+Decyzja: `run_once` nie zostal przeniesiony w Stage 12. Dokumentacja oznacza go
+jako opcjonalny i najwyzszego ryzyka, a uzytkownik zglaszal, ze widzi bledy do
+poprawienia po refaktorze. Zostawienie `run_once` w `bridge.sh` zmniejsza
+ryzyko w trakcie mechanicznego podzialu.
+
+Wazne inwarianty zachowane w Stage 12:
+
+- `mqtt_pub` pozostaje wywolywane lazy przez Discovery i SEARCH po zaladowaniu
+  `12-pipeline.sh`.
+- `wait_for_mqtt` czyta `MQTT_WAIT_RETRIES` i `MQTT_WAIT_DELAY` dopiero przy
+  wywolaniu w restart loop.
+- `run_once` nadal zawiera glowne potoki `mosquitto_sub | wmbusmeters | while read`.
+
+---
+
 ## Walidacja lokalna w WSL
 
 WSL jest dostępny i nadaje się do walidacji bash/testów:

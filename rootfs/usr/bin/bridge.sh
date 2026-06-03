@@ -27,6 +27,8 @@ source "${BRIDGE_LIB_DIR}/09-discovery.sh"
 source "${BRIDGE_LIB_DIR}/10-search.sh"
 # shellcheck source=bridge-lib/11-listen.sh
 source "${BRIDGE_LIB_DIR}/11-listen.sh"
+# shellcheck source=bridge-lib/12-pipeline.sh
+source "${BRIDGE_LIB_DIR}/12-pipeline.sh"
 
 # ============================================================
 # wMBus MQTT Bridge (core)
@@ -91,6 +93,7 @@ SEARCH_STATUS_FILE="${BASE}/search_status.json"
 STATUS_DISCOVERY_FLAG="${BASE}/status_discovery_published.flag"
 rm -f "${STATUS_DISCOVERY_FLAG}" 2>/dev/null || true
 
+# shellcheck disable=SC2034
 STATUS_MQTT_CONNECTED="false"
 STATUS_WMBUSMETERS_RUNNING="false"
 # shellcheck disable=SC2034
@@ -385,17 +388,6 @@ touch "${STATUS_ESP_EVENTS_FILE}" 2>/dev/null || true
     sleep 5
   done
 ) &
-
-mqtt_pub() {
-  local topic="$1"
-  local payload="$2"
-  local retain="${3:-false}"
-
-  local retain_flag=()
-  [[ "${retain}" == "true" ]] && retain_flag=( -r )
-
-  /usr/bin/mosquitto_pub "${PUB_ARGS[@]}" -t "${topic}" "${retain_flag[@]}" -m "${payload}" || true
-}
 
 # ------------------------------------------------------------
 # wmbusmeters.conf
@@ -694,31 +686,6 @@ trap stop_listen_instance EXIT TERM INT
 # ------------------------------------------------------------
 MQTT_WAIT_RETRIES="${MQTT_WAIT_RETRIES:-30}"
 MQTT_WAIT_DELAY="${MQTT_WAIT_DELAY:-2}"
-
-wait_for_mqtt() {
-  log "Waiting for MQTT broker ${MQTT_HOST}:${MQTT_PORT}..."
-  for ((i=1; i<=MQTT_WAIT_RETRIES; i++)); do
-    if /usr/bin/mosquitto_pub "${PUB_ARGS[@]}" -t "wmbus_bridge/status" -m "starting" --quiet 2>/dev/null; then
-      log "MQTT broker ready (attempt ${i}/${MQTT_WAIT_RETRIES})"
-      STATUS_MQTT_CONNECTED="true"
-      STATUS_LAST_ERROR=""
-      status_add_event "ok" "MQTT broker ready"
-      write_status_json
-      return 0
-    fi
-    warn "MQTT not ready (attempt ${i}/${MQTT_WAIT_RETRIES}), retrying in ${MQTT_WAIT_DELAY}s..."
-    sleep "${MQTT_WAIT_DELAY}"
-  done
-  # Broker niedostępny po wszystkich próbach - ostrzegamy ale nie przerywamy,
-  # pętla restart_on_exit zajmie się ponownym uruchomieniem pipeline.
-  warn "MQTT broker not available after ${MQTT_WAIT_RETRIES} attempts, continuing anyway..."
-  # shellcheck disable=SC2034
-  STATUS_MQTT_CONNECTED="false"
-  STATUS_LAST_ERROR="MQTT broker not available"
-  status_add_event "error" "MQTT broker not available"
-  write_status_json
-  return 1
-}
 
 # ------------------------------------------------------------
 # Restart loop (optional)
