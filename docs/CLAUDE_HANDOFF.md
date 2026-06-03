@@ -259,6 +259,37 @@ tests/test_candidate_race.sh                                               7 pas
 tests/test_value_selection.sh                                              13 passed, 0 failed
 ```
 
+- Stage 9: `10-search.sh` — przygotowany lokalnie. Przeniesione deklaracje:
+  `SEARCH_FIRST_VALUE`, `SEARCH_REPORTED_EXPECTED`, `SEARCH_REPORTED_DELTA`.
+  Przeniesione funkcje: `search_cached_count`, `write_search_status`,
+  `search_field_is_candidate`, `emit_search_payload`,
+  `search_type_is_water_candidate`, `search_cache_candidate`,
+  `create_search_meter_files_from_cache`, `process_search_json`,
+  `search_record_match`.
+
+Stage 9 jest refaktorem behavior-preserving:
+
+- `bridge.sh` sourcuje `10-search.sh` po `08-discovery-helpers.sh`.
+- Scalar init SEARCH pozostaje w `bridge.sh`, w tym `SEARCH_EXPECTED_VALUE_M3`,
+  `SEARCH_TOLERANCE_M3`, `SEARCH_MIN_DELTA_M3`,
+  `SEARCH_USING_TEMP_METERS`, `OFFICIAL_METERS_COUNT` i liczniki/statusy SEARCH.
+- `write_search_status "auto" "bridge_starting"` pozostaje w `bridge.sh` jako init runtime.
+- Ciała wszystkich 9 przeniesionych funkcji porównane z `HEAD` — zero różnic.
+- Dodano tylko wąskie dyrektywy `# shellcheck disable=SC2034` przy scalarach SEARCH, które po ekstrakcji są zapisane w `bridge.sh`, a czytane/aktualizowane w `10-search.sh`.
+- Nie zmieniono SEARCH status schema, `search_candidates.tsv`, `search_matches.tsv`, publikacji `search_topic`, heurystyki water candidate, SEARCH temp meter fallbacku, MQTT topiców, WebUI ani wrapperów.
+
+Walidacja Stage 9 na kopii LF w WSL:
+
+```
+bash -n bridge.sh/run.sh/entrypoint.sh/test_candidate_race.sh/bridge-lib/*.sh  OK
+body diff 9 search functions vs HEAD                                     OK
+SEARCH declare -A moved                                                   OK
+shellcheck -s bash -S warning -x                                           OK
+tests/test_candidate_race.sh                                               7 passed, 0 failed
+tests/test_value_selection.sh                                              13 passed, 0 failed
+search status smoke test                                                   OK
+```
+
 ---
 
 ## Walidacja lokalna w WSL
