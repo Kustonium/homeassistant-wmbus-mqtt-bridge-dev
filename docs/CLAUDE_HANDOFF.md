@@ -185,7 +185,7 @@ Ostatnie potwierdzone etapy modularizacji:
 - Stage 3: `03-tsv.sh` — commit `f2c89f8`, wypchnięty.
 - Stage 4: `08-discovery-helpers.sh` — commit `2b844f0`, wypchnięty.
 - Stage 5: `05-raw.sh` — commit `d61b3bc`, wypchnięty.
-- Stage 6: `06-candidates.sh` — przygotowany lokalnie. Przeniesione funkcje:
+- Stage 6: `06-candidates.sh` — commit `0135bd0`, wypchnięty. Przeniesione funkcje:
   `_set_preview_state`, `_request_listen_reload`,
   `status_upsert_candidate_analysis`, `candidate_autodecode_file`,
   `candidate_type_requires_aes`, `ensure_candidate_autodecode`,
@@ -211,6 +211,31 @@ tests/test_value_selection.sh                                              13 pa
 preview state machine mini-test                                            OK
 listen reload debounce mini-test                                           OK
 git diff --check                                                           OK
+```
+
+- Stage 7: `04-status.sh` — przygotowany lokalnie. Przeniesione funkcje:
+  `status_add_event`, `status_record_seen`, `status_seen_stats`,
+  `status_read_raw_count`, `status_read_last_raw_seen`,
+  `status_store_raw_seen`, `status_store_recent_raw`,
+  `status_find_recent_raw_for_id`, `write_status_json`,
+  `status_mark_discovery_published`.
+
+Stage 7 jest refaktorem behavior-preserving:
+
+- `bridge.sh` sourcuje `04-status.sh` po `03-tsv.sh` i przed `05-raw.sh`.
+- Ciała wszystkich 10 przeniesionych funkcji porównane z `HEAD` — zero różnic.
+- Dodano tylko wąskie dyrektywy `# shellcheck disable=SC2034` przy globalach, które po ekstrakcji `write_status_json` są zapisywane w `bridge.sh`, a czytane w `04-status.sh`.
+- Nie zmieniono status JSON schema, runtime status files, rate counters, event TSV, seen TSV, raw recent buffer, MQTT topiców, WebUI ani wrapperów.
+
+Walidacja Stage 7 na kopii LF w WSL:
+
+```
+bash -n bridge.sh/run.sh/entrypoint.sh/test_candidate_race.sh/bridge-lib/*.sh  OK
+body diff 10 status functions vs HEAD                                     OK
+shellcheck -s bash -S warning -x                                           OK
+tests/test_candidate_race.sh                                               7 passed, 0 failed
+tests/test_value_selection.sh                                              13 passed, 0 failed
+status json smoke test                                                     OK
 ```
 
 ---
