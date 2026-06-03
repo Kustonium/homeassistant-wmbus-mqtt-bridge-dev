@@ -2,7 +2,11 @@
 set -euo pipefail
 
 # ── Source modules ────────────────────────────────────────────
-BRIDGE_LIB_DIR="${0%/*}/bridge-lib"
+BRIDGE_SCRIPT_PATH="${BASH_SOURCE[0]}"
+BRIDGE_SCRIPT_DIR="${BRIDGE_SCRIPT_PATH%/*}"
+[[ "${BRIDGE_SCRIPT_DIR}" == "${BRIDGE_SCRIPT_PATH}" ]] && BRIDGE_SCRIPT_DIR="."
+BRIDGE_SCRIPT_DIR="$(cd "${BRIDGE_SCRIPT_DIR}" && pwd)"
+BRIDGE_LIB_DIR="${BRIDGE_SCRIPT_DIR}/bridge-lib"
 # shellcheck source=bridge-lib/00-logging.sh
 source "${BRIDGE_LIB_DIR}/00-logging.sh"
 # shellcheck source=bridge-lib/01-utils.sh
