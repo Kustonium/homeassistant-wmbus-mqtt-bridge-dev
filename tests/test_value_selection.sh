@@ -15,6 +15,11 @@ SCRIPT_DIR="${SCRIPT_PATH%/*}"
 SCRIPT_DIR="$(cd "${SCRIPT_DIR}" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BRIDGE_SH="${ROOT_DIR}/rootfs/usr/bin/bridge.sh"
+METERS_LIB="${ROOT_DIR}/rootfs/usr/bin/bridge-lib/07-meters.sh"
+HELPER_SOURCE="${BRIDGE_SH}"
+if [[ -f "${METERS_LIB}" ]]; then
+  HELPER_SOURCE="${METERS_LIB}"
+fi
 
 command -v jq >/dev/null 2>&1 || {
   echo "FAIL: missing jq" >&2
@@ -26,11 +31,11 @@ helper_def="$(
     /^_select_primary_meter_value\(\) \{/ { in_fn = 1 }
     in_fn { print }
     in_fn && /^}$/ { exit }
-  ' "${BRIDGE_SH}"
+  ' "${HELPER_SOURCE}"
 )"
 
 if [[ -z "${helper_def}" ]]; then
-  echo "FAIL: _select_primary_meter_value() not found in bridge.sh" >&2
+  echo "FAIL: _select_primary_meter_value() not found in ${HELPER_SOURCE}" >&2
   exit 1
 fi
 

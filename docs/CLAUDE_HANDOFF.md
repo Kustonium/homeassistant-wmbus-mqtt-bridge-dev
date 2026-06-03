@@ -238,6 +238,27 @@ tests/test_value_selection.sh                                              13 pa
 status json smoke test                                                     OK
 ```
 
+- Stage 8: `07-meters.sh` — przygotowany lokalnie. Przeniesione funkcje:
+  `_select_primary_meter_value`, `status_meter_seen`, `refresh_meter_files`.
+
+Stage 8 jest refaktorem behavior-preserving:
+
+- `bridge.sh` sourcuje `07-meters.sh` po `06-candidates.sh` i przed `08-discovery-helpers.sh`.
+- Ciała wszystkich 3 przeniesionych funkcji porównane z `HEAD` — zero różnic.
+- Dodano jedną dyrektywę `# shellcheck disable=SC2034` przed `refresh_meter_files`, bo funkcja zapisuje globale używane przez inne ścieżki runtime po modularizacji.
+- `tests/test_value_selection.sh` został dostosowany do modułu: najpierw czyta `_select_primary_meter_value` z `bridge-lib/07-meters.sh`, z fallbackiem do `bridge.sh`.
+- Nie zmieniono wyboru wartości licznika, `status_meters.tsv`, generowania `wmbusmeters.d/meter-*`, SEARCH fallbacku, MQTT topiców, WebUI ani wrapperów.
+
+Walidacja Stage 8 na kopii LF w WSL:
+
+```
+bash -n bridge.sh/run.sh/entrypoint.sh/test_candidate_race.sh/bridge-lib/*.sh  OK
+body diff 3 meter functions vs HEAD                                      OK
+shellcheck -s bash -S warning -x                                           OK
+tests/test_candidate_race.sh                                               7 passed, 0 failed
+tests/test_value_selection.sh                                              13 passed, 0 failed
+```
+
 ---
 
 ## Walidacja lokalna w WSL
