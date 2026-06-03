@@ -395,6 +395,45 @@ Wazne inwarianty zachowane w Stage 12:
 
 ---
 
+## Stage 13 - ESP subscriber extraction
+
+Stage 13 przenosi background subscribery ESP do modulu:
+
+```
+rootfs/usr/bin/bridge-lib/13-esp.sh
+```
+
+Dodana funkcja:
+
+- `start_esp_subscribers`
+
+Przeniesiony blok:
+
+- subscriber `wmbus/+/diag/summary` zapisujacy `status_esp_diag.json`
+- tracker urzadzen ESP na podstawie `RAW_TOPIC` i `status_esp_telegram_devices.tsv`
+- subscriber `wmbus/+/diag` oraz `wmbus/+/diag/#` zapisujacy eventy,
+  sugestie i boot statusy ESP
+
+`bridge.sh` sourcuje `13-esp.sh` po `12-pipeline.sh` i wywoluje
+`start_esp_subscribers` w tym samym miejscu, w ktorym wczesniej byly trzy
+inline bloki `(while true; ...) &`: po zbudowaniu `SUB_ARGS`, `SUB_EXTRA` i
+`STDBUF_BIN`, przed generowaniem `wmbusmeters.conf`.
+
+Wazne inwarianty zachowane w Stage 13:
+
+- Wnetrze przeniesionego bloku ESP jest byte-identical do poprzedniego
+  `bridge.sh`.
+- Modul nie uruchamia subscriberow przy samym `source`; robi to dopiero
+  jawne wywolanie `start_esp_subscribers` w `bridge.sh`.
+- Nie zmieniono topikow MQTT ESP ani formatow plikow statusowych WebUI.
+
+Ryzyko do testow runtime: dokumentacja Stage 13 wskazuje, ze opakowanie
+background subscriberow funkcja moze zmienic sposob obserwacji PID-ow przy
+debugowaniu. Przed wydaniem produkcyjnym warto sprawdzic w kontenerze, ze soft
+reload DECODE nadal nie zabija procesow ESP subscriberow.
+
+---
+
 ## Walidacja lokalna w WSL
 
 WSL jest dostępny i nadaje się do walidacji bash/testów:
