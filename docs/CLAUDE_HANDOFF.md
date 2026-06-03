@@ -176,6 +176,45 @@ Logi `[DIAG]` są **celowo pozostawione** w tej wersji do dalszej weryfikacji. P
 
 ---
 
+## Modularizacja `bridge.sh` — status 2026-06-03
+
+Ostatnie potwierdzone etapy modularizacji:
+
+- Stage 1: `00-logging.sh`, `01-utils.sh` — commit `70fe75f`, wypchnięty.
+- Stage 2: `02-config.sh` — commit `2632aed`, wypchnięty.
+- Stage 3: `03-tsv.sh` — commit `f2c89f8`, wypchnięty.
+- Stage 4: `08-discovery-helpers.sh` — commit `2b844f0`, wypchnięty.
+- Stage 5: `05-raw.sh` — commit `d61b3bc`, wypchnięty.
+- Stage 6: `06-candidates.sh` — przygotowany lokalnie. Przeniesione funkcje:
+  `_set_preview_state`, `_request_listen_reload`,
+  `status_upsert_candidate_analysis`, `candidate_autodecode_file`,
+  `candidate_type_requires_aes`, `ensure_candidate_autodecode`,
+  `sync_candidate_autodecode_files`, `prune_official_meter_previews`,
+  `status_record_candidate_raw`, `status_analyze_candidate_from_text`,
+  `status_mark_search_decoded_no_aes`, `status_candidate_seen`.
+
+Stage 6 jest refaktorem behavior-preserving:
+
+- `bridge.sh` sourcuje `06-candidates.sh` po `05-raw.sh` i przed `08-discovery-helpers.sh`.
+- Ciała wszystkich 12 przeniesionych funkcji porównane z `HEAD` — zero różnic.
+- Dodano tylko dwie dyrektywy `# shellcheck disable=SC2034` poza ciałami funkcji, dla warningów wynikających z separacji modułu.
+- Nie zmieniono preview state machine, `.reload_listen`, autodecode, TSV schema, MQTT topiców, WebUI ani konfiguracji `wmbusmeters`.
+
+Walidacja Stage 6 na kopii LF w WSL:
+
+```
+bash -n bridge.sh/run.sh/entrypoint.sh/test_candidate_race.sh/bridge-lib/*.sh  OK
+body diff 12 candidate functions vs HEAD                                  OK
+shellcheck -s bash -S warning -x                                           OK
+tests/test_candidate_race.sh                                               7 passed, 0 failed
+tests/test_value_selection.sh                                              13 passed, 0 failed
+preview state machine mini-test                                            OK
+listen reload debounce mini-test                                           OK
+git diff --check                                                           OK
+```
+
+---
+
 ## Walidacja lokalna w WSL
 
 WSL jest dostępny i nadaje się do walidacji bash/testów:
@@ -193,6 +232,11 @@ mktemp: /usr/bin/mktemp
 Windowsowy working tree ma CRLF w części plików, więc nie uruchamiać `bash -n`
 bezpośrednio na plikach z `/mnt/c/...`. Do walidacji używać tymczasowego
 checkoutu LF z `git archive HEAD`.
+
+Ważne dla Codex/Codex Desktop: komendy Windows -> WSL uruchamiać przez
+`cmd.exe /d /s /c`, nie przez PowerShell. W tym repo PowerShell częściej
+powodował problemy z cytowaniem, zmiennymi i diagnostyką CRLF, a `cmd.exe`
+okazał się stabilniejszą ścieżką do `wsl bash -lc`.
 
 Praktyczna komenda z Windows przez `cmd.exe -> WSL`:
 
