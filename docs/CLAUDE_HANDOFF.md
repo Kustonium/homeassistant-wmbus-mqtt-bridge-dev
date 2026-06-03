@@ -290,6 +290,33 @@ tests/test_value_selection.sh                                              13 pa
 search status smoke test                                                   OK
 ```
 
+- Stage 10: `09-discovery.sh` — przygotowany lokalnie. Przeniesione deklaracje:
+  `DISCOVERY_SENT_FIELD`, `DISCOVERY_CLEANED_LEGACY`,
+  `SEARCH_DISCOVERY_CLEARED_FIELD`. Przeniesione funkcje:
+  `clean_legacy_totalm3`, `emit_discovery_from_json`,
+  `is_search_temp_json`, `clear_search_discovery_from_json`.
+
+Stage 10 jest refaktorem behavior-preserving:
+
+- `bridge.sh` sourcuje `09-discovery.sh` po `08-discovery-helpers.sh` i przed `10-search.sh`.
+- Ciała wszystkich 4 przeniesionych funkcji porównane z `HEAD` — zero różnic.
+- Tablice asocjacyjne Discovery są inicjalizowane w module na top-level, po source do głównego shella.
+- Nie zmieniono Home Assistant MQTT Discovery payloadów, `unique_id`,
+  `object_id`, `state_topic`, legacy cleanup, SEARCH discovery cleanup, MQTT topiców, WebUI ani wrapperów.
+- Uwaga walidacyjna: `normalize_meter_id` jest w `05-raw.sh`, więc izolowane harnessy Discovery muszą sourcować `05-raw.sh` przed `09-discovery.sh`.
+
+Walidacja Stage 10 na kopii LF w WSL:
+
+```
+bash -n bridge.sh/run.sh/entrypoint.sh/test_candidate_race.sh/bridge-lib/*.sh  OK
+body diff 4 discovery functions vs HEAD                                  OK
+Discovery declare -A moved                                                OK
+shellcheck -s bash -S warning -x                                           OK
+tests/test_candidate_race.sh                                               7 passed, 0 failed
+tests/test_value_selection.sh                                              13 passed, 0 failed
+Discovery payload spot-check                                               OK
+```
+
 ---
 
 ## Walidacja lokalna w WSL
