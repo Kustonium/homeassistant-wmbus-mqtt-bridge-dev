@@ -1,4 +1,4 @@
-## 1.5.23-dev
+## 1.5.24-dev
 
 ### Changed
 - Maintenance refactor: split helper functions from the large
