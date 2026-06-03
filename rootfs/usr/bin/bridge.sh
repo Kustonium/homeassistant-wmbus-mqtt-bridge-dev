@@ -35,6 +35,8 @@ source "${BRIDGE_LIB_DIR}/11-listen.sh"
 source "${BRIDGE_LIB_DIR}/12-pipeline.sh"
 # shellcheck source=bridge-lib/13-esp.sh
 source "${BRIDGE_LIB_DIR}/13-esp.sh"
+# shellcheck source=bridge-lib/14-detect.sh
+source "${BRIDGE_LIB_DIR}/14-detect.sh"
 
 # ============================================================
 # wMBus MQTT Bridge (core)
@@ -292,6 +294,27 @@ format=json
 EOFLISTEN
 
 # ------------------------------------------------------------
+# Manufacturer-detection wmbusmeters config: a dedicated instance that ALWAYS
+# runs with zero meters, so it stays in "Printing id:s of all telegrams heard!"
+# mode and emits the "Received telegram from: / manufacturer:" analysis block
+# for every telegram — including officially configured meters, which the DECODE
+# pipeline (JSON, no manufacturer name) and the parallel LISTEN (loaded with
+# candidate preview files, so no longer print-all) stop reporting. Its config
+# dir must NEVER contain a meter file.
+# ------------------------------------------------------------
+DETECT_BASE="${BASE}/detect"
+DETECT_METER_DIR="${DETECT_BASE}/etc/wmbusmeters.d"
+DETECT_CONF_FILE="${DETECT_BASE}/etc/wmbusmeters.conf"
+mkdir -p "${DETECT_METER_DIR}"
+# Defensive — this instance must NEVER have meter files (would leave print-all mode).
+rm -f "${DETECT_METER_DIR}/meter-"* 2>/dev/null || true
+cat > "${DETECT_CONF_FILE}" <<EOFDETECT
+loglevel=normal
+device=stdin:hex
+logfile=/dev/stdout
+EOFDETECT
+
+# ------------------------------------------------------------
 # Search mode helpers
 # ------------------------------------------------------------
 SEARCH_EXPECTED_VALUE_M3="$(float_or_default "${SEARCH_EXPECTED_VALUE_M3}" "0")"
@@ -536,8 +559,9 @@ fi
   fi
 }
 
-# Ensure LISTEN dies when the addon shuts down (docker stop / s6 SIGTERM).
-trap stop_listen_instance EXIT TERM INT
+# Ensure LISTEN and the manufacturer-detection instance die when the addon
+# shuts down (docker stop / s6 SIGTERM).
+trap 'stop_listen_instance; stop_detect_instance' EXIT TERM INT
 
 # ------------------------------------------------------------
 # wait_for_mqtt
@@ -586,6 +610,10 @@ while true; do
   # Double-counting in pure LISTEN mode is prevented inside parse_listen_candidates()
   # by the OFFICIAL_METERS_COUNT guard — not at the instance-start level.
   start_listen_instance
+
+  # Dedicated zero-meter listen instance that heals the candidate manufacturer
+  # column for configured meters (see bridge-lib/14-detect.sh). Idempotent.
+  start_detect_instance
 
   run_once
   rc=$?

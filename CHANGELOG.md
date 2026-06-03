@@ -1,6 +1,33 @@
 ## 1.5.26-dev
 
-<!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
+### Fixed
+- Configured meters added on an existing installation kept showing a bare
+  3-letter manufacturer code (e.g. `NES`) instead of the full display name
+  (`NES · NORA ELK MALZ SAN ve TIC`); a clean install showed the full name,
+  an upgrade did not, and the value only healed after removing the meters from
+  the list. Root cause: the full manufacturer text comes only from
+  `wmbusmeters`' listen-mode analysis block, which is printed only when an
+  instance has zero meters. With meters configured, the primary pipeline runs
+  in DECODE mode (JSON, no manufacturer name) and the parallel LISTEN instance
+  is loaded with candidate `meter-preview-<id>` files, so neither instance is
+  in "print all telegrams" mode for the configured meters (which are pruned
+  from the preview dir, and AES meters never get a preview). The configured
+  meter therefore had no source for its full manufacturer text and the WebGUI
+  fell back to the bare RAW M-field code.
+
+### Added
+- New dedicated manufacturer-detection LISTEN instance
+  (`rootfs/usr/bin/bridge-lib/14-detect.sh`) that always runs `wmbusmeters`
+  against a config dir with zero meter files, so it stays permanently in
+  "Printing id:s of all telegrams heard!" mode and emits the manufacturer
+  analysis block for every telegram, including configured meters. Its parser
+  updates only the manufacturer column of an existing candidate row via
+  `candidate_update_manufacturer_text()`; it does not touch reception stats,
+  preview values, candidate analysis or events, so it cannot double-count
+  anything the primary or parallel pipelines already track. The instance is
+  started idempotently next to the parallel LISTEN and stopped via the
+  shutdown trap. `bridge.sh` and the new module only; no changes to the DECODE
+  pipeline, preview decoding, TSV schema, MQTT topics or the WebGUI.
 
 ## 1.5.25-dev
 
