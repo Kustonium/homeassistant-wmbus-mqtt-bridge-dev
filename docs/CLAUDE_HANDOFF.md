@@ -319,6 +319,48 @@ Discovery payload spot-check                                               OK
 
 ---
 
+## Stage 11 - LISTEN + lifecycle extraction
+
+Stage 11 przenosi logike parallel LISTEN do modulu:
+
+```
+rootfs/usr/bin/bridge-lib/11-listen.sh
+```
+
+Przeniesione definicje:
+
+- `emit_snippet_if_new`
+- `_store_candidate_value`
+- `status_candidate_seen_from_json`
+- `_process_listen_text_block`
+- `parse_listen_candidates`
+- `LISTEN_PID=""`
+- `listen_preview_count`
+- `start_listen_instance`
+- `stop_listen_instance`
+
+Celowo pozostawione w `bridge.sh`:
+
+- `SNIPPET_STATE="${BASE}/seen_ids.txt"`
+- `touch "${SNIPPET_STATE}"`
+- `trap stop_listen_instance EXIT TERM INT`
+
+Powod: moduly sa sourcowane bardzo wczesnie, przed inicjalizacja `BASE`, wiec
+`SNIPPET_STATE` i `touch` nie moga wejsc do modulu bez zmiany kolejnosci
+startowej albo dodania top-level side effectu. `trap` zgodnie ze specyfikacja
+pozostaje w `bridge.sh`; funkcja `stop_listen_instance` jest juz dostepna,
+bo `11-listen.sh` jest sourcowany przed rejestracja trap.
+
+Wazne inwarianty zachowane w Stage 11:
+
+- `write_status_json() { :; }` pozostaje wewnatrz `parse_listen_candidates`.
+- `LISTEN_PID` jest globalny, nie `local`.
+- `start_listen_instance` nadal jest idempotentne przez `kill -0 "${LISTEN_PID}"`.
+- `stop_listen_instance` nadal zabija supervisor i dzieci pipeline.
+- `run_once` oraz `wait_for_mqtt` nadal sa w `bridge.sh` i czekaja na Stage 12.
+
+---
+
 ## Walidacja lokalna w WSL
 
 WSL jest dostępny i nadaje się do walidacji bash/testów:
