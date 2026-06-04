@@ -309,6 +309,8 @@ SEARCH_USING_TEMP_METERS="false"
 # Used by sourced bridge-lib/07-meters.sh
 # shellcheck disable=SC2034
 OFFICIAL_METERS_COUNT=0
+# Used by sourced bridge-lib/07-meters.sh
+# shellcheck disable=SC2034
 SEARCH_IGNORED_COUNT=0
 # shellcheck disable=SC2034
 SEARCH_TEMP_METERS_LOADED=0
