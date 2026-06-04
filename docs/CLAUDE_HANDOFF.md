@@ -6,9 +6,19 @@
 > kandydatów/preview/LISTEN — przeczytaj ten rozdział, bo opisuje subtelny
 > regres i konwencję, której nie wolno złamać.
 
-## ⚠️ OTWARTY (powiązany): pełna NAZWA producenta tylko skrócona przy liczniku dodanym w trybie skonfigurowanym
+## Naprawiony (powiązany): pełna NAZWA producenta przy liczniku dodanym w trybie skonfigurowanym
 
-Status: **NIENAPRAWIONY** (zgłoszony 2026-06-04, ta sama martwa strefa co niżej).
+Status: **NAPRAWIONY** 2026-06-04 — `bridge-lib/05-raw.sh`. Dodano
+`mfct_name_from_code()` (tabela kod→nazwa, potwierdzone: BMT→BMETERS,
+NES→NORA ELK MALZ SAN ve TIC, SAP→Diehl Metering, QDS→Qundis, TCH→Techem).
+Ścieżka RAW wpisuje teraz pełną formę `(CODE) Vendor` zamiast gołego kodu, więc
+kompaktor webui pokazuje `CODE · Vendor` także dla liczników odkrytych w trybie
+DECODE (gdzie blok tekstowy LISTEN jest martwy). Nieznane kody → goły kod (bez
+regresji); guard fill-only-when-empty-or-bare uzdrawia istniejący goły kod i nie
+psuje pełnej nazwy z LISTEN. Walidacja: bash -n + shellcheck OK, test
+funkcjonalny (goły BMT → (BMT) BMETERS; nieznany → goły kod), 7/7 + 13/13.
+Rozszerzać tabelę o kolejnych vendorów gdy się pojawią. Opis poniżej jako
+kontekst.
 
 **Objaw (potwierdzony na żywo):**
 - Licznik dodany gdy LISTEN był „print all" (brak/mało preview) → **pełna nazwa**,

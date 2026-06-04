@@ -96,6 +96,26 @@ mfct_code_from_raw_hex() {
     'BEGIN { printf "%c%c%c", a, b, c }'
 }
 
+# Map a 3-letter EN 13757 FLAG manufacturer code to the full "(CODE) Vendor"
+# string (same shape the LISTEN text path stores, so the WebGUI compactor renders
+# e.g. "BMT · BMETERS"). This is the only way to get the full vendor name for a
+# meter configured while another meter is already configured: in that mode the
+# parallel LISTEN is loaded with preview files, leaves "print all" mode, and never
+# emits the "manufacturer:" text block — so only the bare M-field code is known
+# (see docs/CLAUDE_HANDOFF.md). Only codes confirmed from real telegrams are
+# mapped; unknown codes return empty so the caller keeps the bare 3-letter code
+# (no regression). Extend the case list as new vendors are seen in the wild.
+mfct_name_from_code() {
+  case "$1" in
+    BMT) echo "(BMT) BMETERS" ;;
+    NES) echo "(NES) NORA ELK MALZ SAN ve TIC" ;;
+    SAP) echo "(SAP) Diehl Metering" ;;
+    QDS) echo "(QDS) Qundis" ;;
+    TCH) echo "(TCH) Techem" ;;
+    *)   echo "" ;;
+  esac
+}
+
 # Fallback fill of the manufacturer column (9) for an EXISTING candidate row
 # whose manufacturer is empty or contains only a bare 3-letter EN 13757 code
 # left by a pre-1.5.22 installation (upgrade path). Deliberately conservative:
@@ -169,9 +189,15 @@ status_raw_candidate_seen() {
   # telegram to JSON, which carries no manufacturer text), independent of LISTEN
   # reloads. Fill-only-when-empty keeps the full text name from the LISTEN text
   # path authoritative. Does NOT create rows or touch stats.
-  local _mfct_code
+  local _mfct_code _mfct_full
   _mfct_code="$(mfct_code_from_raw_hex "${raw}")"
-  [[ -n "${_mfct_code}" ]] && candidate_fill_manufacturer_code "${id}" "${_mfct_code}"
+  if [[ -n "${_mfct_code}" ]]; then
+    # Prefer the full "(CODE) Vendor" form when the code is known, so meters
+    # discovered in DECODE mode (no LISTEN text block) still get a full name and
+    # not just the bare 3-letter code. Unknown codes fall back to the bare code.
+    _mfct_full="$(mfct_name_from_code "${_mfct_code}")"
+    candidate_fill_manufacturer_code "${id}" "${_mfct_full:-${_mfct_code}}"
+  fi
 
   # This runs on EVERY raw telegram (status_raw_seen). In pure LISTEN mode (no
   # official meters) the run_once inline parser already registers every candidate

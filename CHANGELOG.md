@@ -1,6 +1,17 @@
 ## 1.5.26-dev
 
 ### Fixed
+- Manufacturer column showed only the bare 3-letter FLAG code (e.g. `BMT`)
+  instead of the full vendor name (`BMT · BMETERS`) for a meter/candidate first
+  seen while another meter was already configured. The full text comes only from
+  the LISTEN `manufacturer:` block, which is not emitted once the parallel LISTEN
+  has preview files loaded (it leaves "print all" mode), so such ids only ever
+  had the RAW M-field code. A small confirmed FLAG-code -> vendor lookup
+  (`mfct_name_from_code` in `05-raw.sh`: BMT, NES, SAP, QDS, TCH) now lets the RAW
+  path fill the full `(CODE) Vendor` form, which the WebGUI compactor renders as
+  `CODE · Vendor`. Unknown codes fall back to the bare code (no regression); the
+  existing fill-only-when-empty-or-bare guard upgrades a previously stored bare
+  code and never downgrades a full LISTEN name. `bridge-lib/05-raw.sh` only.
 - New candidates were not discovered while one or more official meters were
   configured: with no meter the addon listed and decoded the whole replay
   corpus, but with a meter configured only candidates that already had a
