@@ -1,3 +1,65 @@
+# Handoff — sesja 2026-06-04 (preview reload-churn)
+
+> Uwaga dla wszystkich agentów (Claude, Codex, BMAD): w tym repo kod pisze
+> kilka różnych agentów. Modularizację monolitu `bridge.sh` na `bridge-lib/*.sh`
+> zrobił Codex+BMAD; część fixów robi Claude. Zanim zmienisz ścieżkę
+> kandydatów/preview/LISTEN — przeczytaj ten rozdział, bo opisuje subtelny
+> regres i konwencję, której nie wolno złamać.
+
+## Potwierdzony bug: reload-churn previews przy skonfigurowanych licznikach
+
+**Objaw:** wartości preview kandydatów wiszą na „dekoduję…", gdy w
+`options.json` jest ≥1 oficjalny licznik. Po usunięciu liczników — działają.
+Świeża instalacja działa. To **mylnie** wygląda na problem modularizacji,
+mojej instancji `14-detect.sh`, albo wersji wmbusmeters.
+
+**Co to NIE było (wykluczone dowodami):**
+- Nie modularizacja: `run_once`, `parse_listen_candidates`,
+  `_store_candidate_value`, `ensure_candidate_autodecode` są **byte-identyczne**
+  z monolitem `503655b` (sprawdzone `diff` ciał funkcji).
+- Nie `14-detect.sh`: użytkownik odtworzył wersję sprzed niej i bug został →
+  instancja cofnięta (commit revert). **Nie dodawać jej ponownie** bez
+  rozwiązania problemu manufacturera w inny sposób (bez 3. instancji).
+- Nie wmbusmeters 2.0.0: ta sama binarka cały czas (build edge).
+
+**Prawdziwa przyczyna (commit `db2dfcc`, 2026-05-30, autor repo):** dodał
+`status_candidate_seen_from_json()` i jego wywołanie w gałęzi JSON
+`parse_listen_candidates`, gated `OFFICIAL_METERS_COUNT > 0`. Funkcja relabeluje
+driver kandydata z JSON (`auto` → `izarv2`), co przez
+`status_candidate_seen` → `ensure_candidate_autodecode` przepisuje
+`meter-preview-<id>` i woła `_request_listen_reload`. Skutek: równoległy LISTEN
+jest **zabijany i restartowany na każdym telegramie** (`LISTEN supervisor:
+.reload_listen detected, killing pid=...`) → pipeline nie zdąża ustabilizować
+dekodowania. Debug log użytkownika potwierdził churn ORAZ że po ustabilizowaniu
+drivera previews jednak dekodują (`unchanged, no reload triggered`,
+`_store_candidate_value ... value=430.142`).
+
+**Fix (ta sesja):** `status_candidate_seen` dostaje 6. argument `reload`
+(domyślnie `true` — wszyscy obecni wołający z ścieżki text/RAW bez zmian).
+Ścieżka decoded-JSON (`status_candidate_seen_from_json`) przekazuje
+`reload=false`: driver dalej odświeża się w pliku preview (na następny naturalny
+restart), ale **bez** natychmiastowego reloadu → koniec churnu. Zmiana tylko w
+`bridge-lib/06-candidates.sh` i `bridge-lib/11-listen.sh`.
+
+**KONWENCJA do utrzymania:** wywołania `status_candidate_seen` z ścieżki
+dekodowania JSON (gdzie kandydat już produkuje JSON, więc preview działa) MUSZĄ
+używać `reload=false`. Reload zostawić tylko dla ścieżki text/RAW, gdzie nowy
+plik preview faktycznie musi być podchwycony, żeby zacząć dekodować.
+
+**Walidacja tej sesji (kopia LF w WSL):**
+- `bash -n` 06/11/bridge.sh — OK; `shellcheck -s bash -S warning -x bridge.sh` — OK
+- test funkcjonalny churn: text-path reloaduje (≥2), JSON-path reload=0,
+  driver w pliku zaktualizowany, stabilne przy powtórce
+- `tests/test_candidate_race.sh` 7/7, `tests/test_value_selection.sh` 13/13
+
+**Otwarte:** osobny temat — pełna nazwa producenta dla SKONFIGUROWANEGO licznika
+w trybie DECODE (martwa strefa: pełny tekst manufacturer leci tylko z listen-mode
+„print all"). Instancja `14-detect.sh` to rozwiązywała, ale kolidowała (cofnięta).
+Kierunki bez 3. instancji: tabela kod→nazwa w ścieżce RAW, albo trwałe zachowanie
+nazwy złapanej w fazie listen.
+
+---
+
 # Claude Handoff — sesja 2026-05-31
 
 ## Kontekst

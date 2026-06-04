@@ -134,7 +134,13 @@ status_candidate_seen_from_json() {
   fi
   [[ -n "${type_line}" ]] || type_line="decoded"
 
-  status_candidate_seen "${id}" "${driver}" "${type_line}"
+  # reload=false (6th arg): this runs on every decoded preview telegram while
+  # official meters are configured. Letting it trigger a parallel LISTEN reload
+  # (auto -> real driver rewrites the meter-preview file) kills+restarts the
+  # pipeline on every telegram, so previews never stabilise and stay on
+  # "decoding...". Update the driver/stats only; the refreshed driver is picked
+  # up on the next natural restart.
+  status_candidate_seen "${id}" "${driver}" "${type_line}" "true" "" "false"
 }
 
 # Process one completed text-output block from the parallel LISTEN instance.

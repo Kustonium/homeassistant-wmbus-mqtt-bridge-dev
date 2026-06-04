@@ -299,6 +299,13 @@ status_candidate_seen() {
   local type_line="${3:-}"
   local update_status="${4:-true}"
   local manufacturer="${5:-}"
+  # reload controls whether a changed meter-preview-<id> file triggers an
+  # immediate parallel LISTEN reload. Defaults to true for the text/RAW callers.
+  # The decoded-JSON path (status_candidate_seen_from_json) passes false: a
+  # candidate that just produced JSON is already decoding fine, so relabelling
+  # its driver auto -> <real driver> must NOT kill+restart the LISTEN pipeline
+  # on every telegram (reload churn that left previews stuck on "decoding...").
+  local reload="${6:-true}"
   local now
   STATUS_WMBUSMETERS_RUNNING="true"
   id="$(normalize_meter_id "$1")"
@@ -312,7 +319,7 @@ status_candidate_seen() {
   IFS=$'\t' read -r seen_count avg_interval_s seen_15m seen_60m < <(status_seen_stats "${id}" "candidate")
   _upsert_candidate_row "${id}" "${driver}" "${type_line}" "${now}" "${seen_count}" "${avg_interval_s}" "${seen_15m}" "${seen_60m}" "${manufacturer}"
   status_analyze_candidate_from_text "${id}" "${driver}" "${type_line}"
-  ensure_candidate_autodecode "${id}" "${driver:-auto}" "${type_line:-}"
+  ensure_candidate_autodecode "${id}" "${driver:-auto}" "${type_line:-}" "${reload}"
   if [[ "${existed}" != "true" ]]; then
     status_add_event "candidate" "Candidate detected ${id} (${driver})"
   fi

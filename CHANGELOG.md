@@ -1,5 +1,25 @@
 ## 1.5.26-dev
 
+### Fixed
+- Candidate preview values stayed stuck on "decoding..." while one or more
+  official meters were configured, and recovered only after the meters were
+  removed. Root cause: `status_candidate_seen_from_json()` (parallel LISTEN,
+  added in `db2dfcc`) runs on every decoded preview telegram, but only when
+  `OFFICIAL_METERS_COUNT > 0`. It relabels the candidate driver from the decoded
+  JSON (e.g. `auto` -> `izarv2`), which rewrote the `meter-preview-<id>` file and
+  triggered `_request_listen_reload`, killing and restarting the parallel LISTEN
+  pipeline on every telegram. With a multi-meter replay the pipeline never
+  stabilised, so previews never finished decoding. A user debug log confirmed
+  both the reload churn (`LISTEN supervisor: .reload_listen detected, killing
+  pid=...`) and that previews do decode once the driver settles (`unchanged, no
+  reload triggered`). `status_candidate_seen()` now takes a 6th `reload`
+  argument (default `true`, preserving the text/RAW callers) and the decoded-JSON
+  path passes `reload=false`: the driver is still refreshed in the preview file
+  for the next natural restart, but no immediate LISTEN reload is triggered, so
+  the pipeline is no longer churned. `bridge-lib/06-candidates.sh` and
+  `bridge-lib/11-listen.sh` only; preview values, TSV schema, preview states,
+  text/RAW reload behaviour and `wmbusmeters` are unchanged.
+
 ### Reverted
 - Reverted the dedicated zero-meter manufacturer-detection LISTEN instance
   (`bridge-lib/14-detect.sh`). A user reported that after the change, candidate
