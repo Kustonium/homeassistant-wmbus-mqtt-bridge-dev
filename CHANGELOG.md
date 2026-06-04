@@ -1,9 +1,6 @@
 ## 1.5.28-dev
 
-<!-- PROMOTE-CHANGELOG-REQUIRED: auto-drafted skeleton below — review, expand into full release notes, and delete this line before promoting. -->
-
-### Fixed
-- avoid SIGPIPE abort in changelog-skeleton base lookup (7a2bfdf)
+<!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
 ## 1.5.27-dev
 

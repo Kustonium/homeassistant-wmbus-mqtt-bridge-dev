@@ -64,6 +64,12 @@ while IFS=$'\t' read -r short subject; do
     "ci(dev): bump"*) continue ;;
     "chore: bump dev base"*) continue ;;
   esac
+  # Drop tooling-scoped commits regardless of type — e.g. fix(ci), feat(build),
+  # chore(deps). These are not user-facing, so they must not reach the changelog.
+  scope="$(printf '%s' "${subject}" | sed -nE 's/^[a-z]+\(([^)]+)\)!?:.*/\1/p')"
+  case "${scope}" in
+    ci|build|deps|deps-dev|release|changelog) continue ;;
+  esac
   clean="$(printf '%s' "${subject}" | sed -E 's/^[a-z]+(\([^)]*\))?(!)?:[[:space:]]*//')"
   line="- ${clean} (${short})"
   case "${subject}" in
