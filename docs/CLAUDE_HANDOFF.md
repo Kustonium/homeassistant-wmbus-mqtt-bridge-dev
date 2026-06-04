@@ -6,9 +6,17 @@
 > kandydatów/preview/LISTEN — przeczytaj ten rozdział, bo opisuje subtelny
 > regres i konwencję, której nie wolno złamać.
 
-## ⚠️ OTWARTY BUG (priorytet): głuche wykrywanie kandydatów przy skonfigurowanym liczniku
+## Naprawiony bug: głuche wykrywanie kandydatów przy skonfigurowanym liczniku
 
-Status: **NIENAPRAWIONY** (zgłoszony przez użytkownika 2026-06-04, potwierdzony na żywo).
+Status: **NAPRAWIONY** 2026-06-04 — w `bridge-lib/05-raw.sh`
+(`status_raw_candidate_seen`). Gdy `OFFICIAL_METERS_COUNT > 0`, ścieżka RAW
+rejestruje teraz **wszystkich** producentów (nie tylko Diehl/SAP), bo LISTEN ich
+nie wykrywa (martwa strefa „print all"). Tryb bez liczników bez zmian. Hardcode
+`izarv2` dla typu 0x07 zawężony do Diehl/SAP (mfct 0x304C), żeby nie mylić
+wodnego QDS/BMETERS z izarv2. Walidacja: bash -n + shellcheck OK, test
+funkcjonalny (bez licznika tylko Diehl; z licznikiem wszyscy, QDS=auto nie
+izarv2), test_candidate_race 7/7, test_value_selection 13/13. Poniższy opis
+zostawiony jako kontekst diagnostyczny.
 
 **Objaw:**
 - **Bez** skonfigurowanego licznika (`OFFICIAL_METERS_COUNT == 0`): addon wykrywa

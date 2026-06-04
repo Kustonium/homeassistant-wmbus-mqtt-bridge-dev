@@ -173,16 +173,26 @@ status_raw_candidate_seen() {
   _mfct_code="$(mfct_code_from_raw_hex "${raw}")"
   [[ -n "${_mfct_code}" ]] && candidate_fill_manufacturer_code "${id}" "${_mfct_code}"
 
-  # This runs on EVERY raw telegram (status_raw_seen) and OVERWRITES the
-  # candidate row. Only register straight from the link-layer A-field for
-  # Diehl/SAP IZAR (mfct 0x304C), which sometimes does NOT surface as a
-  # wmbusmeters listen candidate. For every other manufacturer the normal
-  # listen/decode path already provides the candidate WITH its real
-  # driver/media — emitting a generic "auto / wMBus telegram" row here would
-  # clobber that real classification on every raw telegram (the "auto / inne"
-  # bug).
+  # This runs on EVERY raw telegram (status_raw_seen). In pure LISTEN mode (no
+  # official meters) the run_once inline parser already registers every candidate
+  # with its real driver/media from wmbusmeters listen output, so RAW only needs
+  # the Diehl/SAP IZAR special case (mfct 0x304C), which sometimes does NOT
+  # surface as a listen candidate. Registering other manufacturers here in that
+  # mode would clobber the real classification on every raw telegram (the
+  # "auto / inne" bug).
+  #
+  # BUT with official meters configured, run_once runs in DECODE mode and the
+  # parallel LISTEN — loaded with meter-preview-<id> files — leaves the
+  # "Printing id:s of all telegrams heard!" mode, so wmbusmeters stops emitting
+  # the analysis block for telegrams matching no preview and NEW candidates are
+  # never discovered (the list stays stuck on ids that already had a preview).
+  # In that mode RAW is the only path that still sees every id on every telegram,
+  # so register all manufacturers here too. The concrete-driver guard below keeps
+  # a real classification authoritative and prevents reception double-counting.
   mfr="${raw:4:4}"
-  [[ "${mfr}" == "304C" ]] || return 0
+  if [[ "${mfr}" != "304C" && "${OFFICIAL_METERS_COUNT:-0}" -eq 0 ]]; then
+    return 0
+  fi
 
   # Hard priority: a real LISTEN classification beats this RAW fallback. Without
   # this guard the fallback re-runs on every SAP telegram and keeps clobbering a
@@ -198,11 +208,13 @@ status_raw_candidate_seen() {
     return 0
   fi
 
-  # A/TYPE = raw[18:20]. Diehl/SAP water (0x07) keeps the izarv2 fallback exactly
-  # as before. Any other device type registers as auto + mapped label so we never
-  # force izarv2 on non-water Diehl and LISTEN can later supply the real driver.
+  # A/TYPE = raw[18:20]. Only Diehl/SAP water (0x07) keeps the izarv2 fallback;
+  # every other manufacturer (now reachable when meters are configured) registers
+  # as auto + a mapped device-type label, so we never mislabel e.g. a QDS/BMETERS
+  # water meter (also type 0x07) as izarv2 — the LISTEN text path or the decoded
+  # preview JSON supplies the real driver once it is available.
   dev_type="${raw:18:2}"
-  if [[ "${dev_type}" == "07" ]]; then
+  if [[ "${mfr}" == "304C" && "${dev_type}" == "07" ]]; then
     status_candidate_seen "${id}" "izarv2" "Water meter (0x07)" "false"
   else
     status_candidate_seen "${id}" "auto" "$(map_device_type "${dev_type}")" "false"

@@ -1,6 +1,27 @@
 ## 1.5.26-dev
 
 ### Fixed
+- New candidates were not discovered while one or more official meters were
+  configured: with no meter the addon listed and decoded the whole replay
+  corpus, but with a meter configured only candidates that already had a
+  `meter-preview-<id>` file or arrived via the Diehl/SAP RAW special case
+  appeared — every other id (e.g. Qundis qwaterv2) was never shown. Root cause:
+  `status_raw_candidate_seen()` (`05-raw.sh`) registered a candidate from the RAW
+  M-field only for Diehl/SAP (`mfct 0x304C`), assuming the LISTEN path supplies
+  the rest. That holds in pure LISTEN mode, but with meters configured the
+  primary pipeline runs in DECODE mode (inline candidate parser gated off) and
+  the parallel LISTEN — loaded with preview files — leaves "print all telegrams"
+  mode, so it never emits the analysis block for unmatched telegrams and new
+  candidates are never seen. The RAW path now also registers non-Diehl
+  manufacturers when `OFFICIAL_METERS_COUNT > 0`, so the candidate list still
+  populates (and previews still decode) with meters configured. Pure LISTEN mode
+  (no meters) is unchanged — non-Diehl ids are still left to the LISTEN parser to
+  avoid the "auto / inne" clobber. The hardcoded `izarv2` fallback for device
+  type `0x07` is now scoped to Diehl/SAP only, so a non-Diehl water meter (also
+  type `0x07`, e.g. QDS/BMETERS) registered via the RAW path is no longer
+  mislabelled as `izarv2`; LISTEN/decoded-JSON supplies its real driver. The
+  existing concrete-driver guard keeps a real classification authoritative and
+  prevents reception double-counting. `bridge-lib/05-raw.sh` only.
 - Parallel LISTEN parser crashed with `BASH_REMATCH[1]: unbound variable` (under
   `set -u`) from the second telegram block onward, killing and restarting the
   candidate/preview pipeline. In `parse_listen_candidates()` the captured ID was
