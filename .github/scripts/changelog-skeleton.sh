@@ -43,7 +43,11 @@ if ! printf '%s' "${current_section}" | grep -q 'PROMOTE-CHANGELOG-REQUIRED'; th
   exit 0
 fi
 
-base="$(git log --format='%H%x09%s' | awk -F'\t' '$2 ~ /^chore: bump dev base to/ {print $1; exit}')"
+# Most recent "chore: bump dev base to" commit marks the start of this cycle.
+# NB: do not let awk exit early here — `git log | awk {exit}` under `pipefail`
+# makes git log receive SIGPIPE and the pipeline returns 141, which would abort
+# the script under `set -e`. Print only the first match but read the stream out.
+base="$(git log --format='%H%x09%s' | awk -F'\t' 'found {next} $2 ~ /^chore: bump dev base to/ {print $1; found=1}')"
 if [[ -z "${base}" ]]; then
   echo "changelog-skeleton: no 'chore: bump dev base to' commit found — leaving untouched."
   exit 0
