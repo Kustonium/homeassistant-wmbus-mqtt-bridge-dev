@@ -1,6 +1,20 @@
 ## 1.5.26-dev
 
 ### Fixed
+- AES-encrypted candidate (e.g. NES electricity `00089907`) wrongly showed
+  "decoding…" forever and "not analysed" encryption instead of "requires AES",
+  after the candidate-discovery fix started registering all manufacturers from
+  the RAW path. Cause: the RAW path labelled the type from the DLL device-type
+  byte (`map_device_type`), which carries no encryption info, so the
+  "encrypted" marker was lost — `candidate_type_requires_aes` stopped matching,
+  a preview file was created for a meter that can never decode without a key,
+  and the encryption analysis went blank. Fixed in `bridge-lib/05-raw.sh`: a new
+  `raw_is_encrypted()` reads the TPL CFG security mode for the common short
+  header (CI=0x7A) and appends `encrypted` to the registered type, and the RAW
+  registration guard now refuses to downgrade an existing `encrypted`
+  classification to the bare device-type label. AES meters again skip preview
+  creation and show "requires AES"; plain meters are unaffected and still
+  decode. `bridge-lib/05-raw.sh` only.
 - Manufacturer column showed only the bare 3-letter FLAG code (e.g. `BMT`)
   instead of the full vendor name (`BMT · BMETERS`) for a meter/candidate first
   seen while another meter was already configured. The full text comes only from

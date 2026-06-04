@@ -156,6 +156,25 @@ candidate_fill_manufacturer_code() {
   ) 9>"${STATUS_CANDIDATES_FILE}.lock"
 }
 
+# Heuristic AES detection straight from the raw frame, for candidates registered
+# by the RAW path (where wmbusmeters' "encrypted" text is unavailable in DECODE
+# mode). Only the common short TPL header (CI=0x7A) is decoded: after the 10-byte
+# DLL the layout is CI(1) ACC(1) STS(1) CFG(2); a non-zero CFG security-mode
+# nibble means the telegram is encrypted. Any other CI returns "not encrypted"
+# (falls back to the device-type label / existing classification), so we never
+# false-positive a non-0x7A meter. Returns 0 (true) when encrypted.
+raw_is_encrypted() {
+  local r="${1//[[:space:]]/}" ci cfg_hi mode
+  r="${r^^}"
+  [[ "${#r}" -ge 30 ]] || return 1
+  ci="${r:20:2}"
+  [[ "${ci}" == "7A" ]] || return 1
+  cfg_hi="${r:28:2}"                       # high byte of the little-endian CFG word
+  [[ "${cfg_hi}" =~ ^[0-9A-F]{2}$ ]] || return 1
+  mode=$(( 16#${cfg_hi} & 0x1f ))          # CFG security mode: 0 = none, else AES
+  (( mode != 0 ))
+}
+
 # Map an OMS device-type byte (A/TYPE, raw[18:20]) to a human label. Covers the
 # device types seen in practice plus a safe fallback — no need for a full
 # 0x00-0xFF table.
@@ -225,12 +244,20 @@ status_raw_candidate_seen() {
   # driver that LISTEN already resolved (e.g. non-water Diehl flapping
   # auto -> sharky -> auto). If the candidate already has a concrete driver
   # (anything other than "auto"), leave the existing row untouched.
-  existing_driver="$(
-    awk -F '\t' -v id="${id}" '
-      $1 == id { print $2; exit }
-    ' "${STATUS_CANDIDATES_FILE}" 2>/dev/null || true
-  )"
+  local existing_type=""
+  IFS=$'\t' read -r existing_driver existing_type < <(
+    awk -F '\t' -v id="${id}" '$1 == id { print $2 "\t" $3; exit }' "${STATUS_CANDIDATES_FILE}" 2>/dev/null || true
+  )
   if [[ -n "${existing_driver}" && "${existing_driver}" != "auto" ]]; then
+    return 0
+  fi
+  # Never downgrade an encrypted classification. Only the LISTEN text path, the
+  # decoded JSON, or the TPL layer can tell a meter is AES — the bare device-type
+  # label cannot. Dropping the "encrypted" marker would make
+  # candidate_type_requires_aes stop matching, so a preview would be wrongly
+  # created for an AES meter and the candidate would sit on "decoding..." forever
+  # instead of showing "requires AES".
+  if printf '%s' "${existing_type}" | grep -qiE 'encrypted|(^|[^a-z])aes([^a-z]|$)'; then
     return 0
   fi
 
@@ -243,7 +270,13 @@ status_raw_candidate_seen() {
   if [[ "${mfr}" == "304C" && "${dev_type}" == "07" ]]; then
     status_candidate_seen "${id}" "izarv2" "Water meter (0x07)" "false"
   else
-    status_candidate_seen "${id}" "auto" "$(map_device_type "${dev_type}")" "false"
+    local _type_label
+    _type_label="$(map_device_type "${dev_type}")"
+    # The device-type byte does not carry encryption; mark AES from the TPL CFG so
+    # candidate_type_requires_aes skips the preview (an encrypted meter without a
+    # key never decodes — it must show "requires AES", not "decoding..." forever).
+    raw_is_encrypted "${raw}" && _type_label="${_type_label} encrypted"
+    status_candidate_seen "${id}" "auto" "${_type_label}" "false"
   fi
 }
 
