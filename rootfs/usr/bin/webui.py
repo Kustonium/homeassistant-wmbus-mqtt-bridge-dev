@@ -284,6 +284,59 @@ def safe_int(value: object) -> int:
         return 0
 
 
+def _esp_device_from_topic(topic: object) -> str:
+    """Return the ESP device segment from wmbus/<device>/... topics."""
+    parts = str(topic or "").split("/")
+    if len(parts) < 3 or parts[0] != "wmbus":
+        return ""
+    return parts[1].strip()
+
+
+def _current_raw_esp_source() -> tuple[str, str, bool]:
+    """Return the freshest live RAW ESP source and whether tracker rows exist.
+
+    The RAW telegram tracker is the source of truth for what the bridge is
+    currently reading. Diagnostic summaries may be retained or may come from a
+    different ESP, so they must not drive the dashboard tile when a live RAW
+    source is known.
+    """
+    import time as _time
+
+    rows = read_tsv(
+        STATUS_ESP_TELEGRAM_DEVICES_FILE,
+        ["name", "last_telegram_epoch", "topic", "telegram_count"],
+    )
+    latest: dict = {}
+    for row in rows:
+        ep = safe_int(row.get("last_telegram_epoch"))
+        if ep > safe_int(latest.get("last_telegram_epoch")):
+            latest = row
+
+    if not latest:
+        return "", "", False
+
+    name = str(latest.get("name") or "").strip()
+    topic = str(latest.get("topic") or "").strip()
+    ep = safe_int(latest.get("last_telegram_epoch"))
+    if name and ep > 0 and (_time.time() - ep) <= 5 * 60:
+        return name, topic, True
+    return "", "", True
+
+
+def _diag_matches_current_raw_source(diag: dict, current_raw_device: str, tracker_has_rows: bool) -> bool:
+    """Allow diag data to drive the tile only for the live RAW source.
+
+    Backward compatibility: when per-device RAW tracking is unavailable (for
+    example RAW_TOPIC has no '+' wildcard), keep the previous diag-only fallback.
+    """
+    if not diag:
+        return False
+    diag_device = _esp_device_from_topic(diag.get("_topic"))
+    if current_raw_device:
+        return diag_device == current_raw_device
+    return not tracker_has_rows
+
+
 # ── REMOVED: legacy HTML helpers ────────────────────────────────────────────
 # esc(), fmt_ts(), fmt_interval(), reception_line(), media_icon(), tr_media(),
 # media_class(), candidate_config(), candidate_encryption_hint() — all only
@@ -890,8 +943,9 @@ def status_model(data: dict) -> dict:
     # Threshold is 150 s (2.5× the typical 60 s publish interval) so a single
     # delayed/missed publish does not immediately fall back to the bridge calc.
     rate_source = "bridge"
+    current_raw_device, current_raw_topic, tracker_has_rows = _current_raw_esp_source()
     esp_diag = read_json(STATUS_ESP_DIAG_JSON)
-    if esp_diag:
+    if _diag_matches_current_raw_source(esp_diag, current_raw_device, tracker_has_rows):
         esp_rx_epoch = safe_int(esp_diag.get("_bridge_rx_epoch", 0))
         if esp_rx_epoch > 0 and (_time.time() - esp_rx_epoch) <= 150:
             esp_total = safe_int(esp_diag.get("total", 0))
@@ -958,6 +1012,8 @@ def status_model(data: dict) -> dict:
         "rate_current_min": rate_current_min,
         "rate_prev_min": rate_prev_min,
         "rate_source": rate_source,
+        "current_raw_esp_device": current_raw_device,
+        "current_raw_esp_topic": current_raw_topic,
         "rate_history_15m": rate_history,
         "pending_restart": pending_restart,
     }
@@ -1002,7 +1058,13 @@ def _esp_payload() -> dict:
     """
     import time as _time
 
-    diag       = read_json(STATUS_ESP_DIAG_JSON)
+    diag_latest = read_json(STATUS_ESP_DIAG_JSON)
+    current_raw_device, current_raw_topic, tracker_has_rows = _current_raw_esp_source()
+    diag = (
+        diag_latest
+        if _diag_matches_current_raw_source(diag_latest, current_raw_device, tracker_has_rows)
+        else {}
+    )
     suggestion = read_json(STATUS_ESP_SUGGESTION_FILE)
     boot       = read_json(STATUS_ESP_BOOT_FILE)
     events     = read_tsv(STATUS_ESP_EVENTS_FILE, ["epoch", "evtype", "topic", "payload"], limit=100, reverse=True)
@@ -1018,10 +1080,7 @@ def _esp_payload() -> dict:
     devices: dict[str, dict] = {}
 
     def device_from_topic(topic: str) -> str:
-        parts = topic.split("/")
-        if len(parts) < 3 or parts[0] != "wmbus":
-            return ""
-        return parts[1].strip()
+        return _esp_device_from_topic(topic)
 
     def blank_device(dev: str) -> dict:
         return {
@@ -1064,8 +1123,8 @@ def _esp_payload() -> dict:
 
     # The latest diag summary JSON is written by a separate subscriber. Use it
     # as a direct heartbeat source in addition to the rolling event buffer.
-    diag_topic = (diag.get("_topic") or "").strip()
-    diag_epoch = safe_int(diag.get("_bridge_rx_epoch", 0))
+    diag_topic = (diag_latest.get("_topic") or "").strip()
+    diag_epoch = safe_int(diag_latest.get("_bridge_rx_epoch", 0))
     if diag_topic.endswith(SUMMARY_TOPIC_SUFFIX):
         apply_summary(device_from_topic(diag_topic), diag_topic, diag_epoch)
 
@@ -1146,7 +1205,13 @@ def _esp_payload() -> dict:
     devices_active_count = sum(1 for d in devices_list if d["active"])
 
     return {
+        # diag is filtered for the dashboard tile: never mix metrics from a
+        # stale/other ESP with the currently received RAW telegram source.
         "diag": diag,
+        # Keep the latest summary available for the diagnostics page.
+        "diag_latest": diag_latest,
+        "current_raw_device": current_raw_device,
+        "current_raw_topic": current_raw_topic,
         "suggestion": suggestion,
         "boot": boot,
         "events": events,
