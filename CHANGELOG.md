@@ -1,6 +1,13 @@
 ## 1.5.26-dev
 
 ### Fixed
+- Parallel LISTEN parser crashed with `BASH_REMATCH[1]: unbound variable` (under
+  `set -u`) from the second telegram block onward, killing and restarting the
+  candidate/preview pipeline. In `parse_listen_candidates()` the captured ID was
+  read as `${BASH_REMATCH[1]}` *after* `_process_listen_text_block()` had already
+  run its own `[[ =~ ]]` internally (via `candidate_update_manufacturer_text` /
+  `emit_snippet_if_new`), which clears `BASH_REMATCH`. The match is now captured
+  into a local immediately, before the flush call. `bridge-lib/11-listen.sh` only.
 - Candidate preview values stayed stuck on "decoding..." while one or more
   official meters were configured, and recovered only after the meters were
   removed. Root cause: `status_candidate_seen_from_json()` (parallel LISTEN,

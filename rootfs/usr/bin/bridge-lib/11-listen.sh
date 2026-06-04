@@ -233,8 +233,13 @@ parse_listen_candidates() {
     # Flush the previous block when a new telegram starts so manufacturer:
     # (which follows driver: in wmbusmeters output) is captured before dispatch.
     if [[ "${line}" =~ ^Received\ telegram\ from:\ ([0-9A-Fa-f]{8}) ]]; then
+      # Capture the match BEFORE the flush — _process_listen_text_block runs its
+      # own [[ =~ ]] internally (candidate_update_manufacturer_text /
+      # emit_snippet_if_new), which clobbers BASH_REMATCH and would otherwise
+      # trip "BASH_REMATCH[1]: unbound variable" under set -u on the next block.
+      local _new_id="${BASH_REMATCH[1]}"
       _process_listen_text_block "${last_id}" "${last_driver}" "${last_type}" "${last_manufacturer}"
-      last_id="$(normalize_meter_id "${BASH_REMATCH[1]}")"
+      last_id="$(normalize_meter_id "${_new_id}")"
       last_type=""
       last_driver=""
       last_manufacturer=""
