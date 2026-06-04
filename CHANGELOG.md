@@ -1,6 +1,27 @@
 ## 1.5.26-dev
 
 ### Fixed
+- Parallel LISTEN restarted roughly once per newly discovered candidate, so
+  discovering many ids made the supervisor kill and respawn the pipeline ~15
+  times in a row (visible as repeated "`.reload_listen` detected, killing
+  pid=…" / "pipeline stopped, restarting") and it rarely stayed up long enough
+  to decode a preview. Cause: `_request_listen_reload`
+  (`bridge-lib/06-candidates.sh`) used a leading-edge cooldown of 10 s, so a new
+  candidate arriving more than 10 s after the previous reload triggered an
+  immediate reload; discovery of ~29 ids spans several replay cycles, so the
+  per-candidate reloads never coalesced. Replaced with a trailing ("settle")
+  debounce with a cap: each call stamps `.reload_listen_req`; a single
+  background worker (guarded by the atomic `mkdir` of `.reload_listen_pending`)
+  fires `.reload_listen` exactly once when either no new request has arrived for
+  `RELOAD_SETTLE_SECONDS` (default 6 s, so a short discovery reloads promptly) or
+  the worker has run for `RELOAD_MAXWAIT_SECONDS` (default 30 s, so a long burst
+  is force-flushed and early candidates still decode). A sustained discovery
+  burst now costs roughly one reload per 30 s plus one final settle reload
+  instead of one reload per candidate. The supervisor restart loads every
+  `meter-preview-<id>` file present on disk, so coalescing drops no candidate;
+  the WebGUI manual preview toggle still touches `.reload_listen` directly
+  (`webui.py`), bypassing this debounce, and stays immediately responsive.
+  `bridge-lib/06-candidates.sh` only.
 - AES-encrypted candidate (e.g. NES electricity `00089907`) wrongly showed
   "decoding…" forever and "not analysed" encryption instead of "requires AES",
   after the candidate-discovery fix started registering all manufacturers from

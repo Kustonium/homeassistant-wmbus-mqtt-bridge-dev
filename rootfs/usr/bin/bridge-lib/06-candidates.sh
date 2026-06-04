@@ -12,33 +12,59 @@ _set_preview_state() {
   esac
 }
 
-# Debounced .reload_listen trigger — at most one LISTEN restart per 10 seconds.
-# When called within the cooldown window a single deferred fire is scheduled via
-# a background sleep so all meter-preview-<id> files written during the burst are
-# picked up on the next restart (supervisor loop polls every 2 s).
+# Debounced .reload_listen trigger — trailing ("settle") debounce with a cap.
+#
+# During candidate discovery many meter-preview-<id> files are written in a
+# burst (one per newly seen id). A per-candidate reload would restart the
+# LISTEN pipeline once per new candidate, so it never stays up long enough to
+# decode anything. This coalesces a burst into far fewer reloads:
+#
+#   * Each call stamps the current epoch into .reload_listen_req.
+#   * A single background worker (guarded by the atomic mkdir of
+#     .reload_listen_pending) waits and fires .reload_listen exactly once when
+#     EITHER no new request has arrived for RELOAD_SETTLE_SECONDS (discovery
+#     went quiet) OR the worker has run for RELOAD_MAXWAIT_SECONDS (a long burst
+#     is force-flushed so early candidates still decode without waiting for the
+#     whole replay cycle to finish).
+#   * After firing, the worker frees the marker; the next request starts a fresh
+#     worker, so reloads are naturally rate-limited to ~one per maxwait during a
+#     sustained burst and one final reload once the burst ends.
+#
+# The supervisor restart loads ALL meter-preview-<id> files present on disk, so
+# coalescing never drops a candidate — a preview written during the tiny
+# rmdir/touch gap is picked up by the reload it triggered or by the next worker.
+#
+# The webui manual preview toggle touches .reload_listen directly (webui.py),
+# bypassing this debounce, so it stays immediately responsive.
 #
 # Pending marker: mkdir is atomic on POSIX — exactly one concurrent caller wins
-# the race and schedules the background worker; the others are silently no-ops.
-# The worker sleeps only the remaining cooldown time (not a full 10 s), so a
-# candidate detected near the end of a window reloads as soon as the gate opens.
+# the race and runs the worker; the others are silently coalesced. Orphaned
+# .reload_listen_pending is removed at startup (bridge.sh).
 _request_listen_reload() {
-  local gate="${BASE}/.reload_listen_gate"
   local pending="${BASE}/.reload_listen_pending"
-  local now last remaining
-  now="$(date +%s 2>/dev/null || echo 0)"
-  last="$(cat "${gate}" 2>/dev/null || echo 0)"
-  if (( now - last >= 10 )); then
-    log_debug "[DIAG] reload_listen: immediate (elapsed=$(( now - last ))s >= 10s)"
-    printf '%s\n' "${now}" > "${gate}"
-    touch "${BASE}/.reload_listen" 2>/dev/null || true
-    log_debug "[DIAG] reload_listen: touched .reload_listen"
-  elif mkdir "${pending}" 2>/dev/null; then
-    remaining=$(( 10 - (now - last) ))
-    (( remaining < 1 )) && remaining=1
-    log_debug "[DIAG] reload_listen: deferred in ${remaining}s (elapsed=$(( now - last ))s < 10s)"
-    ( sleep "${remaining}"; rmdir "${pending}" 2>/dev/null; printf '%s\n' "$(date +%s)" > "${gate}"; touch "${BASE}/.reload_listen" 2>/dev/null; log_debug "[DIAG] reload_listen: deferred fired, touched .reload_listen" ) 2>/dev/null &
+  local req="${BASE}/.reload_listen_req"
+  local settle="${RELOAD_SETTLE_SECONDS:-6}"
+  local maxwait="${RELOAD_MAXWAIT_SECONDS:-30}"
+  printf '%s\n' "$(date +%s 2>/dev/null || echo 0)" > "${req}" 2>/dev/null || true
+  if mkdir "${pending}" 2>/dev/null; then
+    log_debug "[DIAG] reload_listen: settle worker started (settle=${settle}s maxwait=${maxwait}s)"
+    (
+      _started="$(date +%s 2>/dev/null || echo 0)"
+      while true; do
+        sleep "${settle}"
+        _r="$(cat "${req}" 2>/dev/null || echo 0)"
+        _n="$(date +%s 2>/dev/null || echo 0)"
+        if (( _n - _r >= settle )) || (( _n - _started >= maxwait )); then
+          break
+        fi
+        log_debug "[DIAG] reload_listen: still settling (last req $(( _n - _r ))s ago, worker age $(( _n - _started ))s)"
+      done
+      rmdir "${pending}" 2>/dev/null || true
+      touch "${BASE}/.reload_listen" 2>/dev/null || true
+      log_debug "[DIAG] reload_listen: fired .reload_listen (coalesced burst)"
+    ) 2>/dev/null &
   else
-    log_debug "[DIAG] reload_listen: suppressed (pending already set, elapsed=$(( now - last ))s)"
+    log_debug "[DIAG] reload_listen: coalesced (settle worker already running)"
   fi
 }
 
