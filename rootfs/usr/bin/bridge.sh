@@ -80,6 +80,10 @@ STATUS_CANDIDATE_VALUES_FILE="${BASE}/status_candidate_values.tsv"
 # Per-candidate preview lifecycle state: pending | decoded_value | decoded_without_numeric_value
 # Format: id<TAB>state<TAB>iso_timestamp<TAB>note
 STATUS_CANDIDATE_PREVIEW_STATE_FILE="${BASE}/status_candidate_preview_state.tsv"
+# File-backed count of officially configured meters. Several pipelines run in
+# subshells and can outlive a soft reload, so their inherited shell variable may
+# be stale. This file is the shared runtime source of truth.
+STATUS_OFFICIAL_METERS_COUNT_FILE="${BASE}/status_official_meters_count.txt"
 # Per-ESP-device telegram tracking — written by the background MQTT subscriber
 # that listens to the RAW topic itself. The "+" wildcard segment carries the
 # device name (e.g. wmbus/xiaoseed/telegram → "xiaoseed"). Lets the WebGUI
@@ -133,6 +137,7 @@ RAW_RATE_CUR_MIN_COUNT=0
 RAW_RATE_PREV_MIN_COUNT=0
 
 touch "${STATUS_METERS_FILE}" "${STATUS_CANDIDATES_FILE}" "${STATUS_EVENTS_FILE}" "${STATUS_SEEN_FILE}" "${STATUS_LAST_RAW_FILE}" "${STATUS_RECENT_RAW_FILE}" "${STATUS_CANDIDATE_ANALYSIS_FILE}" "${STATUS_CANDIDATE_RAW_FILE}" "${STATUS_RATE_HISTORY_FILE}" "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" "${SEARCH_MATCHES_FILE}" "${SEARCH_STATUS_FILE}" "${STATUS_CANDIDATE_PREVIEW_STATE_FILE}"
+printf '0\n' > "${STATUS_OFFICIAL_METERS_COUNT_FILE}" 2>/dev/null || true
 # Remove any orphaned pending-reload marker left by a hard stop during deferred sleep.
 rm -rf "${BASE}/.reload_listen_pending" 2>/dev/null || true
 # Session-scoped attempt counter dir — counts text-only telegrams per preview candidate
@@ -458,7 +463,7 @@ run_once() {
 
         echo "${line}"
 
-        if [[ "${OFFICIAL_METERS_COUNT}" -eq 0 && "${SEARCH_USING_TEMP_METERS}" != "true" ]]; then
+        if [[ "$(official_meters_count_current)" -eq 0 && "${SEARCH_USING_TEMP_METERS}" != "true" ]]; then
           if [[ "${line}" =~ ^Received\ telegram\ from:\ ([0-9A-Fa-f]{8}) ]]; then
             last_id="$(normalize_meter_id "${BASH_REMATCH[1]}")"
             last_type=""

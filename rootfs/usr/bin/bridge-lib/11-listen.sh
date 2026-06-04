@@ -160,7 +160,7 @@ _process_listen_text_block() {
   # When there are no official meters, the primary pipeline already runs in
   # LISTEN mode and updates candidate stats. A secondary LISTEN may still be
   # running for preview decoding; do not double-count candidate receptions.
-  if [[ "${OFFICIAL_METERS_COUNT:-0}" -gt 0 ]]; then
+  if [[ "$(official_meters_count_current)" -gt 0 ]]; then
     if [[ "${SEARCH_MODE}" == "true" && "${SEARCH_EXPECTED_VALUE_M3}" != "0" ]]; then
       search_cache_candidate "${_id}" "${_drv}" "${_type}"
     else
@@ -222,7 +222,7 @@ parse_listen_candidates() {
     # for the WebGUI "Preview value" feature.
     if [[ "${line}" == \{*\"_\":\"telegram\"* ]]; then
       log_debug "[DIAG] LISTEN-parse: JSON telegram received: ${line:0:160}"
-      if [[ "${OFFICIAL_METERS_COUNT:-0}" -gt 0 ]]; then
+      if [[ "$(official_meters_count_current)" -gt 0 ]]; then
         status_candidate_seen_from_json "${line}"
       fi
       log_debug "[DIAG] LISTEN-parse: calling _store_candidate_value"

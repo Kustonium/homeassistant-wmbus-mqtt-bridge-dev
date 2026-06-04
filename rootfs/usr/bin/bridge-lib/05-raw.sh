@@ -235,7 +235,7 @@ status_raw_candidate_seen() {
   # so register all manufacturers here too. The concrete-driver guard below keeps
   # a real classification authoritative and prevents reception double-counting.
   mfr="${raw:4:4}"
-  if [[ "${mfr}" != "304C" && "${OFFICIAL_METERS_COUNT:-0}" -eq 0 ]]; then
+  if [[ "${mfr}" != "304C" && "$(official_meters_count_current)" -eq 0 ]]; then
     return 0
   fi
 
