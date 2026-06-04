@@ -6,6 +6,44 @@
 > kandydatów/preview/LISTEN — przeczytaj ten rozdział, bo opisuje subtelny
 > regres i konwencję, której nie wolno złamać.
 
+## ⚠️ OTWARTY (powiązany): pełna NAZWA producenta tylko skrócona przy liczniku dodanym w trybie skonfigurowanym
+
+Status: **NIENAPRAWIONY** (zgłoszony 2026-06-04, ta sama martwa strefa co niżej).
+
+**Objaw (potwierdzony na żywo):**
+- Licznik dodany gdy LISTEN był „print all" (brak/mało preview) → **pełna nazwa**,
+  np. `03528308` → `BMT · BMETERS`, `00089907` → `NES · NORA ELK MALZ SAN ve TIC`.
+- Kolejny licznik dodany PÓŹNIEJ, gdy inny jest już skonfigurowany → **tylko
+  skrócony 3-literowy kod**, np. `03528557` → `BMT` (zamiast `BMT · BMETERS`).
+- Bez żadnego licznika → cała lista ma pełne nazwy.
+
+**Przyczyna (ta sama martwa strefa):** pełny tekst producenta
+`(BMT) BMETERS, ...` pochodzi WYŁĄCZNIE z bloku tekstowego LISTEN
+(`manufacturer: ...`), który pojawia się tylko gdy wmbusmeters jest w trybie
+„Printing id:s of all telegrams heard!" (0 liczników w danej instancji). Gdy
+liczniki są skonfigurowane, parallel LISTEN ma pliki preview i wychodzi z tego
+trybu → blok tekstowy nie leci → `candidate_update_manufacturer_text`
+(`11-listen.sh`) nie dostaje pełnej nazwy. Fix wykrywania (`999cbdf`,
+`05-raw.sh`) sprawił, że kandydat się POJAWIA, ale ścieżka RAW wpisuje tylko
+**3-literowy kod** z M-pola (`candidate_fill_manufacturer_code`), nie pełną
+nazwę. Stąd skrócony `BMT`.
+
+**Kierunki naprawy (do rozważenia, bez 3. instancji):**
+1. **Tabela kod→nazwa** (FLAG/EN 13757) w ścieżce RAW lub webui: `BMT→BMETERS`,
+   `NES→NORA ELK MALZ SAN ve TIC`, `SAP→Diehl Metering`, `QDS→Qundis`,
+   `TCH→Techem`, `EWT→...` itd. Wtedy pełna nazwa niezależnie od LISTEN. Koszt:
+   utrzymanie tabeli (można wygenerować z wmbusmeters `manufacturers`).
+2. Trwale zachować pełną nazwę raz złapaną w fazie „print all" (już działa dla
+   liczników dodanych wtedy) — ale dla dodanych później brak źródła.
+3. Zaakceptować skrócony kod dla liczników dodanych w trybie skonfigurowanym
+   (jest poprawny, tylko mniej ładny).
+
+Powiązane: to samo zjawisko co „głuche wykrywanie" niżej — oba wynikają z braku
+bloku tekstowego LISTEN w trybie z licznikiem. Discovery + decode już naprawione
+(`999cbdf`); zostaje tylko pełna NAZWA.
+
+---
+
 ## Naprawiony bug: głuche wykrywanie kandydatów przy skonfigurowanym liczniku
 
 Status: **NAPRAWIONY** 2026-06-04 — w `bridge-lib/05-raw.sh`
