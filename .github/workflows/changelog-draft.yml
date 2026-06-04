@@ -1,0 +1,66 @@
+name: changelog-draft
+
+# Keeps an auto-drafted skeleton under the current dev CHANGELOG heading so the
+# promote-to-stable gate never blocks on an empty placeholder. The maintainer
+# still writes the final release notes by hand and removes the
+# PROMOTE-CHANGELOG-REQUIRED marker; while the marker is present this workflow
+# refreshes a one-bullet-per-commit skeleton grouped by Conventional Commit type.
+# See .github/scripts/changelog-skeleton.sh for the safety contract.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: changelog-draft
+  cancel-in-progress: false
+
+jobs:
+  draft:
+    name: Draft CHANGELOG skeleton
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Regenerate skeleton
+        shell: bash
+        run: bash .github/scripts/changelog-skeleton.sh
+
+      - name: Commit and push if changed
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "No CHANGELOG changes — nothing to commit."
+            exit 0
+          fi
+
+          core="$(sed -nE 's/^version:[[:space:]]*"?([^"[:space:]]+)"?[[:space:]]*$/\1/p' config.yaml | head -n1 | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "docs(changelog): auto-draft skeleton for ${core}-dev [skip ci]"
+
+          # Another job (e.g. the dev version bump) may push to main concurrently;
+          # rebase and retry so this draft never clobbers or loses a race.
+          for attempt in 1 2 3 4 5; do
+            if git push origin main; then
+              echo "Pushed on attempt ${attempt}."
+              exit 0
+            fi
+            echo "Push rejected — rebasing and retrying (attempt ${attempt})."
+            git pull --rebase origin main
+          done
+
+          echo "ERROR: could not push CHANGELOG skeleton after 5 attempts."
+          exit 1
