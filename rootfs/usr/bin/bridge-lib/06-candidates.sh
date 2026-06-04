@@ -12,60 +12,108 @@ _set_preview_state() {
   esac
 }
 
-# Debounced .reload_listen trigger — trailing ("settle") debounce with a cap.
-#
-# During candidate discovery many meter-preview-<id> files are written in a
-# burst (one per newly seen id). A per-candidate reload would restart the
-# LISTEN pipeline once per new candidate, so it never stays up long enough to
-# decode anything. This coalesces a burst into far fewer reloads:
-#
-#   * Each call stamps the current epoch into .reload_listen_req.
-#   * A single background worker (guarded by the atomic mkdir of
-#     .reload_listen_pending) waits and fires .reload_listen exactly once when
-#     EITHER no new request has arrived for RELOAD_SETTLE_SECONDS (discovery
-#     went quiet) OR the worker has run for RELOAD_MAXWAIT_SECONDS (a long burst
-#     is force-flushed so early candidates still decode without waiting for the
-#     whole replay cycle to finish).
-#   * After firing, the worker frees the marker; the next request starts a fresh
-#     worker, so reloads are naturally rate-limited to ~one per maxwait during a
-#     sustained burst and one final reload once the burst ends.
-#
-# The supervisor restart loads ALL meter-preview-<id> files present on disk, so
-# coalescing never drops a candidate — a preview written during the tiny
-# rmdir/touch gap is picked up by the reload it triggered or by the next worker.
-#
-# The webui manual preview toggle touches .reload_listen directly (webui.py),
-# bypassing this debounce, so it stays immediately responsive.
-#
-# Pending marker: mkdir is atomic on POSIX — exactly one concurrent caller wins
-# the race and runs the worker; the others are silently coalesced. Orphaned
-# .reload_listen_pending is removed at startup (bridge.sh).
-_request_listen_reload() {
-  local pending="${BASE}/.reload_listen_pending"
-  local req="${BASE}/.reload_listen_req"
-  local settle="${RELOAD_SETTLE_SECONDS:-6}"
-  local maxwait="${RELOAD_MAXWAIT_SECONDS:-30}"
-  printf '%s\n' "$(date +%s 2>/dev/null || echo 0)" > "${req}" 2>/dev/null || true
-  if mkdir "${pending}" 2>/dev/null; then
-    log_debug "[DIAG] reload_listen: settle worker started (settle=${settle}s maxwait=${maxwait}s)"
-    (
-      _started="$(date +%s 2>/dev/null || echo 0)"
-      while true; do
-        sleep "${settle}"
-        _r="$(cat "${req}" 2>/dev/null || echo 0)"
-        _n="$(date +%s 2>/dev/null || echo 0)"
-        if (( _n - _r >= settle )) || (( _n - _started >= maxwait )); then
-          break
-        fi
-        log_debug "[DIAG] reload_listen: still settling (last req $(( _n - _r ))s ago, worker age $(( _n - _started ))s)"
-      done
-      rmdir "${pending}" 2>/dev/null || true
-      touch "${BASE}/.reload_listen" 2>/dev/null || true
-      log_debug "[DIAG] reload_listen: fired .reload_listen (coalesced burst)"
-    ) 2>/dev/null &
-  else
-    log_debug "[DIAG] reload_listen: coalesced (settle worker already running)"
+# Decode candidate previews without contaminating the always-on LISTEN instance.
+# Each candidate RAW frame is decoded by a short-lived wmbusmeters process with a
+# temporary config containing only that candidate. Per-ID locking and throttling
+# keep dense RF environments from spawning a process storm.
+_record_preview_no_decode_attempt() {
+  local id="$1" cnt_file cnt=0 start=0 now elapsed tmp
+  cnt_file="${BASE}/.preview_attempts/${id}"
+  if [[ -f "${cnt_file}" ]]; then
+    IFS=$'\t' read -r cnt start < "${cnt_file}" 2>/dev/null || true
+    [[ "${cnt}" =~ ^[0-9]+$ ]] || cnt=0
+    [[ "${start}" =~ ^[0-9]+$ ]] || start=0
   fi
+  now="$(date +%s 2>/dev/null || echo 0)"
+  (( start > 0 )) || start="${now}"
+  cnt=$((cnt + 1))
+  elapsed=$((now - start))
+  tmp="$(mktemp "${cnt_file}.tmp.XXXXXX" 2>/dev/null)" || true
+  if [[ -n "${tmp}" ]]; then
+    printf '%d\t%d\n' "${cnt}" "${start}" > "${tmp}"
+    mv "${tmp}" "${cnt_file}" 2>/dev/null || rm -f "${tmp}" 2>/dev/null || true
+  fi
+  if (( cnt >= 3 && elapsed >= 60 )); then
+    log_verbose "[DIAG] preview one-shot ${id}: no JSON after ${cnt} attempts (${elapsed}s)"
+    _set_preview_state "${id}" "no_decode_result"
+  else
+    log_debug "[DIAG] preview one-shot ${id}: no JSON attempt #${cnt} (elapsed=${elapsed}s)"
+  fi
+}
+
+_preview_acquire_slot() {
+  local max_parallel="${PREVIEW_DECODE_MAX_PARALLEL:-2}" n slot
+  [[ "${max_parallel}" =~ ^[0-9]+$ ]] || max_parallel=2
+  (( max_parallel > 0 )) || max_parallel=1
+  mkdir -p "${BASE}/.preview_decode_slots" 2>/dev/null || true
+  for (( n=1; n<=max_parallel; n++ )); do
+    slot="${BASE}/.preview_decode_slots/${n}"
+    if mkdir "${slot}" 2>/dev/null; then
+      printf '%s\n' "${slot}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+preview_decode_raw_if_requested() {
+  local raw="${1:-}" id cfg lock_dir slot_dir last_file now last min_interval
+  raw="$(printf '%s' "${raw}" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
+  [[ "${raw}" =~ ^[0-9A-F]+$ ]] || return 0
+  id="$(meter_id_from_raw_hex "${raw}")"
+  [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]] || return 0
+  cfg="$(candidate_autodecode_file "${id}")"
+  [[ -f "${cfg}" ]] || return 0
+
+  mkdir -p "${BASE}/.preview_decode_locks" "${BASE}/.preview_decode_last" 2>/dev/null || true
+  lock_dir="${BASE}/.preview_decode_locks/${id}"
+  last_file="${BASE}/.preview_decode_last/${id}"
+  min_interval="${PREVIEW_DECODE_MIN_INTERVAL_SECONDS:-20}"
+  now="$(date +%s 2>/dev/null || echo 0)"
+  last="$(cat "${last_file}" 2>/dev/null || echo 0)"
+  [[ "${last}" =~ ^[0-9]+$ ]] || last=0
+  if (( now - last < min_interval )); then
+    return 0
+  fi
+  mkdir "${lock_dir}" 2>/dev/null || return 0
+  slot_dir="$(_preview_acquire_slot || true)"
+  if [[ -z "${slot_dir}" ]]; then
+    rmdir "${lock_dir}" 2>/dev/null || true
+    return 0
+  fi
+  printf '%s\n' "${now}" > "${last_file}" 2>/dev/null || true
+
+  (
+    local tmp_base tmp_meter_dir output json_line
+    # Prevent stale status.json writes from this detached helper process.
+    write_status_json() { :; }
+    tmp_base="$(mktemp -d "${BASE}/.preview_decode.${id}.XXXXXX" 2>/dev/null)" || {
+      rmdir "${slot_dir}" 2>/dev/null || true
+      rmdir "${lock_dir}" 2>/dev/null || true
+      exit 0
+    }
+    tmp_meter_dir="${tmp_base}/etc/wmbusmeters.d"
+    mkdir -p "${tmp_meter_dir}" 2>/dev/null || true
+    cat > "${tmp_base}/etc/wmbusmeters.conf" <<EOFONESHOT
+loglevel=${LOGLEVEL}
+device=stdin:hex
+logfile=/dev/stdout
+format=json
+EOFONESHOT
+    cp "${cfg}" "${tmp_meter_dir}/meter-preview-${id}" 2>/dev/null || true
+    output="$(printf '%s\n' "${raw}" | /usr/bin/wmbusmeters --useconfig="${tmp_base}" 2>&1 || true)"
+    json_line="$(printf '%s\n' "${output}" | awk '/^\{.*"_":"telegram"/ { print; exit }')"
+    if [[ -n "${json_line}" ]]; then
+      log_debug "[DIAG] preview one-shot ${id}: decoded JSON"
+      status_candidate_seen_from_json "${json_line}"
+      _store_candidate_value "${json_line}"
+    else
+      _record_preview_no_decode_attempt "${id}"
+    fi
+    rm -rf "${tmp_base}" 2>/dev/null || true
+    rmdir "${slot_dir}" 2>/dev/null || true
+    rmdir "${lock_dir}" 2>/dev/null || true
+  ) &
 }
 
 status_upsert_candidate_analysis() {
@@ -87,7 +135,7 @@ status_upsert_candidate_analysis() {
 
 candidate_autodecode_file() {
   local id="$1"
-  printf '%s/meter-preview-%s' "${LISTEN_METER_DIR}" "${id}"
+  printf '%s/meter-preview-%s' "${PREVIEW_METER_DIR}" "${id}"
 }
 
 candidate_type_requires_aes() {
@@ -102,6 +150,7 @@ ensure_candidate_autodecode() {
   local driver="${2:-auto}"
   local type_line="${3:-}"
   local reload="${4:-true}"
+  : "${reload}"  # retained for caller compatibility; LISTEN is never reloaded
   local file tmp
 
   id="$(normalize_meter_id "$1")"
@@ -116,7 +165,6 @@ ensure_candidate_autodecode() {
       rm -f "${file}" 2>/dev/null || true
       rm -f "${BASE}/.preview_attempts/${id}" 2>/dev/null || true
       log "autodecode ${id}: skipped (official meter), pruned orphaned preview"
-      [[ "${reload}" == "true" ]] && _request_listen_reload
     fi
     return 0
   fi
@@ -128,17 +176,11 @@ ensure_candidate_autodecode() {
     if [[ -f "${file}" ]]; then
       rm -f "${file}" 2>/dev/null || true
       rm -f "${BASE}/.preview_attempts/${id}" 2>/dev/null || true
-      if [[ "${reload}" == "true" ]]; then
-        # Preview files live in LISTEN_METER_DIR — only the LISTEN instance
-        # needs reloading. Do NOT touch RELOAD_FLAG/.reload_pipeline here: that
-        # restarts the main DECODE pipeline on every new candidate (churn loop).
-        _request_listen_reload
-      fi
     fi
     return 0
   fi
 
-  mkdir -p "${LISTEN_METER_DIR}" 2>/dev/null || true
+  mkdir -p "${PREVIEW_METER_DIR}" 2>/dev/null || true
   tmp="${file}.tmp"
   {
     echo "name=preview_${id}"
@@ -153,13 +195,13 @@ ensure_candidate_autodecode() {
     log_verbose "[DIAG] autodecode ${id}: wrote ${file} (driver=${driver:-auto})"
     _set_preview_state "${id}" "pending"
     rm -f "${BASE}/.preview_attempts/${id}" 2>/dev/null || true
-    if [[ "${reload}" == "true" ]]; then
-      # Only the LISTEN instance reads these preview files — reload just it.
-      # Touching RELOAD_FLAG/.reload_pipeline would needlessly restart the main
-      # DECODE pipeline on every newly heard candidate (the churn seen in logs).
-      # _request_listen_reload debounces bursts (many new candidates at once)
-      # to at most one restart per 10 s, with a deferred fire for late arrivals.
-      _request_listen_reload
+    # Do not reload LISTEN here. Preview configs are consumed by the one-shot
+    # decoder, while the always-on LISTEN pipeline stays permanently pure.
+    local _recent_row _recent_raw
+    _recent_row="$(status_find_recent_raw_for_id "${id}" || true)"
+    if [[ -n "${_recent_row}" ]]; then
+      IFS=$'\t' read -r _ _ _recent_raw <<< "${_recent_row}"
+      [[ -n "${_recent_raw}" ]] && preview_decode_raw_if_requested "${_recent_raw}"
     fi
   else
     rm -f "${tmp}" 2>/dev/null || true
@@ -177,11 +219,9 @@ sync_candidate_autodecode_files() {
   done < "${STATUS_CANDIDATES_FILE}"
 }
 
-# Remove meter-preview-<id> files for IDs that are now official configured meters.
-# Called after sync_candidate_autodecode_files() to override any preview file it may
-# have written for a candidate that was concurrently promoted to official status.
-# Also removes the corresponding .preview_attempts/<id> counter.
-# Does NOT touch status_candidate_values.tsv or status_candidate_preview_state.tsv.
+# Remove preview files for IDs that are now official configured meters.
+# Preview files live under PREVIEW_METER_DIR and are consumed by one-shot decoders;
+# the always-on LISTEN directory remains empty.
 prune_official_meter_previews() {
   local mid pf _pruned=0
   [[ -d "${METER_DIR}" ]] || return 0
@@ -189,7 +229,7 @@ prune_official_meter_previews() {
     [[ -f "${mf}" ]] || continue
     mid="$(grep -m1 '^id=' "${mf}" | cut -d= -f2 | tr '[:lower:]' '[:upper:]')"
     [[ "${mid}" =~ ^[0-9A-Fa-f]{8}$ ]] || continue
-    pf="${LISTEN_METER_DIR}/meter-preview-${mid}"
+    pf="${PREVIEW_METER_DIR}/meter-preview-${mid}"
     if [[ -f "${pf}" ]]; then
       rm -f "${pf}" 2>/dev/null || true
       rm -f "${BASE}/.preview_attempts/${mid}" 2>/dev/null || true
@@ -197,7 +237,7 @@ prune_official_meter_previews() {
       _pruned=1
     fi
   done
-  [[ "${_pruned}" -eq 1 ]] && _request_listen_reload
+  : "${_pruned}"  # preview files are one-shot inputs; LISTEN never reloads
 }
 
 status_record_candidate_raw() {

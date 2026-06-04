@@ -297,6 +297,31 @@ format=json
 EOFLISTEN
 
 # ------------------------------------------------------------
+# Preview one-shot decoder config
+# ------------------------------------------------------------
+# Preview must NOT contaminate the always-on LISTEN instance. Candidate preview
+# files live in a separate directory and are decoded from individual RAW frames
+# by short-lived one-shot wmbusmeters processes. This preserves exactly two
+# long-running pipelines: PRIMARY DECODE and SECONDARY PURE LISTEN.
+PREVIEW_BASE="${BASE}/preview"
+PREVIEW_ETC="${PREVIEW_BASE}/etc"
+PREVIEW_METER_DIR="${PREVIEW_ETC}/wmbusmeters.d"
+PREVIEW_CONF_FILE="${PREVIEW_ETC}/wmbusmeters.conf"
+mkdir -p "${PREVIEW_METER_DIR}"
+cat > "${PREVIEW_CONF_FILE}" <<EOFPREVIEW
+loglevel=${LOGLEVEL}
+device=stdin:hex
+logfile=/dev/stdout
+format=json
+EOFPREVIEW
+# Defensive cleanup for upgrades from the broken hybrid LISTEN+preview design.
+rm -f "${LISTEN_METER_DIR}/meter-preview-"* 2>/dev/null || true
+rm -f "${BASE}/.reload_listen" "${BASE}/.reload_listen_req" 2>/dev/null || true
+rm -rf "${BASE}/.reload_listen_pending" 2>/dev/null || true
+rm -rf "${BASE}/.preview_decode_locks" "${BASE}/.preview_decode_slots" 2>/dev/null || true
+mkdir -p "${BASE}/.preview_decode_locks" "${BASE}/.preview_decode_last" "${BASE}/.preview_decode_slots" 2>/dev/null || true
+
+# ------------------------------------------------------------
 # Search mode helpers
 # ------------------------------------------------------------
 SEARCH_EXPECTED_VALUE_M3="$(float_or_default "${SEARCH_EXPECTED_VALUE_M3}" "0")"
@@ -575,24 +600,17 @@ while true; do
   # is required for new meters to start decoding.
   refresh_meter_files
 
-  # Existing candidates from previous LISTEN ticks should be decodable by the
-  # secondary LISTEN immediately after restart, not only after each one sends
-  # one more telegram to create its meter-preview file.
+  # Existing candidates from previous LISTEN ticks should retain preview
+  # configs after a soft reload. These files live under ${BASE}/preview, never
+  # inside the always-on LISTEN configuration directory.
   sync_candidate_autodecode_files
 
-  # Remove any meter-preview-<id> that sync_candidate_autodecode_files just wrote
-  # for an ID that is already an official configured meter. Keeps the LISTEN
-  # instance free of redundant preview configs for meters the primary pipeline
-  # already decodes.
+  # Remove preview configs for IDs promoted to official meters. PRIMARY DECODE
+  # handles those meters from now on.
   prune_official_meter_previews
 
-  # Parallel LISTEN always starts unconditionally, including pure LISTEN /
-  # Discover mode with no configured meters and no preview files yet.
-  # Without this, no supervisor is alive when the first candidate triggers
-  # ensure_candidate_autodecode() + _request_listen_reload(), so .reload_listen
-  # is never handled and preview decoding never begins.
-  # Double-counting in pure LISTEN mode is prevented inside parse_listen_candidates()
-  # by the OFFICIAL_METERS_COUNT guard — not at the instance-start level.
+  # Parallel LISTEN always starts unconditionally and remains a pure, empty-dir
+  # discovery stream. Preview decoding is one-shot and never reloads LISTEN.
   start_listen_instance
 
   run_once

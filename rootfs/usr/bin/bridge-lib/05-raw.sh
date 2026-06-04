@@ -18,6 +18,10 @@ status_raw_seen() {
   status_store_raw_seen "$(iso_now)"
   status_store_recent_raw "${raw}"
   status_raw_candidate_seen "${raw}"
+  # Preview decoding is deliberately separate from the always-on LISTEN
+  # pipeline. If this RAW belongs to a candidate with a preview config, schedule
+  # a throttled one-shot decode without blocking the RAW counter path.
+  preview_decode_raw_if_requested "${raw}"
   if (( STATUS_RAW_COUNT == 1 || STATUS_RAW_COUNT % 25 == 0 )); then
     status_add_event "ok" "RAW telegram received (${#raw} hex chars)"
   fi
@@ -226,18 +230,12 @@ status_raw_candidate_seen() {
   # mode would clobber the real classification on every raw telegram (the
   # "auto / inne" bug).
   #
-  # BUT with official meters configured, run_once runs in DECODE mode and the
-  # parallel LISTEN — loaded with meter-preview-<id> files — leaves the
-  # "Printing id:s of all telegrams heard!" mode, so wmbusmeters stops emitting
-  # the analysis block for telegrams matching no preview and NEW candidates are
-  # never discovered (the list stays stuck on ids that already had a preview).
-  # In that mode RAW is the only path that still sees every id on every telegram,
-  # so register all manufacturers here too. The concrete-driver guard below keeps
-  # a real classification authoritative and prevents reception double-counting.
+  # The secondary LISTEN pipeline is kept permanently pure (empty config dir),
+  # so it continues to discover all normal telegrams even after official meters
+  # are configured. RAW fallback is therefore needed only for the Diehl/SAP IZAR
+  # special case (M-field 0x304C), which may not surface as a listen candidate.
   mfr="${raw:4:4}"
-  if [[ "${mfr}" != "304C" && "$(official_meters_count_current)" -eq 0 ]]; then
-    return 0
-  fi
+  [[ "${mfr}" == "304C" ]] || return 0
 
   # Hard priority: a real LISTEN classification beats this RAW fallback. Without
   # this guard the fallback re-runs on every SAP telegram and keeps clobbering a
