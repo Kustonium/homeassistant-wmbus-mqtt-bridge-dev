@@ -6,6 +6,60 @@
 > kandydatów/preview/LISTEN — przeczytaj ten rozdział, bo opisuje subtelny
 > regres i konwencję, której nie wolno złamać.
 
+## ⚠️ OTWARTY BUG (priorytet): głuche wykrywanie kandydatów przy skonfigurowanym liczniku
+
+Status: **NIENAPRAWIONY** (zgłoszony przez użytkownika 2026-06-04, potwierdzony na żywo).
+
+**Objaw:**
+- **Bez** skonfigurowanego licznika (`OFFICIAL_METERS_COUNT == 0`): addon wykrywa
+  i dekoduje **całą listę** kandydatów z replay (qwaterv2 `53158939`/`52632878`,
+  EWT `65000160`, DME `87181227`, izarv2 `215F908A`/`2156B4C2`, itd.).
+- **Z** dodanym licznikiem (`OFFICIAL_METERS_COUNT > 0`): addon jest „głuchy" na
+  resztę — pokazują się **tylko** kandydaci, którzy **już mieli plik
+  `meter-preview-<id>`** albo wchodzą **specjalną ścieżką RAW** (Diehl/SAP IZAR
+  `215F908A`/`2156B4C2`). **Nowi** kandydaci (np. qwaterv2) **nie pojawiają się
+  wcale**.
+
+**Hipoteza przyczyny (ta sama martwa strefa co przy producencie):**
+- Gdy `OFFICIAL_METERS_COUNT == 0`: kandydatów wykrywa **inline parser w
+  `run_once`** (`bridge.sh`), bo główny potok jest w trybie LISTEN „print all".
+- Gdy `OFFICIAL_METERS_COUNT > 0`: ten inline parser jest **zablokowany**
+  (`if [[ "${OFFICIAL_METERS_COUNT}" -eq 0 ... ]]`), a wykrywanie przenosi się na
+  **parallel LISTEN**. Ale parallel LISTEN, gdy ma już pliki `meter-preview-*`,
+  ładuje je jako liczniki (`number of meters: N>0`) i **wychodzi z trybu
+  „Printing id:s of all telegrams heard!"** → dla telegramów niepasujących do
+  żadnego preview wmbusmeters drukuje tylko `(wmbus) telegram from TODO ignored
+  by all configured meters!` **bez** bloku analizy → `_process_listen_text_block`
+  nigdy nie dostaje nowego kandydata → brak `emit_snippet_if_new` → kandydat nie
+  powstaje. Diehl/SAP pojawia się tylko dzięki `status_raw_candidate_seen`
+  (`05-raw.sh`), który łapie go z M-pola niezależnie od LISTEN.
+
+**Dowód:** zrzuty użytkownika + logi 02:59 (bez licznika: 7 kandydatów dekoduje)
+vs tryb skonfigurowany (tylko 2 izary). To NIE jest churn ani crash — te są już
+naprawione (patrz niżej). To osobny, wcześniejszy problem architektoniczny.
+
+**Czego NIE robić:** nie wracać do `14-detect.sh` (3. instancja) — była cofnięta,
+bo kolidowała z dekodowaniem preview (commit revert `2fda975`).
+
+**Kierunki naprawy do rozważenia (bez 3. instancji):**
+1. Odblokować inline parser kandydatów w `run_once` **także** gdy są liczniki —
+   główny potok w DECODE nie drukuje jednak bloku „Received telegram from", więc
+   to samo nie wystarczy; trzeba by drugiego źródła tekstu.
+2. Zmusić parallel LISTEN, by **zawsze** był w trybie „print all" (0 liczników),
+   a dekodowanie preview rozwiązać inaczej — ale to rusza potwierdzony-działający
+   obszar preview, ostrożnie.
+3. Rozszerzyć ścieżkę RAW (`status_raw_candidate_seen`) tak, by rejestrowała
+   **każdy** nowy ID z M-pola jako kandydata (nie tylko Diehl/SAP), niezależnie od
+   LISTEN. Wtedy wykrywanie nie zależy od trybu „print all". Ryzyko: trzeba
+   zachować poprawny driver/type (LISTEN-over-RAW priorytet FU-008) i nie
+   psuć liczników odbioru.
+
+**Najpierw zbadać:** czy w trybie skonfigurowanym parallel LISTEN ma
+`number of meters: 0` (preview nie ładują się — wtedy print-all i bug jest gdzie
+indziej) czy `N>0` (preview ładują się → potwierdzona martwa strefa). To
+rozstrzyga między kierunkiem 2 a 3. Potrzebny log `loglevel=debug` z trybu
+z licznikiem, linia `(config) number of meters:` dla pipeline'u parallel LISTEN.
+
 ## Potwierdzony bug: reload-churn previews przy skonfigurowanych licznikach
 
 **Objaw:** wartości preview kandydatów wiszą na „dekoduję…", gdy w
