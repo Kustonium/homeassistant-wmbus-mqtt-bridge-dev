@@ -306,9 +306,9 @@ SEARCH_MIN_DELTA_M3="$(float_or_default "${SEARCH_MIN_DELTA_M3}" "0.001")"
 # shellcheck disable=SC2034
 SEARCH_CANDIDATES_FILE="${BASE}/search_candidates.tsv"
 SEARCH_USING_TEMP_METERS="false"
-# shellcheck disable=SC2034 -- used by sourced bridge-lib/07-meters.sh
-OFFICIAL_METERS_COUNT=0
+# Used by sourced bridge-lib/07-meters.sh
 # shellcheck disable=SC2034
+OFFICIAL_METERS_COUNT=0
 SEARCH_IGNORED_COUNT=0
 # shellcheck disable=SC2034
 SEARCH_TEMP_METERS_LOADED=0
