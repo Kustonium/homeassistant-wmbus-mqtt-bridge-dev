@@ -944,12 +944,16 @@ def status_model(data: dict) -> dict:
     # discovery_prefix or integration disabled). Other states do not change the
     # existing ha_link decision (it falls back to the inferred path).
     ha_verification = "unavailable"
+    ha_verification_reason = ""
     try:
         _hv_raw = STATUS_HA_VERIFICATION_FILE.read_text(encoding="utf-8").strip()
         if _hv_raw:
-            _hv_state = _hv_raw.split("\t", 1)[0].strip().lower()
+            _hv_parts = _hv_raw.split("\t")
+            _hv_state = _hv_parts[0].strip().lower()
             if _hv_state in ("verified", "not_created", "pending", "unavailable"):
                 ha_verification = _hv_state
+            if len(_hv_parts) > 2:
+                ha_verification_reason = _hv_parts[2].strip()
     except OSError:
         pass
 
@@ -1116,6 +1120,7 @@ def status_model(data: dict) -> dict:
         "ha_presence": ha_presence,
         "ha_link": ha_link,
         "ha_verification": ha_verification,
+        "ha_verification_reason": ha_verification_reason,
         "broker_brand": broker_brand,
         "broker_version": broker_version,
         "broker_native": broker_native,

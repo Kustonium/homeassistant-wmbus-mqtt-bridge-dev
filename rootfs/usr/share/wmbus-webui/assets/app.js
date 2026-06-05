@@ -1239,6 +1239,40 @@
     } else if (state.workspace === "ha") {
       const cfg  = model.cfg || {};
       const meterCount = Number(model.meter_count || 0);
+      // HA entity verification row (PRD #2 round-trip via HA Core API). Surface
+      // both the verdict and, when unavailable, a precise actionable reason so
+      // the user knows what to flip — instead of staring at a silent "unconfirmed".
+      const haV = String(model.ha_verification || "unavailable");
+      const haVReason = String(model.ha_verification_reason || "").trim();
+      let verifyLine;
+      if (haV === "verified") {
+        verifyLine = `✓ ${escapeHtml(t("ha_verify_verified", "HA is creating entities (verified)"))}`;
+      } else if (haV === "not_created") {
+        verifyLine = `<span style="color:#ff646b;">✗ ${escapeHtml(t("ha_verify_not_created", "HA is NOT creating entities"))}</span>`;
+      } else if (haV === "pending") {
+        verifyLine = `⌛ ${escapeHtml(t("ha_verify_pending", "Verification in progress (~90 s)…"))}`;
+      } else {
+        // unavailable + a localised reason if known. "disabled" gets the
+        // strongest hint because it is the only reason the user can fix from
+        // inside the add-on. Empty reason (status file not written yet) just
+        // shows the headline — no awkward "Not available — unavailable".
+        const reasonFallback = {
+          disabled:      "off — enable verify_ha_entities in the add-on options",
+          no_token:      "no SUPERVISOR_TOKEN (Docker standalone)",
+          no_curl:       "curl not available in the image (please report)",
+          no_payload:    "failed to build the verification request",
+          auth_error:    "HA Core API auth error — check homeassistant_api",
+          network_error: "network error reaching HA Core API",
+          api_error:     "unexpected response from HA Core API",
+        };
+        const headline = escapeHtml(t("ha_verify_unavailable", "Not available"));
+        if (haVReason && reasonFallback[haVReason]) {
+          const reasonKey = "ha_verify_reason_" + haVReason;
+          verifyLine = `⚪ ${headline} — ${escapeHtml(t(reasonKey, reasonFallback[haVReason]))}`;
+        } else {
+          verifyLine = `⚪ ${headline}`;
+        }
+      }
       body = `
         <h3>🏠 ${escapeHtml(t("workspace_ha_title", "Home Assistant"))}</h3>
         <div class="kv">
@@ -1246,6 +1280,7 @@
           <div>${escapeHtml(t("workspace_ha_prefix", "Discovery prefix"))}</div><div class="mono">${escapeHtml(cfg.discovery_prefix || "—")}</div>
           <div>${escapeHtml(t("workspace_ha_state_prefix", "State prefix"))}</div><div class="mono">${escapeHtml(cfg.state_prefix || "—")}</div>
           <div>${escapeHtml(t("workspace_ha_entities", "Entities published"))}</div><div>${meterCount}</div>
+          <div>${escapeHtml(t("ha_verify_title", "HA entity verification"))}</div><div>${verifyLine}</div>
         </div>
       `;
     }
