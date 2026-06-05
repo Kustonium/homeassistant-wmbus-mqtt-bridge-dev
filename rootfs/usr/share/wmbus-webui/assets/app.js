@@ -1041,19 +1041,24 @@
           ? t("pipeline_ha_published_at", "published at {time}", {time: haPublishedTime})
           : t("pipeline_ha_published", "published"))
       : t("pipeline_ha_pending", "pending");
-    // MQTT->HA healthcheck (model.ha_link): a seen "online" birth message
-    // confirms HA on this broker. Birth ABSENCE is NOT proof of a foreign broker
-    // (HA birth is often not retained), so it never alarms — we keep the original
-    // discovery-published view. Reliable wrong-broker detection is a follow-up.
+    // MQTT->HA healthcheck (model.ha_link). "ok" = HA confirmed (native broker or
+    // a seen "online" birth) → green. "unknown" = non-native broker with no HA
+    // confirmation → NOT green: publishing Discovery to a broker HA does not
+    // consume is not success, so show neutral grey + "HA unconfirmed" (honest
+    // witness, never a green lie). It stays a soft/neutral signal — not a hard
+    // alarm — so an intentional external broker that HA also uses is not accused.
     const haLink = String(model.ha_link || "unknown");
     let haDot, haText;
     if (haLink === "ok") {
-      // HA presence confirmed (native broker, or a seen "online" birth). Green
-      // regardless of Discovery timing; show "HA detected" until entities publish.
+      // HA presence confirmed; green regardless of Discovery timing.
       haDot = dot(true, false, hasLiveRate);
       haText = model.discovery_ok ? haStatus : t("pipeline_ha_detected", "HA detected");
+    } else if (haLink === "unknown") {
+      haDot = `<span class="dot"></span>`;
+      haText = t("pipeline_ha_unconfirmed", "HA unconfirmed");
     } else {
-      haDot = dot(!!model.discovery_ok, meterCount === 0, !!model.discovery_ok);
+      // mqtt_down or other — neutral, never a green "published" lie.
+      haDot = `<span class="dot"></span>`;
       haText = haStatus;
     }
 
@@ -1183,7 +1188,7 @@
         : "—";
       const brokerClients = String(model.broker_clients || "").trim();
       const haLink = String(model.ha_link || "unknown");
-      const haOnBroker = haLink === "ok" ? "✓" : (haLink === "mqtt_down" ? "—" : "✗");
+      const haOnBroker = haLink === "ok" ? "✓" : (haLink === "mqtt_down" ? "—" : "?");
       const tlsVal = model.mqtt_tls_supported === true
         ? "✓"
         : (t("tls_not_supported", "not supported") + (model.mqtt_tls_intent === true ? " (port 8883 → 1883)" : ""));
