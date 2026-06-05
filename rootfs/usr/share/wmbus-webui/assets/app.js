@@ -1018,20 +1018,17 @@
           ? t("pipeline_ha_published_at", "published at {time}", {time: haPublishedTime})
           : t("pipeline_ha_published", "published"))
       : t("pipeline_ha_pending", "pending");
-    // MQTT->HA healthcheck (model.ha_link): publishing into a broker HA does not
-    // consume is NOT success — green requires confirmed HA presence on this
-    // broker (birth message). "no_ha" is an informational warning, never a hard
-    // error, so intentional external/bridged topologies are not falsely alarmed.
+    // MQTT->HA healthcheck (model.ha_link): a seen "online" birth message
+    // confirms HA on this broker. Birth ABSENCE is NOT proof of a foreign broker
+    // (HA birth is often not retained), so it never alarms — we keep the original
+    // discovery-published view. Reliable wrong-broker detection is a follow-up.
     const haLink = String(model.ha_link || "unknown");
     let haDot, haText;
-    if (haLink === "no_ha") {
-      haDot = dot(false, true, false);
-      haText = t("pipeline_ha_no_ha", "brak HA na tym brokerze");
-    } else if (haLink === "ok") {
+    if (haLink === "ok") {
       haDot = dot(true, false, hasLiveRate);
       haText = haStatus;
     } else {
-      haDot = dot(!!model.discovery_ok, meterCount === 0, false);
+      haDot = dot(!!model.discovery_ok, meterCount === 0, !!model.discovery_ok);
       haText = haStatus;
     }
 

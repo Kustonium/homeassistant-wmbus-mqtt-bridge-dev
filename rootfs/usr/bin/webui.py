@@ -915,17 +915,16 @@ def status_model(data: dict) -> dict:
     except OSError:
         pass
     ha_present = ha_presence == "online"
-    _mqtt_mode = str((options.get("mqtt_mode") if isinstance(options, dict) else "") or "auto").lower()
+    # NB: birth ABSENCE is not proof of a foreign broker. HA's birth message is
+    # frequently NOT retained, so a subscriber that starts after HA has already
+    # connected never sees it (confirmed in the field). Therefore only a seen
+    # "online" birth asserts presence; absence stays neutral and never alarms.
+    # Reliable wrong-broker detection needs a stronger signal (MQTT source from
+    # run.sh / broker identity) and is tracked as a follow-up.
     if not mqtt_ok:
         ha_link = "mqtt_down"
     elif ha_present:
         ha_link = "ok"
-    elif ha_presence == "unknown" and _mqtt_mode != "ha" and discovery_ok:
-        # No HA birth signal at all on this broker, yet we publish Discovery here.
-        # Likely a different/foreign broker. NB: an "offline" birth (LWT) instead
-        # proves HA *does* use this broker but is currently down — that is NOT a
-        # wrong-broker case, so it falls through to the neutral state below.
-        ha_link = "no_ha"
     else:
         ha_link = "unknown"
 
