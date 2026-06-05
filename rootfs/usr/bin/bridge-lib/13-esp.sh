@@ -145,4 +145,31 @@ touch "${STATUS_ESP_EVENTS_FILE}" 2>/dev/null || true
     sleep 5
   done
 ) &
+
+# Background subscriber for the Home Assistant MQTT birth/availability message.
+# HA's MQTT integration publishes <discovery_prefix>/status = "online" (retained,
+# LWT "offline") on the broker it is connected to. Seeing it proves a live HA
+# MQTT integration consumes Discovery on the SAME broker the bridge uses; silence
+# means the bridge is likely on a different/foreign broker (e.g. a cloud/Supla
+# broker) and HA entities will never appear — the core MQTT->HA healthcheck.
+# NB: this subscriber must NOT use SUB_EXTRA (-R). The retained birth message IS
+# the signal, so retained delivery must stay enabled.
+(
+  _ha_birth_topic="${DISCOVERY_PREFIX:-homeassistant}/status"
+  log "HA-presence: watching birth topic '${_ha_birth_topic}' for MQTT->HA healthcheck"
+  while true; do
+    while IFS= read -r _ha_payload; do
+      [[ -n "${_ha_payload}" ]] || continue
+      _ha_state="$(printf '%s' "${_ha_payload}" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+      [[ "${_ha_state}" == "online" || "${_ha_state}" == "offline" ]] || continue
+      _ha_now="$(date +%s 2>/dev/null || echo 0)"
+      printf '%s\t%s\n' "${_ha_state}" "${_ha_now}" > "${STATUS_HA_PRESENCE_FILE}.tmp" 2>/dev/null \
+        && mv "${STATUS_HA_PRESENCE_FILE}.tmp" "${STATUS_HA_PRESENCE_FILE}" 2>/dev/null \
+        || true
+    done < <(
+      ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" -t "${_ha_birth_topic}" -F '%p' -W 180 2>/dev/null
+    )
+    sleep 5
+  done
+) &
 }

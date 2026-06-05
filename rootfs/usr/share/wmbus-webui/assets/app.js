@@ -1018,6 +1018,22 @@
           ? t("pipeline_ha_published_at", "published at {time}", {time: haPublishedTime})
           : t("pipeline_ha_published", "published"))
       : t("pipeline_ha_pending", "pending");
+    // MQTT->HA healthcheck (model.ha_link): publishing into a broker HA does not
+    // consume is NOT success — green requires confirmed HA presence on this
+    // broker (birth message). "no_ha" is an informational warning, never a hard
+    // error, so intentional external/bridged topologies are not falsely alarmed.
+    const haLink = String(model.ha_link || "unknown");
+    let haDot, haText;
+    if (haLink === "no_ha") {
+      haDot = dot(false, true, false);
+      haText = t("pipeline_ha_no_ha", "brak HA na tym brokerze");
+    } else if (haLink === "ok") {
+      haDot = dot(true, false, hasLiveRate);
+      haText = haStatus;
+    } else {
+      haDot = dot(!!model.discovery_ok, meterCount === 0, false);
+      haText = haStatus;
+    }
 
     return `
       <section class="section">
@@ -1047,7 +1063,7 @@
           <button class="${cls("ha")}" data-action="open-workspace" data-ws="ha" type="button">
             <div class="pipeline-icon">🏠</div>
             <div class="pipeline-title">HA</div>
-            <div class="pipeline-meta">${dot(!!model.discovery_ok, meterCount === 0, !!model.discovery_ok)} ${escapeHtml(haStatus)}</div>
+            <div class="pipeline-meta">${haDot} ${escapeHtml(haText)}</div>
             <div class="pipeline-sub">${meterCount} ${escapeHtml(t("pipeline_ha_entities_short", "entit."))}</div>
           </button>
         </div>

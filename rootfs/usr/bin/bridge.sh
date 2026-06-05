@@ -80,6 +80,11 @@ STATUS_CANDIDATE_VALUES_FILE="${BASE}/status_candidate_values.tsv"
 # Per-candidate preview lifecycle state: pending | decoded_value | decoded_without_numeric_value
 # Format: id<TAB>state<TAB>iso_timestamp<TAB>note
 STATUS_CANDIDATE_PREVIEW_STATE_FILE="${BASE}/status_candidate_preview_state.tsv"
+# MQTT->HA healthcheck: presence of Home Assistant's MQTT integration on the
+# broker the bridge uses, inferred from HA's retained birth message
+# (<discovery_prefix>/status). Written by the HA-presence subscriber in
+# start_esp_subscribers. Format: state<TAB>epoch  (state = online | offline).
+STATUS_HA_PRESENCE_FILE="${BASE}/status_ha_presence.txt"
 # File-backed count of officially configured meters. Several pipelines run in
 # subshells and can outlive a soft reload, so their inherited shell variable may
 # be stale. This file is the shared runtime source of truth.
@@ -145,6 +150,10 @@ rm -rf "${BASE}/.reload_listen_pending" 2>/dev/null || true
 rm -rf "${BASE}/.preview_attempts" 2>/dev/null || true
 mkdir -p "${BASE}/.preview_attempts" 2>/dev/null || true
 : > "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" 2>/dev/null || true
+# HA presence is session-scoped to the current broker. Clear stale state so a
+# previous run's "online" cannot mask a now-foreign broker until the retained
+# birth message (if any) re-arrives on subscribe.
+: > "${STATUS_HA_PRESENCE_FILE}" 2>/dev/null || true
 # Preview values are session-scoped — clear stale entries from previous runs
 # so the WebGUI doesn't show outdated readings (or the legacy first-numeric-field
 # pick that briefly stored bogus backflow_m3 / fraud counter values) until the

@@ -57,6 +57,10 @@ STATUS_CANDIDATE_PREVIEW_STATE_FILE = BASE / "status_candidate_preview_state.tsv
 # ESPs were seen in the current bridge session (works without ESP diagnostics).
 # Format: device<TAB>last_seen_epoch<TAB>last_topic<TAB>telegram_count
 STATUS_ESP_TELEGRAM_DEVICES_FILE = BASE / "status_esp_telegram_devices.tsv"
+# MQTT->HA healthcheck: presence of HA's MQTT integration on the broker the
+# bridge uses, from HA's retained birth message. Written by bridge.sh.
+# Format: state<TAB>epoch  (state = online | offline).
+STATUS_HA_PRESENCE_FILE = BASE / "status_ha_presence.txt"
 # LISTEN-only config dir — separate from /data/etc which holds the user's
 # permanent meters. This directory must stay empty so the secondary wmbusmeters
 # process remains a true always-on discovery listener.
@@ -895,6 +899,36 @@ def status_model(data: dict) -> dict:
     except Exception:
         pass
 
+    # MQTT->HA healthcheck: is a live HA MQTT integration present on the broker
+    # the bridge uses? Inferred from HA's retained birth message
+    # (homeassistant/status), recorded by bridge.sh. Silence on a non-native
+    # broker likely means the bridge is on a different/foreign broker and HA
+    # entities will never appear. Informational only — never a hard error, so
+    # intentional external/bridged topologies are not falsely alarmed.
+    ha_presence = "unknown"
+    try:
+        _ha_raw = STATUS_HA_PRESENCE_FILE.read_text(encoding="utf-8").strip()
+        if _ha_raw:
+            _ha_state = _ha_raw.split("\t", 1)[0].strip().lower()
+            if _ha_state in ("online", "offline"):
+                ha_presence = _ha_state
+    except OSError:
+        pass
+    ha_present = ha_presence == "online"
+    _mqtt_mode = str((options.get("mqtt_mode") if isinstance(options, dict) else "") or "auto").lower()
+    if not mqtt_ok:
+        ha_link = "mqtt_down"
+    elif ha_present:
+        ha_link = "ok"
+    elif ha_presence == "unknown" and _mqtt_mode != "ha" and discovery_ok:
+        # No HA birth signal at all on this broker, yet we publish Discovery here.
+        # Likely a different/foreign broker. NB: an "offline" birth (LWT) instead
+        # proves HA *does* use this broker but is currently down — that is NOT a
+        # wrong-broker case, so it falls through to the neutral state below.
+        ha_link = "no_ha"
+    else:
+        ha_link = "unknown"
+
     # Telegrams-per-minute: sum seen_60m across active sources.
     # Divide by actual elapsed minutes (capped at 60) instead of always 60 —
     # dividing by 60 when the bridge is young (e.g. 4 min uptime) produces an
@@ -1007,6 +1041,8 @@ def status_model(data: dict) -> dict:
         "wmbus_ok": wmbus_ok,
         "decoded_ok": decoded_ok,
         "discovery_ok": discovery_ok,
+        "ha_presence": ha_presence,
+        "ha_link": ha_link,
         "raw_15m": raw_15m,
         "raw_per_min": raw_per_min,
         "rate_current_min": rate_current_min,
