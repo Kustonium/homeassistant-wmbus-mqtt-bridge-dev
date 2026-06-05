@@ -1,10 +1,3 @@
-## 1.5.29-dev
-
-<!-- PROMOTE-CHANGELOG-REQUIRED: auto-drafted skeleton below — review, expand into full release notes, and delete this line before promoting. -->
-
-### Added
-- surface verification status with actionable reasons in the HA panel (ce3eb4e)
-
 ## 1.5.28-dev
 
 ### Added

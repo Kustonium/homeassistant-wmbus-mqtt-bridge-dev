@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
-# Regenerate the auto-drafted skeleton under the current dev CHANGELOG heading.
+# Per-build CHANGELOG drafter.
 #
-# Hybrid model: the maintainer still writes the final, externally-reviewable
-# release notes by hand. This script only keeps a *skeleton* (one bullet per
-# cycle commit, grouped by Conventional Commit type) under the dev heading so
-# the promote-to-stable gate never blocks on an empty placeholder and the
-# maintainer has a ready starting point to expand.
+# Model: one section per CI build of a dev cycle (## X.Y.Z-dev.NN), holding
+# exactly the user-facing commits that landed in THAT build (range:
+# previous-per-build heading → HEAD). The "humanise the whole cycle under
+# ## X.Y.Z-dev" model produced an unreadable tasiemiec and silently dropped
+# everything that followed the maintainer's first humanisation. Per-build
+# sections are always accurate, never aggregated, and never edited after
+# creation.
 #
 # Safety contract:
-#   * Acts ONLY on the top CHANGELOG section, and ONLY while it still carries the
-#     PROMOTE-CHANGELOG-REQUIRED marker. Once the maintainer finalises the notes
-#     and deletes that marker line, this script leaves the section untouched.
-#   * The marker token is preserved, so promote-to-stable stays blocked until a
-#     human reviews and removes it.
-#   * Previous release sections are never modified.
-#   * Output is deterministic, so re-runs with no new commits produce no diff.
+#   * Only PREPENDS a new section to the top of CHANGELOG.md. Never modifies
+#     existing sections (cycle release notes for past versions stay intact).
+#   * Prints a no-op status line and exits cleanly when there is nothing to add
+#     (no new commits since the last per-build heading, or no user-facing commits
+#     in this build).
+#   * Output is deterministic: re-runs with no new commits produce no diff.
 #
 # Pure file transform: rewrites CHANGELOG.md in place and prints a status line.
 # Git add/commit/push is handled by the calling workflow.
@@ -24,32 +25,55 @@ CFG="config.yaml"
 CL="${CHANGELOG_FILE:-CHANGELOG.md}"
 
 raw_ver="$(sed -nE 's/^version:[[:space:]]*"?([^"[:space:]]+)"?[[:space:]]*$/\1/p' "${CFG}" | head -n1)"
-core="$(printf '%s' "${raw_ver}" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' || true)"
-if [[ -z "${core}" ]]; then
-  echo "changelog-skeleton: cannot read core version from ${CFG} — leaving untouched."
+if [[ -z "${raw_ver}" ]]; then
+  echo "changelog-skeleton: cannot read version from ${CFG} — leaving untouched."
   exit 0
 fi
-heading="## ${core}-dev"
+# Need an X.Y.Z-dev.NN form to draft a per-build section. A bare X.Y.Z-dev
+# (start of a cycle, before the first CI bump) is skipped intentionally — the
+# next CI build will write its own per-build section.
+if [[ ! "${raw_ver}" =~ ^[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+$ ]]; then
+  echo "changelog-skeleton: version '${raw_ver}' is not a per-build form X.Y.Z-dev.NN — leaving untouched."
+  exit 0
+fi
+heading="## ${raw_ver}"
 
-first_heading="$(grep -m1 '^## ' "${CL}" 2>/dev/null || true)"
-if [[ "${first_heading}" != "${heading}" ]]; then
-  echo "changelog-skeleton: top heading '${first_heading}' != '${heading}' — leaving untouched."
+# Idempotency: if the section for this exact build already exists, do nothing.
+if grep -qxF "${heading}" "${CL}" 2>/dev/null; then
+  echo "changelog-skeleton: section '${heading}' already exists — leaving untouched."
   exit 0
 fi
 
-current_section="$(awk 'NR>1 && /^## / {exit} {print}' "${CL}")"
-if ! printf '%s' "${current_section}" | grep -q 'PROMOTE-CHANGELOG-REQUIRED'; then
-  echo "changelog-skeleton: top section already finalised (no marker) — leaving untouched."
-  exit 0
-fi
+# Commit range = (most recent per-build heading or any heading at all)..HEAD.
+# We map the most recent ## heading line in the file to its commit by searching
+# the git log for that exact subject; if not found, fall back to "since the most
+# recent ci(dev): bump" (the build that produced the previous section).
+prev_heading="$(grep -m1 '^## ' "${CL}" 2>/dev/null || true)"
+prev_ver="${prev_heading#"## "}"
 
-# Most recent "chore: bump dev base to" commit marks the start of this cycle.
-# NB: do not let awk exit early here — `git log | awk {exit}` under `pipefail`
-# makes git log receive SIGPIPE and the pipeline returns 141, which would abort
-# the script under `set -e`. Print only the first match but read the stream out.
-base="$(git log --format='%H%x09%s' | awk -F'\t' 'found {next} $2 ~ /^chore: bump dev base to/ {print $1; found=1}')"
-if [[ -z "${base}" ]]; then
-  echo "changelog-skeleton: no 'chore: bump dev base to' commit found — leaving untouched."
+# Strategy: find the commit that introduced the previous heading into CHANGELOG
+# by matching the bump subject for that version. That is the start of THIS
+# build's commit range. NB: keep awk reading the whole stream (no early exit)
+# so `git log | awk` does not return 141 (SIGPIPE) under pipefail.
+range_base=""
+if [[ -n "${prev_ver}" && "${prev_ver}" =~ ^[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+$ ]]; then
+  range_base="$(git log --format='%H%x09%s' \
+    | awk -F'\t' -v s="ci(dev): bump version to ${prev_ver} [skip ci]" \
+        'found {next} $2 == s {print $1; found=1}')"
+fi
+if [[ -z "${range_base}" ]]; then
+  # No matching previous-build commit — fall back to the most recent bump
+  # commit of any version, which is the most natural "since the last build".
+  range_base="$(git log --format='%H%x09%s' \
+    | awk -F'\t' 'found {next} $2 ~ /^ci\(dev\): bump version to .* \[skip ci\]$/ {print $1; found=1}')"
+fi
+if [[ -z "${range_base}" ]]; then
+  # First build ever in this repo — start from the most recent dev-base bump.
+  range_base="$(git log --format='%H%x09%s' \
+    | awk -F'\t' 'found {next} $2 ~ /^chore: bump dev base to/ {print $1; found=1}')"
+fi
+if [[ -z "${range_base}" ]]; then
+  echo "changelog-skeleton: no anchor commit found — leaving untouched."
   exit 0
 fi
 
@@ -79,10 +103,10 @@ while IFS=$'\t' read -r short subject; do
     docs:*|docs\(*|test:*|test\(*|chore:*|chore\(*|ci:*|ci\(*|build:*|build\(*|style:*|style\(*) continue ;;
     *)                                              other="${other}${line}"$'\n' ;;
   esac
-done < <(git log --no-merges --format='%h%x09%s' "${base}..HEAD")
+done < <(git log --no-merges --format='%h%x09%s' "${range_base}..HEAD")
 
 if [[ -z "${fixed}${added}${changed}${other}" ]]; then
-  echo "changelog-skeleton: no cycle commits to draft yet — leaving placeholder untouched."
+  echo "changelog-skeleton: no user-facing commits between ${range_base:0:7}..HEAD — skipping build ${raw_ver}."
   exit 0
 fi
 
@@ -95,12 +119,10 @@ emit_section() {
 }
 
 new_section="$(mktemp)"
-rest="$(mktemp)"
-trap 'rm -f "${new_section}" "${rest}"' EXIT
+trap 'rm -f "${new_section}"' EXIT
 
 {
-  printf '%s\n\n' "${heading}"
-  printf '%s\n' '<!-- PROMOTE-CHANGELOG-REQUIRED: auto-drafted skeleton below — review, expand into full release notes, and delete this line before promoting. -->'
+  printf '%s\n' "${heading}"
   emit_section "Added" "${added}"
   emit_section "Changed" "${changed}"
   emit_section "Fixed" "${fixed}"
@@ -108,9 +130,8 @@ trap 'rm -f "${new_section}" "${rest}"' EXIT
   printf '\n'
 } > "${new_section}"
 
-# Everything from the previous release heading (2nd '## ') onward, preserved verbatim.
-awk '/^## / {n++} n>=2 {print}' "${CL}" > "${rest}"
-
-cat "${new_section}" "${rest}" > "${CL}.tmp"
+# Prepend the new per-build section above the existing content. Existing
+# sections are preserved verbatim — including any humanised cycle release notes.
+cat "${new_section}" "${CL}" > "${CL}.tmp"
 mv "${CL}.tmp" "${CL}"
-echo "changelog-skeleton: regenerated skeleton under ${heading}."
+echo "changelog-skeleton: prepended ${heading} with $(printf '%s' "${added}${changed}${fixed}${other}" | grep -c '^-' || true) entries."

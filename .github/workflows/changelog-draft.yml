@@ -1,10 +1,8 @@
 name: changelog-draft
 
-# Keeps an auto-drafted skeleton under the current dev CHANGELOG heading so the
-# promote-to-stable gate never blocks on an empty placeholder. The maintainer
-# still writes the final release notes by hand and removes the
-# PROMOTE-CHANGELOG-REQUIRED marker; while the marker is present this workflow
-# refreshes a one-bullet-per-commit skeleton grouped by Conventional Commit type.
+# Prepends a per-build section (## X.Y.Z-dev.NN) listing exactly the user-facing
+# commits that landed since the previous build, grouped by Conventional Commit
+# type. Past sections (including humanised cycle release notes) are never edited.
 # See .github/scripts/changelog-skeleton.sh for the safety contract.
 
 on:
@@ -44,12 +42,12 @@ jobs:
             exit 0
           fi
 
-          core="$(sed -nE 's/^version:[[:space:]]*"?([^"[:space:]]+)"?[[:space:]]*$/\1/p' config.yaml | head -n1 | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
+          ver="$(sed -nE 's/^version:[[:space:]]*"?([^"[:space:]]+)"?[[:space:]]*$/\1/p' config.yaml | head -n1)"
 
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add CHANGELOG.md
-          git commit -m "docs(changelog): auto-draft skeleton for ${core}-dev [skip ci]"
+          git commit -m "docs(changelog): prepend per-build section for ${ver} [skip ci]"
 
           # Another job (e.g. the dev version bump) may push to main concurrently;
           # rebase and retry so this draft never clobbers or loses a race.
