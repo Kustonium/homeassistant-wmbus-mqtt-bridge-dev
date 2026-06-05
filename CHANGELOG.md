@@ -1,3 +1,8 @@
+## 1.5.29-dev.140
+
+### Added
+- show all active ESPs in the tile + surface wmbusmeters version (07f7404)
+
 ## 1.5.28-dev
 
 ### Added
