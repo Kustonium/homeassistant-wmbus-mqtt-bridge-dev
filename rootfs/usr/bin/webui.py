@@ -68,6 +68,9 @@ STATUS_BROKER_INFO_FILE = BASE / "status_broker_info.txt"
 # worker. One of: verified | not_created | unavailable | pending. Joined with
 # ha_link in status_model — verified > native > birth.
 STATUS_HA_VERIFICATION_FILE = BASE / "status_ha_verification.txt"
+# wmbusmeters version triplet written once at bridge start by bridge.sh.
+# Format: runtime_version<TAB>build_version<TAB>build_commit.
+STATUS_WMBUSMETERS_VERSION_FILE = BASE / "status_wmbusmeters_version.txt"
 # Liveness heartbeat stamped by bridge.sh every few seconds, independent of
 # telegram flow. A stale heartbeat means the bridge is down or run.sh is still
 # waiting for the broker — the rest of the snapshot is then stale, not live.
@@ -1087,6 +1090,21 @@ def status_model(data: dict) -> dict:
     except OSError:
         pass
 
+    # wmbusmeters version triplet (write-once at bridge start). Surface on the
+    # wmbusmeters workspace panel so the user can tell which build is running.
+    wmbusmeters_runtime = ""
+    wmbusmeters_build_version = ""
+    wmbusmeters_build_commit = ""
+    try:
+        _wv_raw = STATUS_WMBUSMETERS_VERSION_FILE.read_text(encoding="utf-8").strip()
+        if _wv_raw:
+            _wv_parts = _wv_raw.split("\t")
+            wmbusmeters_runtime = _wv_parts[0].strip() if len(_wv_parts) > 0 else ""
+            wmbusmeters_build_version = _wv_parts[1].strip() if len(_wv_parts) > 1 else ""
+            wmbusmeters_build_commit = _wv_parts[2].strip() if len(_wv_parts) > 2 else ""
+    except OSError:
+        pass
+
     # Bridge liveness: bridge.sh stamps status_heartbeat.txt every few seconds
     # regardless of telegram flow. A stale heartbeat (or none) means the bridge is
     # down or run.sh is still waiting for the broker, so the whole snapshot is
@@ -1137,6 +1155,9 @@ def status_model(data: dict) -> dict:
         "rate_history_15m": rate_history,
         "pending_restart": pending_restart,
         "bridge_alive": bridge_alive,
+        "wmbusmeters_runtime": wmbusmeters_runtime,
+        "wmbusmeters_build_version": wmbusmeters_build_version,
+        "wmbusmeters_build_commit": wmbusmeters_build_commit,
     }
 
 

@@ -1008,13 +1008,17 @@
       || (topicParts.length >= 2 ? topicParts[1] : (primaryTopic || "—"));
 
     const espVisibleLine = `${candidateCount} ${t("pipeline_visible_count", "widocznych")} · ${escapeHtml(espRssi)}`;
-    // Show what the bridge is actually reading right now. For older backends
-    // without current_raw_esp_device retain the previous multi-ESP fallback.
+    // Device line strategy:
+    // - multi-ESP -> list ALL active devices (up to 3, "+N" overflow), so every
+    //   active ESP stays visible. Without this, currentRawDevice (the freshest
+    //   single source) would hide the others — observed in the field.
+    // - single ESP -> prefer the freshest RAW source from current_raw_esp_device,
+    //   falling back to the lone active device. Keeps stale retained diag/summary
+    //   from another ESP from sneaking into the label (see 12d93fd).
     const espDeviceSource = espActiveDevices.length > 0 ? espActiveDevices : espDevicesAll.slice(0, 1);
-    const espDeviceLine = currentRawDevice
-      || (isMultiEsp
-        ? espDeviceSource.slice(0, 3).map(d => d.name).join(", ") + (espDeviceSource.length > 3 ? ` +${espDeviceSource.length - 3}` : "")
-        : primaryDevice);
+    const espDeviceLine = isMultiEsp
+      ? espDeviceSource.slice(0, 3).map(d => d.name).join(", ") + (espDeviceSource.length > 3 ? ` +${espDeviceSource.length - 3}` : "")
+      : (currentRawDevice || primaryDevice);
 
     // ─── MQTT broker identity ($SYS) ───
     // brand + version read from $SYS, plus native/other (HA's own broker vs an
@@ -1223,6 +1227,14 @@
       const pipe = model.pipe || {};
       const meterCount = Number(model.meter_count || 0);
       const candidateCount = Number(model.candidate_count || 0);
+      // wmbusmeters version: strip the "wmbusmeters: " prefix from the runtime
+      // line so the cell shows the version only. Build commit (short) goes in
+      // parentheses when known. Empty string falls back to "—".
+      const wmRuntime = String(model.wmbusmeters_runtime || "").replace(/^wmbusmeters:\s*/, "").trim();
+      const wmCommit  = String(model.wmbusmeters_build_commit || "").trim();
+      const wmVerCell = wmRuntime
+        ? (wmCommit ? `${wmRuntime} (commit ${wmCommit})` : wmRuntime)
+        : "—";
       body = `
         <h3>⚙ wmbusmeters</h3>
         <div class="kv">
@@ -1231,6 +1243,7 @@
           <div>${escapeHtml(t("workspace_wmbus_candidates", "Candidates in air"))}</div><div>${candidateCount}</div>
           <div>${escapeHtml(t("workspace_wmbus_decoded_total", "Decoded telegrams (session)"))}</div><div>${Number(model.decoded_count || 0)}</div>
           <div>${escapeHtml(t("workspace_wmbus_last_decoded", "Last decoded"))}</div><div>${fmtTime(pipe.last_decoded_seen)}</div>
+          <div>${escapeHtml(t("workspace_wmbus_version", "wmbusmeters version"))}</div><div class="mono">${escapeHtml(wmVerCell)}</div>
         </div>
         <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn warn" data-action="restart" type="button">${escapeHtml(t("restart_addon", "Restart add-on"))}</button>
