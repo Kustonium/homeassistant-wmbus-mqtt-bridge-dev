@@ -932,9 +932,14 @@
     const rateLabel = `${cur}/min`;
 
     const cls = (active) => state.workspace === active ? "pipeline-node active" : "pipeline-node";
+    // When the bridge is not updating (stale), the snapshot is last-known, not
+    // live — grey every pipeline dot so the tiles don't show stale green next to
+    // the "stale data" banner (honest witness, never a green lie).
+    const bridgeStale = model.bridge_alive === false;
     // .dot.ok = green, .dot.warn = yellow, .dot.bad = red (CSS standalone rules)
     // "live" adds a soft glow to signal real-time activity (rate > 0).
     const dot = (ok, warn, live) => {
+      if (bridgeStale) return `<span class="dot"></span>`;
       const cls = ok ? (live ? "ok live" : "ok") : (warn ? "warn" : "bad");
       return `<span class="dot ${cls}"></span>`;
     };

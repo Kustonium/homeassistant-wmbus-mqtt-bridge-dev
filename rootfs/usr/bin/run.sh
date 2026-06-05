@@ -29,7 +29,9 @@ use_ha_mqtt() {
 # this lets the wrapper ride out a transient restart instead of FATAL-ing and
 # letting s6 thrash-restart it. Returns 0 once available, 1 after the timeout.
 wait_for_ha_mqtt() {
-  local retries="${MQTT_SERVICE_WAIT_RETRIES:-30}" delay="${MQTT_SERVICE_WAIT_DELAY:-2}" i
+  # ~60 s total; the 5 s cadence keeps bashio's "Service not enabled" API log to
+  # about a dozen lines instead of one every 2 s while the broker is down.
+  local retries="${MQTT_SERVICE_WAIT_RETRIES:-12}" delay="${MQTT_SERVICE_WAIT_DELAY:-5}" i
   use_ha_mqtt && return 0
   bashio::log.warning "HA MQTT service not available yet — waiting up to $(( retries * delay ))s (is the Mosquitto add-on starting or restarting?)."
   for (( i=1; i<=retries; i++ )); do
