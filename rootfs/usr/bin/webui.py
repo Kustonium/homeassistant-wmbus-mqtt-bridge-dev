@@ -61,6 +61,10 @@ STATUS_ESP_TELEGRAM_DEVICES_FILE = BASE / "status_esp_telegram_devices.tsv"
 # bridge uses, from HA's retained birth message. Written by bridge.sh.
 # Format: state<TAB>epoch  (state = online | offline).
 STATUS_HA_PRESENCE_FILE = BASE / "status_ha_presence.txt"
+# Liveness heartbeat stamped by bridge.sh every few seconds, independent of
+# telegram flow. A stale heartbeat means the bridge is down or run.sh is still
+# waiting for the broker — the rest of the snapshot is then stale, not live.
+STATUS_HEARTBEAT_FILE = BASE / "status_heartbeat.txt"
 # LISTEN-only config dir — separate from /data/etc which holds the user's
 # permanent meters. This directory must stay empty so the secondary wmbusmeters
 # process remains a true always-on discovery listener.
@@ -1026,6 +1030,18 @@ def status_model(data: dict) -> dict:
     except OSError:
         pass
 
+    # Bridge liveness: bridge.sh stamps status_heartbeat.txt every few seconds
+    # regardless of telegram flow. A stale heartbeat (or none) means the bridge is
+    # down or run.sh is still waiting for the broker, so the whole snapshot is
+    # stale and the WebUI must not present it as live truth.
+    bridge_alive = False
+    try:
+        _hb = int(STATUS_HEARTBEAT_FILE.read_text(encoding="utf-8").strip())
+        if _hb > 0 and (_time.time() - _hb) <= 30:
+            bridge_alive = True
+    except Exception:
+        bridge_alive = False
+
     return {
         "status": status,
         "cfg": cfg,
@@ -1055,6 +1071,7 @@ def status_model(data: dict) -> dict:
         "current_raw_esp_topic": current_raw_topic,
         "rate_history_15m": rate_history,
         "pending_restart": pending_restart,
+        "bridge_alive": bridge_alive,
     }
 
 

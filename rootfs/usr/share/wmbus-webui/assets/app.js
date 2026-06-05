@@ -687,6 +687,11 @@
     const model = data.model || {};
     const title = routeTitle(state.route);
     const updatedAt = model.status?.updated_at || data.status?.updated_at || "";
+    // Bridge liveness: model.bridge_alive is false when bridge.sh stopped stamping
+    // its heartbeat (down, or run.sh still waiting for the broker). The whole
+    // snapshot is then stale — surface it instead of showing the last good state
+    // as live truth (honest witness, never a green lie).
+    const bridgeStale = model.bridge_alive === false;
     const runtime =
       meta.runtime === "home_assistant"
         ? t("webui_runtime_home_assistant", "Home Assistant")
@@ -718,11 +723,14 @@
             </div>
             <div class="top-actions">
               ${languageSelect("top")}
-              <span class="pill ${state.liveConnected ? "ok" : "muted"}"><span class="dot"></span>${state.liveConnected ? "LIVE" : "POLL"}</span>
+              ${bridgeStale
+                ? `<span class="pill bad"><span class="dot"></span>${escapeHtml(t("webui_stale", "STALE"))}</span>`
+                : `<span class="pill ${state.liveConnected ? "ok" : "muted"}"><span class="dot"></span>${state.liveConnected ? "LIVE" : "POLL"}</span>`}
               <button class="btn danger" data-action="restart">${escapeHtml(t("webui_restart", "Restart"))}</button>
             </div>
           </header>
           <div class="content">
+            ${bridgeStale ? `<div style="margin:0 0 12px;padding:10px 14px;border:1px solid #6b4a1e;background:#241a0c;color:#f3c84b;border-radius:6px;font-size:13px;">⚠ ${escapeHtml(t("bridge_stale_banner", "Stale data — the bridge is not updating (waiting for the broker or restarting)."))}</div>` : ""}
             ${state.restarting
               ? `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;gap:16px;">
                    <div style="font-size:36px;">🔄</div>

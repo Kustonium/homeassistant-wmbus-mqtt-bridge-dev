@@ -85,6 +85,11 @@ STATUS_CANDIDATE_PREVIEW_STATE_FILE="${BASE}/status_candidate_preview_state.tsv"
 # (<discovery_prefix>/status). Written by the HA-presence subscriber in
 # start_esp_subscribers. Format: state<TAB>epoch  (state = online | offline).
 STATUS_HA_PRESENCE_FILE="${BASE}/status_ha_presence.txt"
+# Liveness heartbeat — stamped every few seconds by the background ticker started
+# after the ESP subscribers, regardless of telegram flow. Lets the WebUI tell
+# "bridge alive but idle" apart from "bridge down / run.sh waiting for broker"
+# (status.json alone goes stale during quiet periods too). Format: epoch.
+STATUS_HEARTBEAT_FILE="${BASE}/status_heartbeat.txt"
 # File-backed count of officially configured meters. Several pipelines run in
 # subshells and can outlive a soft reload, so their inherited shell variable may
 # be stale. This file is the shared runtime source of truth.
@@ -266,6 +271,18 @@ if command -v stdbuf >/dev/null 2>&1; then
 fi
 
 start_esp_subscribers
+
+# Liveness heartbeat ticker: stamp the current epoch every few seconds,
+# independent of telegram flow, so the WebUI can distinguish "bridge alive but
+# idle" from "bridge down / run.sh waiting for the broker". Dies with bridge.sh.
+(
+  while true; do
+    printf '%s\n' "$(epoch_now)" > "${STATUS_HEARTBEAT_FILE}.tmp" 2>/dev/null \
+      && mv "${STATUS_HEARTBEAT_FILE}.tmp" "${STATUS_HEARTBEAT_FILE}" 2>/dev/null \
+      || true
+    sleep "${HEARTBEAT_INTERVAL_SECONDS:-10}"
+  done
+) &
 
 # ------------------------------------------------------------
 # wmbusmeters.conf
