@@ -1025,8 +1025,10 @@
     const haLink = String(model.ha_link || "unknown");
     let haDot, haText;
     if (haLink === "ok") {
+      // HA presence confirmed (native broker, or a seen "online" birth). Green
+      // regardless of Discovery timing; show "HA detected" until entities publish.
       haDot = dot(true, false, hasLiveRate);
-      haText = haStatus;
+      haText = model.discovery_ok ? haStatus : t("pipeline_ha_detected", "HA detected");
     } else {
       haDot = dot(!!model.discovery_ok, meterCount === 0, !!model.discovery_ok);
       haText = haStatus;

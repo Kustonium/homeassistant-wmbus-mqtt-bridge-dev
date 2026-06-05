@@ -915,15 +915,19 @@ def status_model(data: dict) -> dict:
     except OSError:
         pass
     ha_present = ha_presence == "online"
-    # NB: birth ABSENCE is not proof of a foreign broker. HA's birth message is
-    # frequently NOT retained, so a subscriber that starts after HA has already
-    # connected never sees it (confirmed in the field). Therefore only a seen
-    # "online" birth asserts presence; absence stays neutral and never alarms.
-    # Reliable wrong-broker detection needs a stronger signal (MQTT source from
-    # run.sh / broker identity) and is tracked as a follow-up.
+    # A seen "online" birth confirms HA on this broker. Birth ABSENCE is NOT proof
+    # of a foreign broker (HA birth is often not retained, so a subscriber that
+    # starts after HA connected never sees it) — so it never alarms.
+    # The native HA broker is an authoritative positive signal: when the add-on
+    # talks to HA's own Supervisor-provided broker (host "core-mosquitto" or
+    # mqtt_mode "ha"), the HA MQTT integration is present by definition — no
+    # birth/Discovery timing needed.
+    _mqtt_host = str(mqtt.get("host") or "").strip().lower()
+    _mqtt_mode = str((options.get("mqtt_mode") if isinstance(options, dict) else "") or "auto").lower()
+    ha_native_broker = _mqtt_host == "core-mosquitto" or _mqtt_mode == "ha"
     if not mqtt_ok:
         ha_link = "mqtt_down"
-    elif ha_present:
+    elif ha_present or ha_native_broker:
         ha_link = "ok"
     else:
         ha_link = "unknown"
