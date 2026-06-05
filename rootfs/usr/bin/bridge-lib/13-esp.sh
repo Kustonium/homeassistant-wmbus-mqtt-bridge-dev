@@ -181,4 +181,46 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
   done
 ) &
 ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
+
+# Background subscriber for broker identity ($SYS). Mosquitto publishes
+# $SYS/broker/version = "mosquitto version X.Y.Z"; EMQX publishes
+# $SYS/brokers/<node>/version (number) plus $SYS/brokers/<node>/sysdescr = "EMQX".
+# Subscribing to all three covers both brokers; the WebUI labels the MQTT tile
+# with brand + version. NB: no SUB_EXTRA (-R) — $SYS broadcasts must be delivered.
+(
+  _bk_brand=""
+  _bk_version=""
+  while true; do
+    while IFS=$'\t' read -r _bk_topic _bk_payload; do
+      [[ -n "${_bk_payload}" ]] || continue
+      case "${_bk_topic}" in
+        '$SYS/broker/version')
+          _bk_brand="Mosquitto"
+          _bk_version="${_bk_payload##*version }"
+          ;;
+        '$SYS/brokers/'*/sysdescr)
+          _bk_brand="${_bk_payload}"
+          ;;
+        '$SYS/brokers/'*/version)
+          _bk_version="${_bk_payload}"
+          ;;
+        *)
+          continue
+          ;;
+      esac
+      [[ -n "${_bk_brand}" ]] || continue
+      printf '%s\t%s\n' "${_bk_brand}" "${_bk_version}" > "${STATUS_BROKER_INFO_FILE}.tmp" 2>/dev/null \
+        && mv "${STATUS_BROKER_INFO_FILE}.tmp" "${STATUS_BROKER_INFO_FILE}" 2>/dev/null \
+        || true
+    done < <(
+      ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" \
+        -t '$SYS/broker/version' \
+        -t '$SYS/brokers/+/version' \
+        -t '$SYS/brokers/+/sysdescr' \
+        -F '%t\t%p' -W 180 2>/dev/null
+    )
+    sleep 5
+  done
+) &
+ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 }

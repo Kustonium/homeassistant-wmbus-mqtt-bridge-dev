@@ -90,6 +90,11 @@ STATUS_HA_PRESENCE_FILE="${BASE}/status_ha_presence.txt"
 # "bridge alive but idle" apart from "bridge down / run.sh waiting for broker"
 # (status.json alone goes stale during quiet periods too). Format: epoch.
 STATUS_HEARTBEAT_FILE="${BASE}/status_heartbeat.txt"
+# Broker identity from $SYS, written by the broker-info subscriber: brand+version
+# (Mosquitto via $SYS/broker/version, EMQX via $SYS/brokers/+/sysdescr+version).
+# Lets the WebUI label the MQTT tile "Mosquitto 2.x (native)" / "EMQX 5.x (other)".
+# Format: brand<TAB>version. Session-scoped (the broker can change between runs).
+STATUS_BROKER_INFO_FILE="${BASE}/status_broker_info.txt"
 # File-backed count of officially configured meters. Several pipelines run in
 # subshells and can outlive a soft reload, so their inherited shell variable may
 # be stale. This file is the shared runtime source of truth.
@@ -159,6 +164,9 @@ mkdir -p "${BASE}/.preview_attempts" 2>/dev/null || true
 # previous run's "online" cannot mask a now-foreign broker until the retained
 # birth message (if any) re-arrives on subscribe.
 : > "${STATUS_HA_PRESENCE_FILE}" 2>/dev/null || true
+# Broker identity is session-scoped — clear so a previous run's broker brand
+# cannot linger after the user repoints the add-on at a different broker.
+: > "${STATUS_BROKER_INFO_FILE}" 2>/dev/null || true
 # Preview values are session-scoped — clear stale entries from previous runs
 # so the WebGUI doesn't show outdated readings (or the legacy first-numeric-field
 # pick that briefly stored bogus backflow_m3 / fraud counter values) until the

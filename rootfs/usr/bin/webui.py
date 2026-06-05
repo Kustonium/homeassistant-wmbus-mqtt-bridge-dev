@@ -61,6 +61,9 @@ STATUS_ESP_TELEGRAM_DEVICES_FILE = BASE / "status_esp_telegram_devices.tsv"
 # bridge uses, from HA's retained birth message. Written by bridge.sh.
 # Format: state<TAB>epoch  (state = online | offline).
 STATUS_HA_PRESENCE_FILE = BASE / "status_ha_presence.txt"
+# Broker identity (brand<TAB>version) from $SYS, written by bridge.sh. Used to
+# label the MQTT tile, e.g. "Mosquitto 2.1.2 (native)" / "EMQX 5.8.8 (other)".
+STATUS_BROKER_INFO_FILE = BASE / "status_broker_info.txt"
 # Liveness heartbeat stamped by bridge.sh every few seconds, independent of
 # telegram flow. A stale heartbeat means the bridge is down or run.sh is still
 # waiting for the broker — the rest of the snapshot is then stale, not live.
@@ -936,6 +939,22 @@ def status_model(data: dict) -> dict:
     else:
         ha_link = "unknown"
 
+    # Broker identity ($SYS), written by bridge.sh as brand<TAB>version.
+    # broker_native reuses the HA-presence prior (the add-on uses HA's own
+    # Supervisor-provided broker), so the MQTT tile can show e.g.
+    # "Mosquitto 2.1.2 (native)" vs "EMQX 5.8.8 (other)".
+    broker_brand = ""
+    broker_version = ""
+    try:
+        _bk = STATUS_BROKER_INFO_FILE.read_text(encoding="utf-8").strip()
+        if _bk:
+            _parts = _bk.split("\t")
+            broker_brand = _parts[0].strip()
+            broker_version = _parts[1].strip() if len(_parts) > 1 else ""
+    except OSError:
+        pass
+    broker_native = bool(ha_native_broker)
+
     # Telegrams-per-minute: sum seen_60m across active sources.
     # Divide by actual elapsed minutes (capped at 60) instead of always 60 —
     # dividing by 60 when the bridge is young (e.g. 4 min uptime) produces an
@@ -1062,6 +1081,9 @@ def status_model(data: dict) -> dict:
         "discovery_ok": discovery_ok,
         "ha_presence": ha_presence,
         "ha_link": ha_link,
+        "broker_brand": broker_brand,
+        "broker_version": broker_version,
+        "broker_native": broker_native,
         "raw_15m": raw_15m,
         "raw_per_min": raw_per_min,
         "rate_current_min": rate_current_min,

@@ -1016,6 +1016,16 @@
         ? espDeviceSource.slice(0, 3).map(d => d.name).join(", ") + (espDeviceSource.length > 3 ? ` +${espDeviceSource.length - 3}` : "")
         : primaryDevice);
 
+    // ─── MQTT broker identity ($SYS) ───
+    // brand + version read from $SYS, plus native/other (HA's own broker vs an
+    // external one like EMQX). Lets the user see at a glance which broker the
+    // add-on actually talks to — e.g. after repointing it at the wrong broker.
+    const brokerBrand = String(model.broker_brand || "").trim();
+    const brokerVer = String(model.broker_version || "").trim();
+    const brokerLabel = brokerBrand
+      ? `${brokerBrand}${brokerVer ? " " + brokerVer : ""} (${model.broker_native === true ? t("broker_native", "native") : t("broker_other", "other")})`
+      : "";
+
     // ─── wmbusmeters node ───
     // "received / decoded" — raw telegram count vs successfully decoded JSON.
     // The ratio tells the user how much of the air is actually their meters.
@@ -1063,6 +1073,7 @@
             <div class="pipeline-title">MQTT</div>
             <div class="pipeline-meta">${dot(!!model.mqtt_ok, false, !!model.mqtt_ok && hasLiveRate)} ${escapeHtml(model.mqtt_ok ? t("pipeline_mqtt_online", "online") : t("pipeline_mqtt_offline", "offline"))}</div>
             <div class="pipeline-sub">${escapeHtml((mqtt.host || "—") + (mqtt.port ? ":" + mqtt.port : ""))}</div>
+            ${brokerLabel ? `<div class="pipeline-sub" style="font-size:11px;">${escapeHtml(brokerLabel)}</div>` : ""}
           </button>
           <div class="pipeline-arrow"><span>${escapeHtml(rateLabel)}</span></div>
           <button class="${cls("wmbus")}" data-action="open-workspace" data-ws="wmbus" type="button">
