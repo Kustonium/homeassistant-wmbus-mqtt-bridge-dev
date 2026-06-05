@@ -245,8 +245,12 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 (
   _hv_grace="${VERIFY_HA_GRACE_SECONDS:-90}"
   _hv_interval="${VERIFY_HA_INTERVAL_SECONDS:-30}"
-  _hv_entity="sensor.wmbus_bridge_health"
-  _hv_url="http://supervisor/core/api/states/${_hv_entity}"
+  _hv_url="http://supervisor/core/api/template"
+  # NB: query by the canary's unique icon, NOT by entity_id. HA can prefix the
+  # entity_id with the device-name slug (observed in the wild:
+  # sensor.wmbus_bridge_wmbus_bridge_health), so a hardcoded entity_id is
+  # fragile. mdi:check-network is unique to our canary across HA defaults.
+  _hv_payload="$(jq -nc '{template: "{{ states.sensor | selectattr(\"attributes.icon\",\"eq\",\"mdi:check-network\") | list | length }}"}' 2>/dev/null)"
   _hv_write() {
     local _state="$1" _now
     _now="$(date +%s 2>/dev/null || echo 0)"
@@ -263,34 +267,45 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
   elif ! command -v curl >/dev/null 2>&1; then
     _hv_write "unavailable"
     log "verify_ha_entities: curl not available — state: unavailable"
+  elif [[ -z "${_hv_payload}" ]]; then
+    _hv_write "unavailable"
+    log "verify_ha_entities: failed to build template payload — state: unavailable"
   else
-    log "verify_ha_entities: worker started (grace=${_hv_grace}s interval=${_hv_interval}s entity=${_hv_entity})"
+    log "verify_ha_entities: worker started (grace=${_hv_grace}s interval=${_hv_interval}s, template-API canary by icon)"
     _hv_started="$(date +%s 2>/dev/null || echo 0)"
     _hv_write "pending"
     while true; do
       _hv_now="$(date +%s 2>/dev/null || echo 0)"
-      _hv_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+      # Capture body + status code in one call (status on a separate line).
+      _hv_resp="$(curl -s -w '\n%{http_code}' --max-time 5 \
         -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
-        -H "Accept: application/json" \
-        "${_hv_url}" 2>/dev/null || echo "000")"
+        -H "Content-Type: application/json" \
+        --data "${_hv_payload}" \
+        "${_hv_url}" 2>/dev/null || echo $'\n000')"
+      _hv_code="${_hv_resp##*$'\n'}"
+      _hv_body="$(printf '%s' "${_hv_resp%$'\n'*}" | tr -d '[:space:]')"
       case "${_hv_code}" in
         200)
-          _hv_write "verified"
-          ;;
-        404)
-          # Within the grace period a 404 just means HA has not processed
-          # Discovery yet. After the grace period we report it firmly.
-          if (( _hv_now - _hv_started >= _hv_grace )); then
-            _hv_write "not_created"
+          if [[ "${_hv_body}" == "1" ]]; then
+            _hv_write "verified"
+          elif [[ "${_hv_body}" == "0" ]]; then
+            # Within the grace period a 0 just means HA has not processed
+            # Discovery yet. After the grace period we report it firmly.
+            if (( _hv_now - _hv_started >= _hv_grace )); then
+              _hv_write "not_created"
+            else
+              _hv_write "pending"
+            fi
           else
-            _hv_write "pending"
+            # Multiple matches or unexpected body — be conservative.
+            _hv_write "verified"
           fi
           ;;
         401|403)
           _hv_write "unavailable"
           log "verify_ha_entities: HA Core API returned ${_hv_code} (auth/permission) — check homeassistant_api"
           ;;
-        000)
+        000|"")
           # Network error, timeout, or curl unavailable — soft state.
           _hv_write "unavailable"
           ;;

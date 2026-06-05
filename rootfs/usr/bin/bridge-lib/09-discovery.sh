@@ -223,16 +223,21 @@ publish_canary_entity() {
   local uniq="wmbus_bridge_health"
   local cfg_topic="${DISCOVERY_PREFIX}/sensor/${uniq}/config"
   local state_topic="${STATE_PREFIX}/${uniq}/state"
+  # NB: has_entity_name + short name "Health" so HA composes the friendly name as
+  # "wMBus Bridge Health" (device + entity) instead of doubling like
+  # "wMBus Bridge wMBus Bridge health" we hit in the wild. object_id is dropped —
+  # the verification worker queries by unique attributes via HA template, not by
+  # entity_id, so we never depend on HA's slugification rules.
   local payload
   payload="$(jq -c -n \
-    --arg name "wMBus Bridge health" \
+    --arg name "Health" \
     --arg uniq "${uniq}" \
     --arg st "${state_topic}" \
     --arg did "${uniq}" \
     '{
        name: $name,
+       has_entity_name: true,
        unique_id: $uniq,
-       object_id: $uniq,
        state_topic: $st,
        entity_category: "diagnostic",
        icon: "mdi:check-network",
