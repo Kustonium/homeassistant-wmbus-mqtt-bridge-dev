@@ -63,25 +63,29 @@ elif [[ "${MQTT_MODE}" == "external" ]]; then
   MQTT_USER="${EXT_MQTT_USER}"
   MQTT_PASS="${EXT_MQTT_PASS}"
 else
-  # auto: prefer HA's MQTT service. If it is not up right now, fall back to an
-  # explicitly configured external host; with no external fallback, wait for the
-  # service to come back (transient Mosquitto restart) instead of FATAL-looping.
-  if ! use_ha_mqtt && [[ -z "${EXT_MQTT_HOST}" || "${EXT_MQTT_HOST}" == "null" ]]; then
-    wait_for_ha_mqtt || true
-  fi
-  if use_ha_mqtt; then
-    MQTT_HOST="$(bashio::services mqtt "host")"
-    MQTT_PORT="$(bashio::services mqtt "port")"
-    MQTT_USER="$(bashio::services mqtt "username")"
-    MQTT_PASS="$(bashio::services mqtt "password")"
-  elif [[ -n "${EXT_MQTT_HOST}" && "${EXT_MQTT_HOST}" != "null" ]]; then
+  # auto: honour an explicitly configured external_mqtt_host first. If the user
+  # bothered to type a broker address, they almost certainly want to use that
+  # broker — even when HA's Mosquitto is also available (e.g. EMQX configured
+  # before installation, observed in the wild). With no external host set, fall
+  # back to HA's MQTT service and ride out a transient restart with
+  # wait_for_ha_mqtt instead of FATAL-looping.
+  if [[ -n "${EXT_MQTT_HOST}" && "${EXT_MQTT_HOST}" != "null" ]]; then
+    bashio::log.info "mqtt_mode=auto: external_mqtt_host is set ('${EXT_MQTT_HOST}') — using it instead of the HA broker."
     MQTT_HOST="${EXT_MQTT_HOST}"
     MQTT_PORT="${EXT_MQTT_PORT}"
     MQTT_USER="${EXT_MQTT_USER}"
     MQTT_PASS="${EXT_MQTT_PASS}"
   else
-    bashio::log.fatal "Nie wykryto usługi MQTT w HA (Mosquitto) i external_mqtt_host jest puste. Ustaw mqtt_mode=external oraz podaj external_mqtt_host, albo zainstaluj Mosquitto Broker add-on."
-    exit 1
+    wait_for_ha_mqtt || true
+    if use_ha_mqtt; then
+      MQTT_HOST="$(bashio::services mqtt "host")"
+      MQTT_PORT="$(bashio::services mqtt "port")"
+      MQTT_USER="$(bashio::services mqtt "username")"
+      MQTT_PASS="$(bashio::services mqtt "password")"
+    else
+      bashio::log.fatal "Nie wykryto usługi MQTT w HA (Mosquitto) i external_mqtt_host jest puste. Ustaw mqtt_mode=external oraz podaj external_mqtt_host, albo zainstaluj Mosquitto Broker add-on."
+      exit 1
+    fi
   fi
 fi
 
