@@ -1,7 +1,5 @@
 ## 1.5.28-dev
 
-<!-- PROMOTE-CHANGELOG-REQUIRED: auto-drafted skeleton below — review, expand into full release notes, and delete this line before promoting. -->
-
 ### Added
 - detect missing Home Assistant on the MQTT broker (MQTT→HA healthcheck) (eae89c7)
 
