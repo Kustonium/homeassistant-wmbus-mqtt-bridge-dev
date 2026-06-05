@@ -283,6 +283,7 @@ start_esp_subscribers
     sleep "${HEARTBEAT_INTERVAL_SECONDS:-10}"
   done
 ) &
+HEARTBEAT_PID=$!
 
 # ------------------------------------------------------------
 # wmbusmeters.conf
@@ -444,8 +445,11 @@ run_once() {
   # the main shell's direct children (mosquitto_sub, awk, tee, wmbusmeters,
   # while-read subshell) to bring down the foreground pipeline. The
   # restart_on_exit loop above refreshes meter files and respawns run_once.
-  # Watcher excludes itself (BASHPID) and LISTEN_PID from the kill list so
-  # the parallel listen instance keeps running across pipeline restarts.
+  # Watcher excludes itself (BASHPID), LISTEN_PID, HEARTBEAT_PID and the ESP
+  # subscriber PIDs (ESP_SUBSCRIBER_PIDS) from the kill list so the parallel
+  # listen instance, the liveness heartbeat and the ESP/diag/HA-presence
+  # subscribers keep running across pipeline restarts (otherwise a soft reload
+  # would silently stop them — e.g. a stale heartbeat falsely flags the dashboard).
   (
     watcher_self="${BASHPID}"
     while sleep 2; do
@@ -455,6 +459,8 @@ run_once() {
         for child in $(pgrep -P "$$" 2>/dev/null); do
           [[ "${child}" == "${watcher_self}" ]] && continue
           [[ -n "${LISTEN_PID}" && "${child}" == "${LISTEN_PID}" ]] && continue
+          [[ -n "${HEARTBEAT_PID:-}" && "${child}" == "${HEARTBEAT_PID}" ]] && continue
+          [[ -n "${ESP_SUBSCRIBER_PIDS:-}" && " ${ESP_SUBSCRIBER_PIDS} " == *" ${child} "* ]] && continue
           kill -TERM "${child}" 2>/dev/null
         done
         exit 0

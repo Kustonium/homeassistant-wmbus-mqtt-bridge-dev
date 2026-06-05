@@ -2,6 +2,11 @@
 # ESP diagnostic and per-device background subscriber helpers.
 
 start_esp_subscribers() {
+# Track background subscriber PIDs so the soft-reload watcher in bridge.sh can
+# exclude them from its kill — these subscribers must survive pipeline restarts
+# (otherwise a soft reload would silently stop ESP/diag/HA-presence tracking).
+# shellcheck disable=SC2034  # consumed by the soft-reload watcher in bridge.sh
+ESP_SUBSCRIBER_PIDS=""
 # Background subscriber for ESP diagnostic summaries (wmbus/+/diag/summary).
 # ESP publishes every 60 s: {"event":"summary","interval_s":60,"total":N,...}
 # bridge.sh injects _bridge_rx_epoch so webui.py can check freshness.
@@ -29,6 +34,7 @@ STATUS_ESP_DIAG_FILE="${BASE}/status_esp_diag.json"
     sleep 5
   done
 ) &
+ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 
 # Background subscriber for per-ESP-device telegram tracking.
 # Listens to the RAW telegram topic (with wildcard) and records each
@@ -89,6 +95,7 @@ STATUS_ESP_DIAG_FILE="${BASE}/status_esp_diag.json"
     log "ESP-device tracker: RAW_TOPIC '${RAW_TOPIC}' has no '+' wildcard — per-device tracking disabled."
   fi
 ) &
+ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 
 # Background subscriber for all ESP diagnostic events.
 # Subscribes to bare diag topic (dropped/truncated/rx_path) and all subtopics.
@@ -145,6 +152,7 @@ touch "${STATUS_ESP_EVENTS_FILE}" 2>/dev/null || true
     sleep 5
   done
 ) &
+ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 
 # Background subscriber for the Home Assistant MQTT birth/availability message.
 # HA's MQTT integration publishes <discovery_prefix>/status = "online" (retained,
@@ -172,4 +180,5 @@ touch "${STATUS_ESP_EVENTS_FILE}" 2>/dev/null || true
     sleep 5
   done
 ) &
+ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 }
