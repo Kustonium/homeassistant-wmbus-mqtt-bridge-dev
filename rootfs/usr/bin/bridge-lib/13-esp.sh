@@ -190,6 +190,7 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 (
   _bk_brand=""
   _bk_version=""
+  _bk_clients=""
   while true; do
     while IFS=$'\t' read -r _bk_topic _bk_payload; do
       [[ -n "${_bk_payload}" ]] || continue
@@ -204,12 +205,17 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
         '$SYS/brokers/'*/version)
           _bk_version="${_bk_payload}"
           ;;
+        '$SYS/broker/clients/connected'|'$SYS/brokers/'*/clients/count)
+          # Connected-client count: Mosquitto and EMQX expose it under different
+          # paths. Numeric only (some brokers prefix labels) — strip non-digits.
+          _bk_clients="${_bk_payload//[!0-9]/}"
+          ;;
         *)
           continue
           ;;
       esac
-      [[ -n "${_bk_brand}" ]] || continue
-      printf '%s\t%s\n' "${_bk_brand}" "${_bk_version}" > "${STATUS_BROKER_INFO_FILE}.tmp" 2>/dev/null \
+      [[ -n "${_bk_brand}${_bk_version}${_bk_clients}" ]] || continue
+      printf '%s\t%s\t%s\n' "${_bk_brand}" "${_bk_version}" "${_bk_clients}" > "${STATUS_BROKER_INFO_FILE}.tmp" 2>/dev/null \
         && mv "${STATUS_BROKER_INFO_FILE}.tmp" "${STATUS_BROKER_INFO_FILE}" 2>/dev/null \
         || true
     done < <(
@@ -217,6 +223,8 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
         -t '$SYS/broker/version' \
         -t '$SYS/brokers/+/version' \
         -t '$SYS/brokers/+/sysdescr' \
+        -t '$SYS/broker/clients/connected' \
+        -t '$SYS/brokers/+/clients/count' \
         -F '%t\t%p' -W 180 2>/dev/null
     )
     sleep 5

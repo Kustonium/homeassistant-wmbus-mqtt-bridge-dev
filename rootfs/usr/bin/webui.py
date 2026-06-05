@@ -945,15 +945,24 @@ def status_model(data: dict) -> dict:
     # "Mosquitto 2.1.2 (native)" vs "EMQX 5.8.8 (other)".
     broker_brand = ""
     broker_version = ""
+    broker_clients = ""
     try:
         _bk = STATUS_BROKER_INFO_FILE.read_text(encoding="utf-8").strip()
         if _bk:
             _parts = _bk.split("\t")
             broker_brand = _parts[0].strip()
             broker_version = _parts[1].strip() if len(_parts) > 1 else ""
+            broker_clients = _parts[2].strip() if len(_parts) > 2 else ""
     except OSError:
         pass
     broker_native = bool(ha_native_broker)
+    # TLS capability: the add-on does not support TLS connections yet. When the
+    # configured port looks like MQTT-over-TLS (8883/8884) the user almost
+    # certainly expects TLS, so the UI says so plainly instead of leaving a
+    # silent connection failure unexplained.
+    mqtt_tls_supported = False
+    _mqtt_port = safe_int(mqtt.get("port"))
+    mqtt_tls_intent = _mqtt_port in (8883, 8884)
 
     # Telegrams-per-minute: sum seen_60m across active sources.
     # Divide by actual elapsed minutes (capped at 60) instead of always 60 —
@@ -1084,6 +1093,9 @@ def status_model(data: dict) -> dict:
         "broker_brand": broker_brand,
         "broker_version": broker_version,
         "broker_native": broker_native,
+        "broker_clients": broker_clients,
+        "mqtt_tls_supported": mqtt_tls_supported,
+        "mqtt_tls_intent": mqtt_tls_intent,
         "raw_15m": raw_15m,
         "raw_per_min": raw_per_min,
         "rate_current_min": rate_current_min,

@@ -1074,6 +1074,7 @@
             <div class="pipeline-meta">${dot(!!model.mqtt_ok, false, !!model.mqtt_ok && hasLiveRate)} ${escapeHtml(model.mqtt_ok ? t("pipeline_mqtt_online", "online") : t("pipeline_mqtt_offline", "offline"))}</div>
             <div class="pipeline-sub">${escapeHtml((mqtt.host || "—") + (mqtt.port ? ":" + mqtt.port : ""))}</div>
             ${brokerLabel ? `<div class="pipeline-sub" style="font-size:11px;">${escapeHtml(brokerLabel)}</div>` : ""}
+            ${(model.mqtt_tls_intent === true && !model.mqtt_ok) ? `<div class="pipeline-sub" style="font-size:11px;color:#f3c84b;">⚠ TLS ${escapeHtml(t("tls_not_supported", "not supported"))} (1883)</div>` : ""}
           </button>
           <div class="pipeline-arrow"><span>${escapeHtml(rateLabel)}</span></div>
           <button class="${cls("wmbus")}" data-action="open-workspace" data-ws="wmbus" type="button">
@@ -1173,11 +1174,28 @@
     } else if (state.workspace === "mqtt") {
       const mqtt = model.mqtt || {};
       const cfg  = model.cfg  || {};
+      // Auto-detected connection facts ($SYS): broker software, client count,
+      // HA presence on this broker, TLS capability — "what am I connected to".
+      const brokerBrand = String(model.broker_brand || "").trim();
+      const brokerVer   = String(model.broker_version || "").trim();
+      const brokerSw = brokerBrand
+        ? `${brokerBrand}${brokerVer ? " " + brokerVer : ""} (${model.broker_native === true ? t("broker_native", "native") : t("broker_other", "other")})`
+        : "—";
+      const brokerClients = String(model.broker_clients || "").trim();
+      const haLink = String(model.ha_link || "unknown");
+      const haOnBroker = haLink === "ok" ? "✓" : (haLink === "mqtt_down" ? "—" : "✗");
+      const tlsVal = model.mqtt_tls_supported === true
+        ? "✓"
+        : (t("tls_not_supported", "not supported") + (model.mqtt_tls_intent === true ? " (port 8883 → 1883)" : ""));
       body = `
         <h3>📨 MQTT</h3>
         <div class="kv">
           <div>${escapeHtml(t("workspace_mqtt_host", "Broker"))}</div><div>${escapeHtml((mqtt.host || "—") + (mqtt.port ? ":" + mqtt.port : ""))}</div>
+          <div>${escapeHtml(t("workspace_mqtt_software", "Broker software"))}</div><div>${escapeHtml(brokerSw)}</div>
           <div>${escapeHtml(t("workspace_mqtt_state", "Connected"))}</div><div>${model.mqtt_ok ? "✓ yes" : "✗ no"}</div>
+          ${brokerClients ? `<div>${escapeHtml(t("workspace_mqtt_clients", "Clients"))}</div><div>${escapeHtml(brokerClients)}</div>` : ""}
+          <div>${escapeHtml(t("workspace_mqtt_ha", "HA on this broker"))}</div><div>${haOnBroker}</div>
+          <div>TLS</div><div>${escapeHtml(tlsVal)}</div>
           <div>${escapeHtml(t("workspace_mqtt_raw_topic", "RAW topic"))}</div><div class="mono">${escapeHtml(cfg.raw_topic || "—")}</div>
           <div>${escapeHtml(t("workspace_mqtt_state_prefix", "State prefix"))}</div><div class="mono">${escapeHtml(cfg.state_prefix || "—")}</div>
           <div>${escapeHtml(t("workspace_mqtt_discovery_prefix", "Discovery prefix"))}</div><div class="mono">${escapeHtml(cfg.discovery_prefix || "—")}</div>
