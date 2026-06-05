@@ -1048,16 +1048,26 @@
     // witness, never a green lie). It stays a soft/neutral signal — not a hard
     // alarm — so an intentional external broker that HA also uses is not accused.
     const haLink = String(model.ha_link || "unknown");
+    const haVerification = String(model.ha_verification || "unavailable");
     let haDot, haText;
     if (haLink === "ok") {
-      // HA presence confirmed; green regardless of Discovery timing.
+      // HA presence confirmed; green regardless of Discovery timing. When the
+      // opt-in verification round-trip succeeded, label it as "verified".
       haDot = dot(true, false, hasLiveRate);
-      haText = model.discovery_ok ? haStatus : t("pipeline_ha_detected", "HA detected");
+      if (haVerification === "verified") {
+        haText = t("pipeline_ha_verified", "HA verified");
+      } else {
+        haText = model.discovery_ok ? haStatus : t("pipeline_ha_detected", "HA detected");
+      }
+    } else if (haLink === "not_created") {
+      // Strongest negative: HA reachable but did NOT create our canary entity.
+      // Definitive "wrong broker / Discovery not consumed" verdict.
+      haDot = dot(false, false, false);
+      haText = t("pipeline_ha_not_created", "HA NOT creating entities");
     } else if (haLink === "unknown") {
       haDot = `<span class="dot"></span>`;
       haText = t("pipeline_ha_unconfirmed", "HA unconfirmed");
     } else {
-      // mqtt_down or other — neutral, never a green "published" lie.
       haDot = `<span class="dot"></span>`;
       haText = haStatus;
     }
@@ -1188,7 +1198,10 @@
         : "—";
       const brokerClients = String(model.broker_clients || "").trim();
       const haLink = String(model.ha_link || "unknown");
-      const haOnBroker = haLink === "ok" ? "✓" : (haLink === "mqtt_down" ? "—" : "?");
+      const haOnBroker = haLink === "ok"
+        ? (String(model.ha_verification || "") === "verified" ? "✓ " + t("ha_verified_short", "verified") : "✓")
+        : (haLink === "not_created" ? "✗ " + t("ha_not_created_short", "not creating entities")
+        : (haLink === "mqtt_down" ? "—" : "?"));
       const tlsVal = model.mqtt_tls_supported === true
         ? "✓"
         : (t("tls_not_supported", "not supported") + (model.mqtt_tls_intent === true ? " (port 8883 → 1883)" : ""));

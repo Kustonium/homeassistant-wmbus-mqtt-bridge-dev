@@ -231,4 +231,76 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
   done
 ) &
 ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
+
+# HA entity verification worker (opt-in). Round-trips Discovery through the HA
+# Core API: asks "does sensor.wmbus_bridge_health exist?" — the definitive check
+# whether HA on this broker actually consumes our Discovery (ground-truth for the
+# odlozony "verdict C"). Writes one of:
+#   verified     — HTTP 200 (entity exists)
+#   not_created  — HTTP 404 after a grace period (Discovery published, HA did not create it)
+#   pending      — within the grace period (HA needs a moment after Discovery)
+#   unavailable  — opt-in off, no SUPERVISOR_TOKEN, no homeassistant_api, no curl, or transient error
+# Format: state<TAB>epoch. The verdict joins ha_link in webui.py: verified wins
+# over native/birth (uzupelnia, nie nadpisuje — see PRD).
+(
+  _hv_grace="${VERIFY_HA_GRACE_SECONDS:-90}"
+  _hv_interval="${VERIFY_HA_INTERVAL_SECONDS:-30}"
+  _hv_entity="sensor.wmbus_bridge_health"
+  _hv_url="http://supervisor/core/api/states/${_hv_entity}"
+  _hv_write() {
+    local _state="$1" _now
+    _now="$(date +%s 2>/dev/null || echo 0)"
+    printf '%s\t%s\n' "${_state}" "${_now}" > "${STATUS_HA_VERIFICATION_FILE}.tmp" 2>/dev/null \
+      && mv "${STATUS_HA_VERIFICATION_FILE}.tmp" "${STATUS_HA_VERIFICATION_FILE}" 2>/dev/null \
+      || true
+  }
+  if [[ "${VERIFY_HA_ENTITIES:-false}" != "true" ]]; then
+    _hv_write "unavailable"
+    log "verify_ha_entities: disabled (opt-in)"
+  elif [[ -z "${SUPERVISOR_TOKEN:-}" ]]; then
+    _hv_write "unavailable"
+    log "verify_ha_entities: enabled but SUPERVISOR_TOKEN missing — Docker standalone? state: unavailable"
+  elif ! command -v curl >/dev/null 2>&1; then
+    _hv_write "unavailable"
+    log "verify_ha_entities: curl not available — state: unavailable"
+  else
+    log "verify_ha_entities: worker started (grace=${_hv_grace}s interval=${_hv_interval}s entity=${_hv_entity})"
+    _hv_started="$(date +%s 2>/dev/null || echo 0)"
+    _hv_write "pending"
+    while true; do
+      _hv_now="$(date +%s 2>/dev/null || echo 0)"
+      _hv_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+        -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        -H "Accept: application/json" \
+        "${_hv_url}" 2>/dev/null || echo "000")"
+      case "${_hv_code}" in
+        200)
+          _hv_write "verified"
+          ;;
+        404)
+          # Within the grace period a 404 just means HA has not processed
+          # Discovery yet. After the grace period we report it firmly.
+          if (( _hv_now - _hv_started >= _hv_grace )); then
+            _hv_write "not_created"
+          else
+            _hv_write "pending"
+          fi
+          ;;
+        401|403)
+          _hv_write "unavailable"
+          log "verify_ha_entities: HA Core API returned ${_hv_code} (auth/permission) — check homeassistant_api"
+          ;;
+        000)
+          # Network error, timeout, or curl unavailable — soft state.
+          _hv_write "unavailable"
+          ;;
+        *)
+          _hv_write "unavailable"
+          ;;
+      esac
+      sleep "${_hv_interval}"
+    done
+  fi
+) &
+ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 }

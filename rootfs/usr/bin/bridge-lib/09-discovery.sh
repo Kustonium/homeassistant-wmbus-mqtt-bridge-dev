@@ -211,5 +211,43 @@ clear_search_discovery_from_json() {
   )
 }
 
+# Canary entity for the opt-in HA verification (verify_ha_entities).
+# A hidden diagnostic sensor with a STABLE entity_id (sensor.wmbus_bridge_health)
+# that lets the verification worker ask HA Core API "did you create this entity?".
+# Published once per bridge start (via mqtt_pub directly, not via the rate-limited
+# field cache). NB: stable object_id "wmbus_bridge_health" -> entity_id is
+# predictable regardless of user labels, so the API check is reliable.
+publish_canary_entity() {
+  [[ "${VERIFY_HA_ENTITIES:-false}" == "true" ]] || return 0
+  [[ "${DISCOVERY_ENABLED:-true}" == "true" ]] || return 0
+  local uniq="wmbus_bridge_health"
+  local cfg_topic="${DISCOVERY_PREFIX}/sensor/${uniq}/config"
+  local state_topic="${STATE_PREFIX}/${uniq}/state"
+  local payload
+  payload="$(jq -c -n \
+    --arg name "wMBus Bridge health" \
+    --arg uniq "${uniq}" \
+    --arg st "${state_topic}" \
+    --arg did "${uniq}" \
+    '{
+       name: $name,
+       unique_id: $uniq,
+       object_id: $uniq,
+       state_topic: $st,
+       entity_category: "diagnostic",
+       icon: "mdi:check-network",
+       device: {
+         identifiers: [$did],
+         name: "wMBus Bridge",
+         model: "MQTT->HA verification canary",
+         manufacturer: "wmbus-mqtt-bridge"
+       }
+     }' 2>/dev/null)"
+  [[ -n "${payload}" ]] || return 0
+  mqtt_pub "${cfg_topic}" "${payload}" "${DISCOVERY_RETAIN}" || true
+  mqtt_pub "${state_topic}" "ok" "true" || true
+  log "verify_ha_entities: published canary entity ${uniq}"
+}
+
 # ------------------------------------------------------------
 

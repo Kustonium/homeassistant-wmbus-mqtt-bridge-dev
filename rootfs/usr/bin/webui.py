@@ -64,6 +64,10 @@ STATUS_HA_PRESENCE_FILE = BASE / "status_ha_presence.txt"
 # Broker identity (brand<TAB>version) from $SYS, written by bridge.sh. Used to
 # label the MQTT tile, e.g. "Mosquitto 2.1.2 (native)" / "EMQX 5.8.8 (other)".
 STATUS_BROKER_INFO_FILE = BASE / "status_broker_info.txt"
+# Opt-in HA entity verification verdict written by bridge-lib/13-esp.sh's
+# worker. One of: verified | not_created | unavailable | pending. Joined with
+# ha_link in status_model — verified > native > birth.
+STATUS_HA_VERIFICATION_FILE = BASE / "status_ha_verification.txt"
 # Liveness heartbeat stamped by bridge.sh every few seconds, independent of
 # telegram flow. A stale heartbeat means the bridge is down or run.sh is still
 # waiting for the broker — the rest of the snapshot is then stale, not live.
@@ -932,8 +936,29 @@ def status_model(data: dict) -> dict:
     _mqtt_host = str(mqtt.get("host") or "").strip().lower()
     _mqtt_mode = str((options.get("mqtt_mode") if isinstance(options, dict) else "") or "auto").lower()
     ha_native_broker = _mqtt_host == "core-mosquitto" or _mqtt_mode == "ha"
+    # HA entity verification (opt-in): the worker round-trips Discovery through
+    # HA Core API and writes the result. "verified" is the strongest possible
+    # signal — it bumps ha_link to "ok" regardless of birth/native priors;
+    # "not_created" is the strongest negative — it overrides native/birth (HA may
+    # be reachable on this broker but still not create entities, e.g. wrong
+    # discovery_prefix or integration disabled). Other states do not change the
+    # existing ha_link decision (it falls back to the inferred path).
+    ha_verification = "unavailable"
+    try:
+        _hv_raw = STATUS_HA_VERIFICATION_FILE.read_text(encoding="utf-8").strip()
+        if _hv_raw:
+            _hv_state = _hv_raw.split("\t", 1)[0].strip().lower()
+            if _hv_state in ("verified", "not_created", "pending", "unavailable"):
+                ha_verification = _hv_state
+    except OSError:
+        pass
+
     if not mqtt_ok:
         ha_link = "mqtt_down"
+    elif ha_verification == "verified":
+        ha_link = "ok"
+    elif ha_verification == "not_created":
+        ha_link = "not_created"
     elif ha_present or ha_native_broker:
         ha_link = "ok"
     else:
@@ -1090,6 +1115,7 @@ def status_model(data: dict) -> dict:
         "discovery_ok": discovery_ok,
         "ha_presence": ha_presence,
         "ha_link": ha_link,
+        "ha_verification": ha_verification,
         "broker_brand": broker_brand,
         "broker_version": broker_version,
         "broker_native": broker_native,
