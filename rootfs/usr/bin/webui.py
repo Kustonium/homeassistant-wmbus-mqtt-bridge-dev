@@ -1532,8 +1532,11 @@ class Handler(BaseHTTPRequestHandler):
         self._wmbus_lang = lang
         if path.endswith('/api/remove-meter'):
             meter_id = (params.get('meter_id') or [''])[0].strip()
+            # NB: remove_meter_from_options already emits the appropriate
+            # webui_add_event ("ok" on Supervisor-API success, "warn" on file
+            # fallback, "error" on raised exception). Re-logging here would
+            # double-stamp status_events.tsv in the same second.
             ok, msg = remove_meter_from_options(meter_id)
-            webui_add_event('ok' if ok else 'error', msg)
             self._send_json(200 if ok else 400, {"ok": ok, "message": msg})
             return
         if path.endswith('/api/add-meter'):
@@ -1541,6 +1544,10 @@ class Handler(BaseHTTPRequestHandler):
             driver = (params.get('driver') or ['auto'])[0].strip()
             key = (params.get('key') or [''])[0].strip()
             meter_name = (params.get('meter_name') or [''])[0].strip()
+            # NB: add_meter_to_options already emits the appropriate
+            # webui_add_event (ok / warn / error) with the most accurate
+            # context — re-logging here would double-stamp status_events.tsv
+            # in the same second.
             ok, msg = add_meter_to_options(meter_id, driver, key, meter_name=meter_name)
             # When a previewed candidate is added permanently, drop the
             # preview meter file so the LISTEN instance doesn't keep
@@ -1553,7 +1560,6 @@ class Handler(BaseHTTPRequestHandler):
                         preview_path.unlink()
                 except OSError:
                     pass
-            webui_add_event('ok' if ok else 'error', msg)
             self._send_json(200 if ok else 400, {"ok": ok, "message": msg})
             return
         if path.endswith('/api/preview-candidate'):
@@ -1594,11 +1600,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path.endswith('/api/search-control'):
             action = (params.get('action') or ['start'])[0]
+            # NB: update_options_for_search already emits the appropriate
+            # webui_add_event. Re-logging here would double-stamp.
             if action == 'stop':
                 ok, msg = update_options_for_search('0', '0.05', enabled=False)
             else:
                 ok, msg = update_options_for_search((params.get('expected') or ['0'])[0], (params.get('tolerance') or ['0.05'])[0], enabled=True)
-            webui_add_event('ok' if ok else 'error', msg)
             restart_ok, restart_msg = restart_addon_via_supervisor()
             if restart_ok:
                 webui_add_event('ok', restart_msg)
