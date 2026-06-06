@@ -53,8 +53,16 @@ fi
 core="$(printf '%s' "${raw_ver}" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
 top_heading="$(grep -m1 '^## ' "${CL}" 2>/dev/null || true)"
 if [[ -n "${core}" && "${top_heading}" == "## ${core}-dev" ]]; then
-  echo "changelog-skeleton: top heading '## ${core}-dev' is a consolidated promote-prep section — leaving untouched."
-  exit 0
+  # Fire ONLY for a real, human-finished consolidation — i.e. the bare section
+  # carries no PROMOTE-CHANGELOG-REQUIRED marker. The promote workflow opens a
+  # new cycle by inserting a bare "## X.Y.Z-dev" placeholder WITH that marker;
+  # that placeholder must NOT suppress per-build drafting, or the new cycle would
+  # never get its sections.
+  top_section="$(awk 'NR>1 && /^## / {exit} {print}' "${CL}")"
+  if ! printf '%s' "${top_section}" | grep -q 'PROMOTE-CHANGELOG-REQUIRED'; then
+    echo "changelog-skeleton: top heading '## ${core}-dev' is a consolidated promote-prep section — leaving untouched."
+    exit 0
+  fi
 fi
 
 # Commit range = (most recent per-build heading or any heading at all)..HEAD.
