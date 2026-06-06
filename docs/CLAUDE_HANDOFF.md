@@ -1,3 +1,91 @@
+# Handoff — sesja 2026-06-06 (release 1.5.29 do stable + per-build/promote reconciliation)
+
+> Stan na koniec sesji: **stable wydane jako `1.5.29`** (repo
+> `homeassistant-wmbus-mqtt-bridge`, `## 1.5.29` na górze CHANGELOG, tag/PR
+> przez `promote-to-stable`). Dev base bumpnięty do **`1.5.30-dev`** (commit
+> `08e8ebf`, automatyczny krok promote). Nowy cykl 1.5.30 startuje pusty.
+
+## Co zrobiono w tej sesji
+
+**1. Wydano 1.5.29 do stable.** Stable stało dotąd na 1.5.25 — promote 1.5.29
+przeskoczył 1.5.26/27/28 (były tylko cyklami dev, nigdy nie promowane). Notatki
+`## 1.5.29` obejmują **wszystko od 1.5.25**: MQTT→HA healthcheck (PRD #1),
+opt-in weryfikację encji kanarkiem przez HA Core API (PRD #2), stale-data
+detection (heartbeat), hardening candidate discovery, `mqtt_mode=auto` honorujący
+`external_mqtt_host`, multi-ESP + wersja wmbusmeters, dedup eventów.
+
+**2. Naprawiono konflikt per-build CHANGELOG ↔ promote.** `promote.yaml` (repo
+stable) wymaga górnej sekcji `## X.Y.Z-dev` (gołej). Model per-build
+(`## X.Y.Z-dev.NN`, wprowadzony `42dd0d6`) to łamał. Reconciliation:
+- **Guard w `changelog-skeleton.sh`** (`ee5277f` + doprecyzowany `18d8e61`):
+  skrypt no-opuje, gdy górny nagłówek to goły `## <core>-dev` **bez** markera
+  `PROMOTE-CHANGELOG-REQUIRED`. Chroni ludzką konsolidację przed
+  refragmentacją; placeholder promote (z markerem) NIE dusi nowego cyklu.
+- **Konsolidacja** (`0439e26`): per-build fragmenty zastąpione jedną sekcją
+  `## 1.5.29-dev` odtworzoną z `git log` (fragmenty gubiły `ce3eb4e`,
+  dublowały `07f7404`).
+- **Procedura na przyszłość** opisana w pamięci `changelog-per-build-model.md`
+  (sekcja „Promote-to-stable interaction"). Przy następnym wydaniu: skonsoliduj
+  `## 1.5.30-dev.NN` → goły `## 1.5.30-dev` (humanizowane, od ostatniego stable),
+  usuń fragmenty, guard ochroni, odpal promote.
+
+**3. Drobny bug fix (`17929da`):** WebGUI podwójnie logowało „Meter X saved" /
+„Search X" w `status_events.tsv` — handlery `/api/add-meter`,
+`/api/remove-meter`, `/api/search-control` wołały `webui_add_event` po funkcji,
+która już sama logowała. Usunięto re-logging w handlerach.
+
+**4. UI (`07f7404`):** kafel ESP listuje WSZYSTKIE aktywne ESP (był tylko
+najświeższy `currentRawDevice`); panel wmbusmeters pokazuje wersję
+wmbusmeters (`status_wmbusmeters_version.txt`, write-once w `bridge.sh`).
+
+## Commity tej sesji (origin/main)
+`ce3eb4e` feat verify status+reasons · `42dd0d6` per-build changelog ·
+`07f7404` multi-ESP+wersja · `17929da` dedup events · `ee5277f`+`18d8e61`
+promote-prep guard · `0439e26` konsolidacja 1.5.29 · (`08e8ebf` bump dev base —
+automat promote).
+
+## Pliki dotknięte
+`rootfs/usr/bin/webui.py` (dedup, wersja wmbusmeters, verify reason),
+`rootfs/usr/bin/bridge.sh` (`STATUS_WMBUSMETERS_VERSION_FILE`),
+`rootfs/usr/share/wmbus-webui/assets/app.js` (multi-ESP, panel wersji, verify),
+`rootfs/usr/bin/i18n.py` (5 lang), `.github/scripts/changelog-skeleton.sh`
+(guard), `CHANGELOG.md` (konsolidacja).
+
+## Walidacja
+`bash -n` + ShellCheck clean (skeleton, bridge.sh) · `py_compile` webui/i18n OK ·
+i18n 5×N · symulacja kontraktu promote (heading/marker/`###`) ✅ · guard
+sim: realna sekcja → no-op, placeholder → przechodzi ✅.
+
+## Otwarte / do followup
+- **Pytanie usera „czy liczniki znikają po update?"** — u maintainera NIE znikają
+  (Supervisor API zapis = `ok`, widoczne w Configuration tab = DB Supervisora).
+  Czeka na odpowiedź usera (screen Configuration tab / event `warn`). Diagnoza:
+  najpewniej legacy `options.json` sprzed `add_meter_to_options` lub schema
+  reject → fallback do pliku → ginie. Workaround: edycja `meters:` w Configuration
+  tab Supervisora.
+- **TLS test EMQX (po stronie maintainera, NIE add-on):** EMQX 8883 listener stoi
+  (wbudowane demo certy, Verify Peer OFF). ESP (`esphome-wmbus-bridge-rawonly`,
+  ESP-IDF) na `port: 8883` BEZ opcji TLS → `invalid header=0x15` (gada plain na
+  TLS port). Fix po stronie ESP YAML: dodać `skip_cert_cn_check: true` (aktywuje
+  TLS) lub `certificate_authority`. To NIE dotyczy tego repo (add-on plain 1883
+  działa). Patrz pamięć `prd-3-tls-research-findings.md` Fact 6.
+- **PRD #3 (TLS w add-onie):** deferred. Target ~12-20% (chmurowi TLS-only +
+  multi-location secure). Research kompletny w pamięci. Trigger: zgłoszenia
+  „mam HiveMQ/AWS/zdalny broker TLS-only, add-on nie łączy".
+- **Drobny bug (niepilny):** per-build skeleton range logic dublowała bullet
+  (`07f7404` w .140 i .141) i gubiła commity sprzed `42dd0d6`. Przy następnej
+  konsolidacji brać z `git log`, nie z fragmentów.
+
+## Ready-to-paste prompt dla następnej sesji
+> Cykl dev to teraz `1.5.30-dev` (świeżo po wydaniu 1.5.29 do stable). Per-build
+> CHANGELOG + promote-prep guard działają (patrz pamięć
+> `changelog-per-build-model.md` → „Promote-to-stable interaction"). Otwarte:
+> (1) user pytał czy liczniki znikają po update — u nas nie, czekamy na jego
+> Configuration-tab screen; (2) PRD #3 TLS deferred (research w pamięci
+> `prd-3-tls-research-findings.md`). Czytaj `MEMORY.md` (9 plików) na start.
+
+---
+
 # Handoff — sesja 2026-06-04 (preview reload-churn)
 
 > Uwaga dla wszystkich agentów (Claude, Codex, BMAD): w tym repo kod pisze
