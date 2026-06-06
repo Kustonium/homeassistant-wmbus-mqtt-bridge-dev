@@ -1,3 +1,11 @@
+## 1.5.29-dev.141
+
+### Added
+- show all active ESPs in the tile + surface wmbusmeters version (07f7404)
+
+### Fixed
+- stop double-logging Meter X / Search X events in status_events.tsv (17929da)
+
 ## 1.5.29-dev.140
 
 ### Added
