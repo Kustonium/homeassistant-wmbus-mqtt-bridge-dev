@@ -44,6 +44,19 @@ if grep -qxF "${heading}" "${CL}" 2>/dev/null; then
   exit 0
 fi
 
+# Promote-prep guard: a bare "## X.Y.Z-dev" top heading (no .NN suffix) means a
+# human has consolidated the cycle into a single section in preparation for
+# promote-to-stable, which requires exactly that heading (see the stable repo's
+# promote.yaml). Fragmenting it back into per-build sections would re-break that
+# heading check. Normal dev keeps a "## X.Y.Z-dev.NN" top heading, so this guard
+# never fires mid-cycle.
+core="$(printf '%s' "${raw_ver}" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
+top_heading="$(grep -m1 '^## ' "${CL}" 2>/dev/null || true)"
+if [[ -n "${core}" && "${top_heading}" == "## ${core}-dev" ]]; then
+  echo "changelog-skeleton: top heading '## ${core}-dev' is a consolidated promote-prep section — leaving untouched."
+  exit 0
+fi
+
 # Commit range = (most recent per-build heading or any heading at all)..HEAD.
 # We map the most recent ## heading line in the file to its commit by searching
 # the git log for that exact subject; if not found, fall back to "since the most
