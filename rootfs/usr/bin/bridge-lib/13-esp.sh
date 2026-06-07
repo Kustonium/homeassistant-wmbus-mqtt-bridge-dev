@@ -84,6 +84,7 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 # the user can spot an ESP-vs-add-on mismatch. Empty target/highlight (the common
 # listen-only case) simply yields no badges.
 STATUS_ESP_METERS_FILE="${BASE}/status_esp_meters.json"
+log "ESP meters subscriber: starting on topic wmbus/+/meters (TEMP debug)"
 (
   while true; do
     while IFS=$'\t' read -r _meters_topic _meters_line; do
@@ -92,6 +93,7 @@ STATUS_ESP_METERS_FILE="${BASE}/status_esp_meters.json"
           _meters_dev="${_meters_topic#wmbus/}"
           _meters_dev="${_meters_dev%/meters}"
           [[ -n "${_meters_dev}" && "${_meters_dev}" != "${_meters_topic}" ]] || continue
+          log "ESP meters: rx topic='${_meters_topic}' dev='${_meters_dev}' payload='${_meters_line}' (TEMP debug)"
           _ts="$(date +%s 2>/dev/null || echo 0)"
           _meters_cur="$(cat "${STATUS_ESP_METERS_FILE}" 2>/dev/null)"
           [[ -n "${_meters_cur}" ]] || _meters_cur="{}"
