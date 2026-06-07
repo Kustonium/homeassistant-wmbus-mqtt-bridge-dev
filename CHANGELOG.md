@@ -1,3 +1,8 @@
+## 1.5.30-dev.150
+
+### Added
+- badge meters and candidates flagged on the ESP (f509fa1)
+
 ## 1.5.30-dev.149
 
 ### Added
