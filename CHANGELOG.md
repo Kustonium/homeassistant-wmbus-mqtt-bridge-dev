@@ -1,3 +1,11 @@
+## 1.5.30-dev.149
+
+### Added
+- badge meters and candidates flagged on the ESP (f509fa1)
+
+### Fixed
+- a stopped pulse must not downgrade an offline ESP tile to amber (37c5f07)
+
 ## 1.5.30-dev.148
 
 ### Fixed
