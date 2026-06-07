@@ -1090,7 +1090,7 @@
           <button class="${cls("esp")}" data-action="open-workspace" data-ws="esp" type="button">
             <div class="pipeline-icon">📡</div>
             <div class="pipeline-title">${escapeHtml(espTitle)}</div>
-            <div class="pipeline-meta">${dot(espOnline && !espSomeStale, espWarn || espSomeStale, espOnline && hasLiveRate && espRateFromDiag && !espSomeStale)} ${escapeHtml(espStatus)}</div>
+            <div class="pipeline-meta">${dot(espOnline && !espSomeStale, (espOnline && espSomeStale) || espWarn, espOnline && hasLiveRate && espRateFromDiag && !espSomeStale)} ${escapeHtml(espStatus)}</div>
             <div class="pipeline-sub">${escapeHtml(espVisibleLine)}</div>
             <div class="pipeline-sub pipeline-device" title="${escapeHtml(primaryTopic || "")}">${escapeHtml(espDeviceLine)}</div>
             ${(!bridgeStale && espSomeStale) ? `<div class="pipeline-sub" style="font-size:11px;color:#f3c84b;">⚠ ${escapeHtml(t("pipeline_esp_pulse_stopped", "pulse stopped"))}: ${escapeHtml(espStoppedNames)}</div>` : ""}
