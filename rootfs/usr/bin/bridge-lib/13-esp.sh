@@ -97,12 +97,18 @@ log "ESP meters subscriber: starting on topic wmbus/+/meters (TEMP debug)"
           _ts="$(date +%s 2>/dev/null || echo 0)"
           _meters_cur="$(cat "${STATUS_ESP_METERS_FILE}" 2>/dev/null)"
           [[ -n "${_meters_cur}" ]] || _meters_cur="{}"
-          printf '%s' "${_meters_cur}" \
-            | jq --argjson t "${_ts}" --arg dev "${_meters_dev}" --argjson p "${_meters_line}" \
-                '. + {($dev): ($p + {_bridge_rx_epoch: $t})}' 2>/dev/null \
-            > "${STATUS_ESP_METERS_FILE}.tmp" \
-            && mv "${STATUS_ESP_METERS_FILE}.tmp" "${STATUS_ESP_METERS_FILE}" 2>/dev/null \
-            || true
+          # TEMP debug: capture jq exit + stderr to find why the write fails.
+          set +e
+          _meters_out="$(printf '%s' "${_meters_cur}" | jq --argjson t "${_ts}" --arg dev "${_meters_dev}" --argjson p "${_meters_line}" '. + {($dev): ($p + {_bridge_rx_epoch: $t})}' 2>&1)"
+          _meters_rc=$?
+          set -e
+          log "ESP meters: jq rc=${_meters_rc} out_len=${#_meters_out} out='${_meters_out:0:160}' (TEMP debug)"
+          if [[ "${_meters_rc}" -eq 0 && -n "${_meters_out}" ]]; then
+            printf '%s' "${_meters_out}" > "${STATUS_ESP_METERS_FILE}.tmp" 2>/dev/null \
+              && mv "${STATUS_ESP_METERS_FILE}.tmp" "${STATUS_ESP_METERS_FILE}" 2>/dev/null \
+              || true
+            log "ESP meters: write done, file exists=$([[ -f "${STATUS_ESP_METERS_FILE}" ]] && echo yes || echo no) (TEMP debug)"
+          fi
         done < <(
           ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" -t "wmbus/+/meters" -F '%t\t%p' -W 90 2>/dev/null
         )
