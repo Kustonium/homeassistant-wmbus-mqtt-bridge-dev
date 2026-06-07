@@ -1,3 +1,9 @@
+## 1.5.30-dev.148
+
+### Fixed
+- a stopped pulse must not downgrade an offline ESP tile to amber (37c5f07)
+- stop morphdom from freezing a focused pipeline tile (84cfa55)
+
 ## 1.5.30-dev.147
 
 ### Added
