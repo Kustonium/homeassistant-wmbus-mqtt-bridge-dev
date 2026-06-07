@@ -1,3 +1,11 @@
+## 1.5.30-dev.145
+
+### Added
+- per-ESP health pulse with aggregate verdict (multi-ESP) (237cdcb)
+
+### Fixed
+- stop the radio pulse from clobbering the device STATUS column (6011d03)
+
 ## 1.5.30-dev.144
 
 ### Added
