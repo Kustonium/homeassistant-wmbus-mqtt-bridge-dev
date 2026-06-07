@@ -41,17 +41,29 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 # regardless of the ESP's diagnostic_mode (retain=false), so it works for users
 # who never enable diagnostics. Payload:
 #   {"uptime_s":N,"rx_total":N,"sec_since_last_rx":N,"chip":"SX1276","listen_mode":"..."}
-# bridge.sh injects _bridge_rx_epoch (freshness) and _topic (ESP device); webui.py
-# surfaces "ESP alive / ear alive" from it. Enriches — does NOT replace — the
-# per-device telegram tracker, which stays the source of truth for ESP liveness.
+# bridge.sh injects _bridge_rx_epoch (freshness). The file is a MAP keyed by ESP
+# device (the segment between wmbus/ and /health), so multiple ESPs each keep
+# their own entry — the aggregate verdict in webui.py can then surface a single
+# stopped ESP instead of hiding it. Enriches — does NOT replace — the per-device
+# telegram tracker, which stays the source of truth for ESP liveness.
 STATUS_ESP_HEALTH_FILE="${BASE}/status_esp_health.json"
 (
   while true; do
     while IFS=$'\t' read -r _health_topic _health_line; do
           [[ -n "${_health_line}" ]] || continue
+          # Device = topic segment between "wmbus/" and "/health".
+          _health_dev="${_health_topic#wmbus/}"
+          _health_dev="${_health_dev%/health}"
+          [[ -n "${_health_dev}" && "${_health_dev}" != "${_health_topic}" ]] || continue
           _ts="$(date +%s 2>/dev/null || echo 0)"
-          printf '%s\n' "${_health_line}" \
-            | jq --argjson t "${_ts}" --arg topic "${_health_topic:-}" '. + {_bridge_rx_epoch: $t, _topic: $topic}' 2>/dev/null \
+          # Merge this device's pulse into the existing map (read-modify-write;
+          # single subscriber process, so no concurrent writers). Malformed JSON
+          # or a missing/empty file falls back to {} and never wipes the map.
+          _health_cur="$(cat "${STATUS_ESP_HEALTH_FILE}" 2>/dev/null)"
+          [[ -n "${_health_cur}" ]] || _health_cur="{}"
+          printf '%s' "${_health_cur}" \
+            | jq --argjson t "${_ts}" --arg dev "${_health_dev}" --argjson p "${_health_line}" \
+                '. + {($dev): ($p + {_bridge_rx_epoch: $t})}' 2>/dev/null \
             > "${STATUS_ESP_HEALTH_FILE}.tmp" \
             && mv "${STATUS_ESP_HEALTH_FILE}.tmp" "${STATUS_ESP_HEALTH_FILE}" 2>/dev/null \
             || true

@@ -1149,6 +1149,7 @@
                 <th>${escapeHtml(t("workspace_esp_device_name", "Device"))}</th>
                 <th>${escapeHtml(t("workspace_esp_device_topic", "Topic"))}</th>
                 <th style="text-align:right;">${escapeHtml(t("workspace_esp_device_telegrams", "Telegrams"))}</th>
+                <th style="text-align:center;">${escapeHtml(t("esp_health_ear", "Reception"))}</th>
                 <th style="text-align:center;">${escapeHtml(t("workspace_esp_device_diag", "Diag"))}</th>
                 <th>${escapeHtml(t("workspace_esp_device_last_event", "Last event"))}</th>
               </tr>
@@ -1171,12 +1172,26 @@
                 const diagCell = d.has_diag
                   ? `<span class="pill ok" style="font-size:10px;">✓</span>`
                   : `<span class="pill muted" style="font-size:10px;">—</span>`;
+                // Per-device radio reception from the always-on health pulse.
+                const dh = d.health || {state: "unknown"};
+                let rxCell;
+                if (dh.state === "alive") {
+                  const sec = Number(dh.sec_since_last_rx);
+                  const rxDot = dh.hears === true ? "ok live" : "warn";
+                  const rxVal = sec < 0 ? "—" : `${sec}s`;
+                  rxCell = `<span class="dot ${rxDot}" style="margin-right:4px;"></span>${dh.chip ? escapeHtml(String(dh.chip)) + " · " : ""}${escapeHtml(rxVal)}`;
+                } else if (dh.state === "stale") {
+                  rxCell = `<span class="pill muted" style="font-size:10px;">${escapeHtml(t("esp_health_stopped_short", "stopped"))}</span>`;
+                } else {
+                  rxCell = `<span class="pill muted" style="font-size:10px;">—</span>`;
+                }
                 return `
                   <tr style="${rowStyle}">
                     <td style="white-space:nowrap;font-size:11px;">${statusCell}</td>
                     <td><strong>${escapeHtml(d.name || "—")}</strong></td>
                     <td class="mono" style="font-size:11px;color:#9eafba;">${escapeHtml(d.topic || "—")}</td>
                     <td style="text-align:right;font-family:monospace;font-size:12px;">${escapeHtml(tgCell)}</td>
+                    <td style="text-align:center;white-space:nowrap;font-size:11px;">${rxCell}</td>
                     <td style="text-align:center;">${diagCell}</td>
                     <td style="white-space:nowrap;font-size:11px;">${escapeHtml(when)}</td>
                   </tr>`;
@@ -1185,31 +1200,29 @@
           </table>
         </div>
         ${totalDevs > activeDevs.length ? `<p style="font-size:11px;color:#8ea4b1;margin:8px 0 0;">⚠ ${escapeHtml(t("workspace_esp_stale_hint", "Stale entries are from MQTT retained messages or past sessions. They don't count toward the active ESP badge."))}</p>` : ""}` : "";
-      // Always-on radio health pulse (wmbus/+/health) — Layer 1: "ESP alive =
-      // ear alive", independent of the ESP's diagnostic_mode. A fresh pulse =
-      // ESP alive; sec_since_last_rx says whether the receiver hears traffic.
-      // No fresh pulse → neutral "unavailable" (never a green claim from absence).
-      const eh = model.esp_health || {};
+      // Always-on radio health AGGREGATE (#24: never hide a dead ESP). Computed
+      // across all ESPs that publish wmbus/<device>/health, independent of the
+      // ESP's diagnostic_mode. Per-device detail (chip + ear) lives in the table
+      // "Reception" column below; this headline is the one-glance verdict.
+      const agg = esp.health_aggregate || {state: "unknown"};
       let espHealthBlock;
-      if (eh.state === "alive") {
-        const sec = Number(eh.sec_since_last_rx);
-        const earTxt = sec < 0
-          ? t("esp_health_no_rx_yet", "alive, no telegram heard yet")
-          : (eh.hears === true
-              ? `${t("esp_health_hears", "hearing traffic")} · ${sec}s`
-              : `${t("esp_health_silent_ether", "alive, but quiet ether")} · ${sec}s`);
-        const earDot = eh.hears === true ? "ok live" : "warn";
+      if (agg.state === "alive") {
+        const txt = Number(agg.total) > 1
+          ? `${t("esp_health_all_alive", "all ESP alive")} (${agg.total})`
+          : `${t("esp_health_alive", "ESP alive")}${agg.chip ? " · " + agg.chip : ""}`;
         espHealthBlock = `
           <div class="kv">
             <div>${escapeHtml(t("esp_health_label", "Radio (always-on)"))}</div>
-            <div><span class="dot ok live" style="margin-right:5px;"></span>${escapeHtml(t("esp_health_alive", "ESP alive"))}${eh.chip ? " · " + escapeHtml(String(eh.chip)) : ""}</div>
-            <div>${escapeHtml(t("esp_health_ear", "Reception"))}</div>
-            <div><span class="dot ${earDot}" style="margin-right:5px;"></span>${escapeHtml(earTxt)}</div>
+            <div><span class="dot ok live" style="margin-right:5px;"></span>${escapeHtml(txt)}</div>
           </div>`;
-      } else if (eh.state === "stale") {
-        // We saw a pulse before but it went stale → the ESP stopped publishing.
-        // Firmware is proven to support /health, so do NOT suggest updating it.
-        espHealthBlock = `<p style="font-size:11px;color:#8ea4b1;margin:8px 0 0;">⚪ ${escapeHtml(t("esp_health_stale", "Health pulse stopped — the ESP stopped publishing (powered off or lost connection)"))}</p>`;
+      } else if (agg.state === "some_stale") {
+        // At least one ESP stopped publishing. Name the stopped ones — firmware
+        // is proven to support /health, so this never suggests a firmware update.
+        const names = asArray(agg.stopped).join(", ");
+        const txt = Number(agg.total) > 1
+          ? `${agg.stale}/${agg.total} ${t("esp_health_some_stopped", "ESP stopped publishing")}: ${names}`
+          : t("esp_health_stale", "Health pulse stopped — the ESP stopped publishing (powered off or lost connection)");
+        espHealthBlock = `<p style="font-size:11px;color:#8ea4b1;margin:8px 0 0;">⚪ ${escapeHtml(txt)}</p>`;
       } else {
         espHealthBlock = `<p style="font-size:11px;color:#8ea4b1;margin:8px 0 0;">⚪ ${escapeHtml(t("esp_health_unknown", "No health pulse from ESP — needs ESP firmware with the health pulse (or the ESP hasn't published yet)"))}</p>`;
       }
