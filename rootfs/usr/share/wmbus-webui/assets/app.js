@@ -1185,8 +1185,33 @@
           </table>
         </div>
         ${totalDevs > activeDevs.length ? `<p style="font-size:11px;color:#8ea4b1;margin:8px 0 0;">⚠ ${escapeHtml(t("workspace_esp_stale_hint", "Stale entries are from MQTT retained messages or past sessions. They don't count toward the active ESP badge."))}</p>` : ""}` : "";
+      // Always-on radio health pulse (wmbus/+/health) — Layer 1: "ESP alive =
+      // ear alive", independent of the ESP's diagnostic_mode. A fresh pulse =
+      // ESP alive; sec_since_last_rx says whether the receiver hears traffic.
+      // No fresh pulse → neutral "unavailable" (never a green claim from absence).
+      const eh = model.esp_health || {};
+      let espHealthBlock;
+      if (eh.state === "alive") {
+        const sec = Number(eh.sec_since_last_rx);
+        const earTxt = sec < 0
+          ? t("esp_health_no_rx_yet", "alive, no telegram heard yet")
+          : (eh.hears === true
+              ? `${t("esp_health_hears", "hearing traffic")} · ${sec}s`
+              : `${t("esp_health_silent_ether", "alive, but quiet ether")} · ${sec}s`);
+        const earDot = eh.hears === true ? "ok live" : "warn";
+        espHealthBlock = `
+          <div class="kv">
+            <div>${escapeHtml(t("esp_health_label", "Radio (always-on)"))}</div>
+            <div><span class="dot ok live" style="margin-right:5px;"></span>${escapeHtml(t("esp_health_alive", "ESP alive"))}${eh.chip ? " · " + escapeHtml(String(eh.chip)) : ""}</div>
+            <div>${escapeHtml(t("esp_health_ear", "Reception"))}</div>
+            <div><span class="dot ${earDot}" style="margin-right:5px;"></span>${escapeHtml(earTxt)}</div>
+          </div>`;
+      } else {
+        espHealthBlock = `<p style="font-size:11px;color:#8ea4b1;margin:8px 0 0;">⚪ ${escapeHtml(t("esp_health_unknown", "Radio health unavailable — no health pulse from ESP (update the ESP firmware)"))}</p>`;
+      }
       body = `
         <h3>📡 ESP — ${escapeHtml(t("workspace_esp_title", "ESP diagnostics"))}</h3>
+        ${espHealthBlock}
         ${devicesTable}
         ${Object.keys(sug).length ? `<h4 style="margin-top:14px;">💡 ${escapeHtml(t("webui_suggestion", "Suggestion"))}</h4>${objectKv(sug)}` : ""}
       `;
@@ -1264,6 +1289,14 @@
         verifyLine = `<span style="color:#ff646b;">✗ ${escapeHtml(t("ha_verify_not_created", "HA is NOT creating entities"))}</span>`;
       } else if (haV === "pending") {
         verifyLine = `⌛ ${escapeHtml(t("ha_verify_pending", "Verification in progress (~90 s)…"))}`;
+      } else if (haVReason === "disabled" && model.broker_native === true) {
+        // Native HA broker: HA presence is authoritative (entities exist by
+        // definition — see webui.py ha_link), so the panel already shows a green
+        // HA tile. Nagging the user to enable verify_ha_entities to "verify"
+        // what is already known would contradict that tile. Honest-witness: show
+        // a soft positive instead of the actionable hint. Only when the feature
+        // is merely off — real opt-in failures (network/auth/…) still surface.
+        verifyLine = `✓ ${escapeHtml(t("ha_verify_native_implied", "confirmed via HA's native broker"))}`;
       } else {
         // unavailable + a localised reason if known. "disabled" gets the
         // strongest hint because it is the only reason the user can fix from

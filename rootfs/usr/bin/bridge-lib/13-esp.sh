@@ -36,6 +36,33 @@ STATUS_ESP_DIAG_FILE="${BASE}/status_esp_diag.json"
 ) &
 ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 
+# Background subscriber for the always-on ESP radio health pulse
+# (wmbus/+/health). Unlike wmbus/+/diag/summary this is published every 60 s
+# regardless of the ESP's diagnostic_mode (retain=false), so it works for users
+# who never enable diagnostics. Payload:
+#   {"uptime_s":N,"rx_total":N,"sec_since_last_rx":N,"chip":"SX1276","listen_mode":"..."}
+# bridge.sh injects _bridge_rx_epoch (freshness) and _topic (ESP device); webui.py
+# surfaces "ESP alive / ear alive" from it. Enriches — does NOT replace — the
+# per-device telegram tracker, which stays the source of truth for ESP liveness.
+STATUS_ESP_HEALTH_FILE="${BASE}/status_esp_health.json"
+(
+  while true; do
+    while IFS=$'\t' read -r _health_topic _health_line; do
+          [[ -n "${_health_line}" ]] || continue
+          _ts="$(date +%s 2>/dev/null || echo 0)"
+          printf '%s\n' "${_health_line}" \
+            | jq --argjson t "${_ts}" --arg topic "${_health_topic:-}" '. + {_bridge_rx_epoch: $t, _topic: $topic}' 2>/dev/null \
+            > "${STATUS_ESP_HEALTH_FILE}.tmp" \
+            && mv "${STATUS_ESP_HEALTH_FILE}.tmp" "${STATUS_ESP_HEALTH_FILE}" 2>/dev/null \
+            || true
+        done < <(
+          ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" -t "wmbus/+/health" -F '%t\t%p' -W 90 2>/dev/null
+        )
+    sleep 5
+  done
+) &
+ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
+
 # Background subscriber for per-ESP-device telegram tracking.
 # Listens to the RAW telegram topic (with wildcard) and records each
 # distinct device name + last-seen epoch + telegram count to a TSV.

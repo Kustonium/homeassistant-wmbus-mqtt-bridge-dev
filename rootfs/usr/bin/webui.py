@@ -43,6 +43,12 @@ STATUS_RATE_HISTORY_FILE = BASE / "status_rate_history.tsv"
 STATUS_BRIDGE_START_FILE = BASE / "status_bridge_start.txt"
 # ESP diagnostic summary written by background subscriber in bridge.sh
 STATUS_ESP_DIAG_JSON = BASE / "status_esp_diag.json"
+# Always-on ESP radio health pulse (wmbus/+/health), written by bridge.sh's
+# background subscriber. Published every 60 s regardless of the ESP's
+# diagnostic_mode, so it works even when diagnostics are off. Carries
+# uptime_s, rx_total, sec_since_last_rx (proof the RX path is alive, not just
+# the loop), chip and listen_mode. _bridge_rx_epoch = freshness stamp.
+STATUS_ESP_HEALTH_JSON = BASE / "status_esp_health.json"
 # ESP events TSV and per-event detail files (written by bridge.sh event subscriber)
 STATUS_ESP_EVENTS_FILE = BASE / "status_esp_events.tsv"
 STATUS_ESP_SUGGESTION_FILE = BASE / "status_esp_suggestion.json"
@@ -1057,6 +1063,33 @@ def status_model(data: dict) -> dict:
             # inflated value from stale TSV counters / short elapsed_min at startup.
             raw_per_min = float(esp_total)
 
+    # Always-on ESP radio health pulse (wmbus/+/health). Independent of the ESP's
+    # diagnostic_mode, so this is the Layer-1 "ESP alive" signal even when
+    # diagnostics are off. Honest-witness: a fresh pulse means the ESP is alive;
+    # sec_since_last_rx (updated from the RX path, not the main loop) tells whether
+    # the receiver actually hears traffic. Stale/missing pulse degrades to
+    # "unknown" — never a green claim from absent data. Quality (ok/total, RSSI)
+    # is deliberately NOT here; it stays in the opt-in diagnostic summary.
+    # Threshold 150 s mirrors the diag freshness window (2.5x the 60 s pulse).
+    esp_health_raw = read_json(STATUS_ESP_HEALTH_JSON)
+    esp_health: dict = {"state": "unknown"}
+    _health_epoch = safe_int(esp_health_raw.get("_bridge_rx_epoch", 0))
+    if _health_epoch > 0 and (_time.time() - _health_epoch) <= 150:
+        _sec_since_rx = safe_int(esp_health_raw.get("sec_since_last_rx", -1))
+        esp_health = {
+            "state": "alive",
+            "device": _esp_device_from_topic(esp_health_raw.get("_topic")),
+            "chip": str(esp_health_raw.get("chip", "")).strip(),
+            "listen_mode": str(esp_health_raw.get("listen_mode", "")).strip(),
+            "uptime_s": safe_int(esp_health_raw.get("uptime_s", 0)),
+            "rx_total": safe_int(esp_health_raw.get("rx_total", 0)),
+            "sec_since_last_rx": _sec_since_rx,
+            # "hears" = heard ether traffic recently. Conservative ~1.5x the pulse
+            # interval; NOT a per-meter rhythm verdict (that needs the learned
+            # wM-Bus cadence, intentionally deferred). -1 = never heard anything.
+            "hears": 0 <= _sec_since_rx <= 90,
+        }
+
     # Pending restart: options.json is newer than the last full bridge start or
     # explicit soft pipeline reload requested by this UI. status.json is rewritten
     # constantly, so it is not a reliable "config applied" marker.
@@ -1152,6 +1185,7 @@ def status_model(data: dict) -> dict:
         "rate_source": rate_source,
         "current_raw_esp_device": current_raw_device,
         "current_raw_esp_topic": current_raw_topic,
+        "esp_health": esp_health,
         "rate_history_15m": rate_history,
         "pending_restart": pending_restart,
         "bridge_alive": bridge_alive,
