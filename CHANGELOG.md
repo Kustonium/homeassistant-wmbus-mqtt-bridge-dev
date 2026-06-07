@@ -1,3 +1,11 @@
+## 1.5.31-dev.157
+
+### Added
+- adaptive per-ESP RSSI band (chip-fair signal strength) (bb3ec67)
+
+### Fixed
+- remove the RSSI signal-strength band (RSSI unreliable across boards) (5acf7fa)
+
 ## 1.5.31-dev.156
 
 ### Added
