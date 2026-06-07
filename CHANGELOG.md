@@ -1,3 +1,11 @@
+## 1.5.30-dev.146
+
+### Added
+- surface a stopped ESP pulse on the pipeline tile (fb70a0c)
+
+### Fixed
+- stop the radio pulse from clobbering the device STATUS column (6011d03)
+
 ## 1.5.30-dev.145
 
 ### Added
