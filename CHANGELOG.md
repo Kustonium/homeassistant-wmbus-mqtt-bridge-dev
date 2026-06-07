@@ -1,3 +1,11 @@
+## 1.5.31-dev.158
+
+### Added
+- per-meter reception % from the opt-in diag meter_snapshot (fda2daa)
+
+### Fixed
+- remove the RSSI signal-strength band (RSSI unreliable across boards) (5acf7fa)
+
 ## 1.5.31-dev.157
 
 ### Added
