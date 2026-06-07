@@ -1,3 +1,8 @@
+## 1.5.30-dev.143
+
+### Fixed
+- distinguish a stopped pulse from missing firmware (bdeca39)
+
 ## 1.5.30-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
