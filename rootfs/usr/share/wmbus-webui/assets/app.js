@@ -1173,7 +1173,9 @@
                   ? `<span class="pill ok" style="font-size:10px;">✓</span>`
                   : `<span class="pill muted" style="font-size:10px;">—</span>`;
                 // Per-device radio reception from the always-on health pulse.
-                const dh = d.health || {state: "unknown"};
+                // NOTE: d.radio_health (the pulse), NOT d.health (which is the
+                // telegram-age status string used by the STATUS column above).
+                const dh = d.radio_health || {state: "unknown"};
                 let rxCell;
                 if (dh.state === "alive") {
                   const sec = Number(dh.sec_since_last_rx);

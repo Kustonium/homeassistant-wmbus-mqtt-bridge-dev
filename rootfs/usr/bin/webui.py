@@ -1360,9 +1360,12 @@ def _esp_payload() -> dict:
         # (useful for the "diag required" notice — we can soften it when
         # at least one ESP IS publishing diag).
         entry["has_diag"] = last_sum > 0
-        # Per-device radio health pulse (alive/stale), or "unknown" when this ESP
-        # never published /health (e.g. older firmware).
-        entry["health"] = health_map.get(entry["name"], {"state": "unknown"})
+        # Per-device radio health PULSE (alive/stale/unknown). DISTINCT key from
+        # entry["health"] above — that one is the telegram-age status string
+        # (online/warn/offline) the STATUS column relies on; clobbering it would
+        # make every row read as Offline. "unknown" when this ESP never published
+        # /health (e.g. older firmware).
+        entry["radio_health"] = health_map.get(entry["name"], {"state": "unknown"})
         entry["topic"] = (
             entry.get("telegram_topic")
             or entry.get("summary_topic")
@@ -1394,8 +1397,8 @@ def _esp_payload() -> dict:
     # ESP). Computed only over devices that actually published /health; a stopped
     # ESP is surfaced by name so a multi-ESP setup cannot show all-green while one
     # receiver is silent.
-    _h_alive = [d for d in devices_list if d.get("health", {}).get("state") == "alive"]
-    _h_stale = [d for d in devices_list if d.get("health", {}).get("state") == "stale"]
+    _h_alive = [d for d in devices_list if d.get("radio_health", {}).get("state") == "alive"]
+    _h_stale = [d for d in devices_list if d.get("radio_health", {}).get("state") == "stale"]
     _h_known = _h_alive + _h_stale
     if not _h_known:
         health_aggregate: dict = {"state": "unknown"}
@@ -1405,7 +1408,7 @@ def _esp_payload() -> dict:
             "total": len(_h_known),
             "alive": len(_h_alive),
             # N==1: surface the single ESP's chip so the headline can show detail.
-            "chip": _h_alive[0]["health"].get("chip", "") if len(_h_known) == 1 else "",
+            "chip": _h_alive[0]["radio_health"].get("chip", "") if len(_h_known) == 1 else "",
         }
     else:
         health_aggregate = {
