@@ -943,6 +943,10 @@
       const cls = ok ? (live ? "ok live" : "ok") : (warn ? "warn" : "bad");
       return `<span class="dot ${cls}"></span>`;
     };
+    // Expand affordance: every pipeline tile is a button that opens its workspace
+    // below. Show ▾ (collapsed) / ▲ (this tile's workspace is open) so it reads as
+    // expandable rather than static.
+    const chevron = (ws) => `<div class="pipeline-chevron" aria-hidden="true" style="text-align:center;font-size:11px;line-height:1;color:#5a7180;margin-top:4px;">${state.workspace === ws ? "▲" : "▾"}</div>`;
 
     const meterCount     = Number(model.meter_count || 0);
     const candidateCount = Number(model.candidate_count || 0);
@@ -1094,6 +1098,7 @@
             <div class="pipeline-sub">${escapeHtml(espVisibleLine)}</div>
             <div class="pipeline-sub pipeline-device" title="${escapeHtml(primaryTopic || "")}">${escapeHtml(espDeviceLine)}</div>
             ${(!bridgeStale && espSomeStale) ? `<div class="pipeline-sub" style="font-size:11px;color:#f3c84b;">⚠ ${escapeHtml(t("pipeline_esp_pulse_stopped", "pulse stopped"))}: ${escapeHtml(espStoppedNames)}</div>` : ""}
+            ${chevron("esp")}
           </button>
           <div class="pipeline-arrow"><span>${escapeHtml(rateLabel)}</span></div>
           <button class="${cls("mqtt")}" data-action="open-workspace" data-ws="mqtt" type="button">
@@ -1103,6 +1108,7 @@
             <div class="pipeline-sub">${escapeHtml((mqtt.host || "—") + (mqtt.port ? ":" + mqtt.port : ""))}</div>
             ${brokerLabel ? `<div class="pipeline-sub" style="font-size:11px;">${escapeHtml(brokerLabel)}</div>` : ""}
             ${(model.mqtt_tls_intent === true && !model.mqtt_ok) ? `<div class="pipeline-sub" style="font-size:11px;color:#f3c84b;">⚠ TLS ${escapeHtml(t("tls_not_supported", "not supported"))} (1883)</div>` : ""}
+            ${chevron("mqtt")}
           </button>
           <div class="pipeline-arrow"><span>${escapeHtml(rateLabel)}</span></div>
           <button class="${cls("wmbus")}" data-action="open-workspace" data-ws="wmbus" type="button">
@@ -1110,6 +1116,7 @@
             <div class="pipeline-title">wmbusmeters</div>
             <div class="pipeline-meta">${dot(wmbusOk, wmbusWarn, wmbusOk && hasLiveRate)} ${escapeHtml(wmbusLabel)}</div>
             <div class="pipeline-sub" title="${escapeHtml(t("pipeline_wmbus_tooltip", "received / decoded"))}">${escapeHtml(wmbusLine)}</div>
+            ${chevron("wmbus")}
           </button>
           <div class="pipeline-arrow"><span>${escapeHtml(rateLabel)}</span></div>
           <button class="${cls("ha")}" data-action="open-workspace" data-ws="ha" type="button">
@@ -1117,6 +1124,7 @@
             <div class="pipeline-title">HA</div>
             <div class="pipeline-meta">${haDot} ${escapeHtml(haText)}</div>
             <div class="pipeline-sub">${meterCount} ${escapeHtml(t("pipeline_ha_entities_short", "entit."))}</div>
+            ${chevron("ha")}
           </button>
         </div>
         ${pipelineWorkspace(model)}
@@ -1861,9 +1869,17 @@
                 const mfrCell    = mfrCompact
                   ? `<span style="font-size:12px;color:#9eafba;" title="${escapeHtml(mfrRaw)}">${escapeHtml(mfrCompact)}</span>`
                   : `<span style="color:#4a6070;">—</span>`;
+                // Same ESP + reception% badges as the other tables, for consistency.
+                const espBadge = row.esp_flagged === "true"
+                  ? ` <span title="${escapeHtml(t("esp_flagged_meter", "flagged on the ESP"))}" style="display:inline-block;background:#0e4a52;color:#4dd0e1;font-size:10px;font-weight:700;padding:2px 7px;border-radius:9px;white-space:nowrap;vertical-align:middle;cursor:help;">📡 ESP</span>`
+                  : "";
+                const rxPct = Number(row.reception_pct);
+                const rxBadge = rxPct >= 0
+                  ? ` <span title="${escapeHtml(t("reception_pct_title", "reception % over the diagnostic window"))}" style="display:inline-block;font-size:10px;font-weight:700;padding:2px 6px;border-radius:9px;white-space:nowrap;vertical-align:middle;${rxPct >= 90 ? "background:#0e3a1e;color:#4df08d" : rxPct >= 50 ? "background:#3a330e;color:#f3c84b" : "background:#3a0e0e;color:#ff646b"}">📶 ${rxPct}%</span>`
+                  : "";
                 return `
                   <tr data-value="${escapeHtml(dataVal)}">
-                    <td><strong>${escapeHtml(id)}</strong></td>
+                    <td><strong>${escapeHtml(id)}</strong>${espBadge}${rxBadge}</td>
                     <td><span style="margin-right:5px;font-size:15px;vertical-align:middle;">${mIcon}</span>${escapeHtml(row.name || id || "-")}</td>
                     <td>${escapeHtml(row.driver || "-")}</td>
                     <td>${mfrCell}</td>
