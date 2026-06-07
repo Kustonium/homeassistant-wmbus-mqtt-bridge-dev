@@ -55,6 +55,13 @@ STATUS_ESP_HEALTH_JSON = BASE / "status_esp_health.json"
 # set of meters the ESP is explicitly configured for; the WebUI badges matching
 # meters/candidates so an ESP-vs-add-on mismatch is visible.
 STATUS_ESP_METERS_JSON = BASE / "status_esp_meters.json"
+# Per-ESP adaptive RSSI calibration (learned by webui, persisted). Absolute RSSI
+# is not comparable across radio chips (SX1262 reads lower than SX1276 for the
+# same link), so the signal-strength band is computed RELATIVE to each ESP's own
+# learned "best" — a rise-only high-water EWMA that never drifts down, so a
+# chronically weak period cannot normalise into "strong" (brainstorm #16/#33).
+# Format: {"<device>": {"best": int_dbm, "samples": int, "chip": str, "epoch": int}}.
+STATUS_ESP_RSSI_CALIB_JSON = BASE / "status_esp_rssi_calib.json"
 # ESP events TSV and per-event detail files (written by bridge.sh event subscriber)
 STATUS_ESP_EVENTS_FILE = BASE / "status_esp_events.tsv"
 STATUS_ESP_SUGGESTION_FILE = BASE / "status_esp_suggestion.json"
@@ -1346,6 +1353,20 @@ def _esp_payload() -> dict:
     # health entry for an ESP no longer seen does not linger as a forever-stale
     # ghost. Quality (ok/total, RSSI) is deliberately NOT here — it stays in diag.
     health_raw = read_json(STATUS_ESP_HEALTH_JSON)
+    # Adaptive per-ESP RSSI calibration (learned, persisted). best is a rise-only
+    # high-water EWMA: it tracks the strongest RSSI an ESP has proven it can
+    # achieve and never drifts down, so a chronically weak stretch cannot be
+    # normalised into "strong" (#33). The signal band is then RELATIVE to best,
+    # which makes it fair across chips (SX1262 vs SX1276 read different absolute
+    # dBm). Constants are tunable.
+    _CALIB_COLD_START = 8        # pulses before classifying (else "learning")
+    _CALIB_STRONG_DROP = 6       # within this many dB of best → strong
+    _CALIB_ADEQUATE_DROP = 18    # within this many dB of best → adequate, else weak
+    _CALIB_ABS_FLOOR = -120      # near-noise hard floor → always weak (#33 cage)
+    rssi_calib = read_json(STATUS_ESP_RSSI_CALIB_JSON)
+    if not isinstance(rssi_calib, dict):
+        rssi_calib = {}
+    _calib_dirty = False
     health_map: dict[str, dict] = {}
     if isinstance(health_raw, dict):
         for _hdev, _h in health_raw.items():
@@ -1357,25 +1378,45 @@ def _esp_payload() -> dict:
             _hfresh = (now_epoch - _hep) <= 150
             _hsec = safe_int(_h.get("sec_since_last_rx", -1))
             _hrx = safe_int(_h.get("rx_total", 0))
+            _hchip = str(_h.get("chip", "")).strip()
             # Recent avg RSSI from the pulse (negative dBm). 1 = "no valid sample".
-            # Mapped to a qualitative band only — NEVER shown as a raw number — and
-            # only when fresh, with received frames, and a real (negative) value.
-            # Thresholds are 868 MHz wM-Bus rule-of-thumb; per-chip calibration is
-            # intentionally deferred (chip is carried for that future step).
             _hrssi = safe_int(_h.get("rssi", 1))
+
+            # ── Learn this ESP's "best" RSSI (rise-only), per chip ──
+            _cal = rssi_calib.get(_hdev)
+            if not isinstance(_cal, dict) or _cal.get("chip") != _hchip:
+                _cal = {"best": _hrssi if _hrssi < 0 else -120, "samples": 0, "chip": _hchip, "epoch": 0}
+            _best = safe_int(_cal.get("best", -120))
+            _samples = safe_int(_cal.get("samples", 0))
+            # Update only on a NEW pulse (epoch advanced) with a real RSSI, so the
+            # learner steps ~once per 60 s pulse, not once per dashboard poll.
+            if _hrssi < 0 and _hep > safe_int(_cal.get("epoch", 0)):
+                if _hrssi > _best:
+                    _best = int(round(_best * 0.7 + _hrssi * 0.3))   # rise, smoothed
+                # else: never lower best (no badness normalisation)
+                _samples += 1
+                rssi_calib[_hdev] = {"best": _best, "samples": _samples, "chip": _hchip, "epoch": _hep}
+                _calib_dirty = True
+
+            # ── Classify the current RSSI RELATIVE to the learned best ──
             _signal = ""
             if _hfresh and _hrx > 0 and _hrssi < 0:
-                if _hrssi >= -75:
+                if _samples < _CALIB_COLD_START:
+                    _signal = "learning"
+                elif _hrssi <= _CALIB_ABS_FLOOR:
+                    _signal = "weak"
+                elif _hrssi >= _best - _CALIB_STRONG_DROP:
                     _signal = "strong"
-                elif _hrssi >= -90:
+                elif _hrssi >= _best - _CALIB_ADEQUATE_DROP:
                     _signal = "adequate"
                 else:
                     _signal = "weak"
+
             health_map[_hdev] = {
                 # alive = fresh pulse (ESP alive). stale = had a pulse, now silent
                 # (ESP stopped publishing) — NOT a firmware problem.
                 "state": "alive" if _hfresh else "stale",
-                "chip": str(_h.get("chip", "")).strip(),
+                "chip": _hchip,
                 "listen_mode": str(_h.get("listen_mode", "")).strip(),
                 "uptime_s": safe_int(_h.get("uptime_s", 0)),
                 "rx_total": _hrx,
@@ -1383,11 +1424,22 @@ def _esp_payload() -> dict:
                 # hears = heard ether traffic recently (~1.5x the 60 s pulse); NOT
                 # a per-meter rhythm verdict (learned cadence is deferred).
                 "hears": _hfresh and 0 <= _hsec <= 90,
-                # Signal STRENGTH as a qualitative band (strong/adequate/weak/""),
-                # NOT quality (ok/total stays in opt-in diag). "" when unknown.
+                # Signal STRENGTH band relative to this ESP's learned best
+                # (strong/adequate/weak/learning/""), NOT quality (ok/total stays
+                # in opt-in diag). "" when unknown / no pulse.
                 "signal": _signal,
                 "last_pulse_epoch": _hep,
             }
+
+    # Persist learned calibration only when it actually advanced (≈once per pulse
+    # per ESP), so the read path does not rewrite the file on every poll.
+    if _calib_dirty:
+        try:
+            _tmp = STATUS_ESP_RSSI_CALIB_JSON.with_suffix(".json.tmp")
+            _tmp.write_text(json.dumps(rssi_calib), encoding="utf-8")
+            _tmp.replace(STATUS_ESP_RSSI_CALIB_JSON)
+        except OSError:
+            pass
 
     # ── Finalize display + active flag ──
     # ESP receiver status is based on the primary telegram topic only. A fresh
