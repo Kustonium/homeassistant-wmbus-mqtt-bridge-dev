@@ -1,3 +1,11 @@
+## 1.5.31-dev.160
+
+### Added
+- unify ESP/reception badges across meter tables + add expand chevrons to pipeline tiles (c900de0)
+
+### Fixed
+- make pipeline expand chevron readable (triple arrow) (1cd35c1)
+
 ## 1.5.31-dev.159
 
 ### Added
