@@ -1,3 +1,11 @@
+## 1.5.30-dev.154
+
+### Added
+- make the ESP flag badge readable + drop temp diagnostics (825bbc5)
+
+### Fixed
+- guard cat so a missing status file can't abort the subscriber under set -e (d2f2b95)
+
 ## 1.5.30-dev.153
 
 ### Fixed
