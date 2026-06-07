@@ -1,3 +1,11 @@
+## 1.5.30-dev.144
+
+### Added
+- per-ESP health pulse with aggregate verdict (multi-ESP) (237cdcb)
+
+### Fixed
+- distinguish a stopped pulse from missing firmware (bdeca39)
+
 ## 1.5.30-dev.143
 
 ### Fixed
