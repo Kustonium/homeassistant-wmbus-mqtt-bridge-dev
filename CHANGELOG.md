@@ -1,3 +1,8 @@
+## 1.5.31-dev.156
+
+### Added
+- adaptive per-ESP RSSI band (chip-fair signal strength) (bb3ec67)
+
 ## 1.5.31-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
