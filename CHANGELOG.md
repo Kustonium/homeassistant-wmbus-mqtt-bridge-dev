@@ -1,3 +1,9 @@
+## 1.5.31-dev.159
+
+### Added
+- unify ESP/reception badges across meter tables + add expand chevrons to pipeline tiles (c900de0)
+- per-meter reception % from the opt-in diag meter_snapshot (fda2daa)
+
 ## 1.5.31-dev.158
 
 ### Added
