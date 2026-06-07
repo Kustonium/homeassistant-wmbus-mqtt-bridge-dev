@@ -1579,9 +1579,14 @@
                 const espBadge = row.esp_flagged === "true"
                   ? ` <span title="${escapeHtml(t("esp_flagged_meter", "flagged on the ESP"))}" style="display:inline-block;background:#0e4a52;color:#4dd0e1;font-size:10px;font-weight:700;padding:2px 7px;border-radius:9px;white-space:nowrap;vertical-align:middle;cursor:help;">📡 ESP</span>`
                   : "";
+                // Per-meter reception % (#15, opt-in diag). -1/absent → no badge.
+                const rxPct = Number(row.reception_pct);
+                const rxBadge = rxPct >= 0
+                  ? ` <span title="${escapeHtml(t("reception_pct_title", "reception % over the diagnostic window"))}" style="display:inline-block;font-size:10px;font-weight:700;padding:2px 6px;border-radius:9px;white-space:nowrap;vertical-align:middle;${rxPct >= 90 ? "background:#0e3a1e;color:#4df08d" : rxPct >= 50 ? "background:#3a330e;color:#f3c84b" : "background:#3a0e0e;color:#ff646b"}">📶 ${rxPct}%</span>`
+                  : "";
                 return `
                   <tr>
-                    <td><strong>${escapeHtml(id)}</strong>${espBadge}</td>
+                    <td><strong>${escapeHtml(id)}</strong>${espBadge}${rxBadge}</td>
                     <td><span style="margin-right:5px;font-size:15px;vertical-align:middle;">${mIcon}</span>${escapeHtml(row.name || row.id || "-")}</td>
                     <td>${escapeHtml(row.driver || "-")}</td>
                     <td>${mfrCell}</td>
@@ -1689,9 +1694,14 @@
                 const espBadge = row.esp_flagged === "true"
                   ? ` <span title="${escapeHtml(t("esp_flagged_meter", "flagged on the ESP"))}" style="display:inline-block;background:#0e4a52;color:#4dd0e1;font-size:10px;font-weight:700;padding:2px 7px;border-radius:9px;white-space:nowrap;vertical-align:middle;cursor:help;">📡 ESP</span>`
                   : "";
+                // Per-meter reception % (#15, opt-in diag). -1/absent → no badge.
+                const rxPct = Number(row.reception_pct);
+                const rxBadge = rxPct >= 0
+                  ? ` <span title="${escapeHtml(t("reception_pct_title", "reception % over the diagnostic window"))}" style="display:inline-block;font-size:10px;font-weight:700;padding:2px 6px;border-radius:9px;white-space:nowrap;vertical-align:middle;${rxPct >= 90 ? "background:#0e3a1e;color:#4df08d" : rxPct >= 50 ? "background:#3a330e;color:#f3c84b" : "background:#3a0e0e;color:#ff646b"}">📶 ${rxPct}%</span>`
+                  : "";
                 return `
                   <tr data-value="${escapeHtml(previewVal)}">
-                    <td><strong>${escapeHtml(id)}</strong>${espBadge}</td>
+                    <td><strong>${escapeHtml(id)}</strong>${espBadge}${rxBadge}</td>
                     <td>${escapeHtml(driver)}</td>
                     <td style="color:#9eafba;font-size:12px;">${escapeHtml(row.type || "-")}</td>
                     <td>${mediaIconHtml(row.type || "", driver)} ${escapeHtml(mediaLabel)}</td>

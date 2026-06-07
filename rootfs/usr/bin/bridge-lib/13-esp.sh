@@ -115,6 +115,41 @@ STATUS_ESP_METERS_FILE="${BASE}/status_esp_meters.json"
 ) &
 ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 
+# Background subscriber for per-meter reception windows (wmbus/+/diag/meter_snapshot).
+# OPT-IN: only published when the ESP runs diagnostic_mode normal/debug/dev with
+# highlight_meters (every summary_15min / summary_60min). Batch payload holds per
+# highlight-meter {id, mode, count_window, avg_interval_s, elapsed_s, ...}; webui.py
+# turns count_window/elapsed_s/avg_interval_s into a per-meter reception %, the real
+# quality signal (RSSI was dropped — see BENCHMARKS.md). Stored as a MAP keyed by
+# ESP device so multi-ESP best-of can be computed. Independent of /health,/meters.
+STATUS_ESP_METER_SNAPSHOT_FILE="${BASE}/status_esp_meter_snapshot.json"
+(
+  while true; do
+    while IFS=$'\t' read -r _snap_topic _snap_line; do
+          [[ -n "${_snap_line}" ]] || continue
+          # Device = topic segment between "wmbus/" and "/diag/meter_snapshot".
+          _snap_dev="${_snap_topic#wmbus/}"
+          _snap_dev="${_snap_dev%/diag/meter_snapshot}"
+          [[ -n "${_snap_dev}" && "${_snap_dev}" != "${_snap_topic}" ]] || continue
+          _ts="$(date +%s 2>/dev/null || echo 0)"
+          # `|| true` REQUIRED under set -euo pipefail: a missing file must not
+          # abort the subshell before the write (the #16 cat-abort lesson).
+          _snap_cur="$(cat "${STATUS_ESP_METER_SNAPSHOT_FILE}" 2>/dev/null || true)"
+          [[ -n "${_snap_cur}" ]] || _snap_cur="{}"
+          printf '%s' "${_snap_cur}" \
+            | jq --argjson t "${_ts}" --arg dev "${_snap_dev}" --argjson p "${_snap_line}" \
+                '. + {($dev): ($p + {_bridge_rx_epoch: $t})}' 2>/dev/null \
+            > "${STATUS_ESP_METER_SNAPSHOT_FILE}.tmp" \
+            && mv "${STATUS_ESP_METER_SNAPSHOT_FILE}.tmp" "${STATUS_ESP_METER_SNAPSHOT_FILE}" 2>/dev/null \
+            || true
+        done < <(
+          ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" -t "wmbus/+/diag/meter_snapshot" -F '%t\t%p' -W 90 2>/dev/null
+        )
+    sleep 5
+  done
+) &
+ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
+
 # Background subscriber for per-ESP-device telegram tracking.
 # Listens to the RAW telegram topic (with wildcard) and records each
 # distinct device name + last-seen epoch + telegram count to a TSV.

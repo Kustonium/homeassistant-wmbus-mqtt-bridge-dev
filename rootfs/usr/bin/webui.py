@@ -55,6 +55,12 @@ STATUS_ESP_HEALTH_JSON = BASE / "status_esp_health.json"
 # set of meters the ESP is explicitly configured for; the WebUI badges matching
 # meters/candidates so an ESP-vs-add-on mismatch is visible.
 STATUS_ESP_METERS_JSON = BASE / "status_esp_meters.json"
+# Opt-in per-meter reception windows: the ESP's diag meter_snapshot (batch of
+# highlight meters, every summary_15min/60min), written per ESP device by the
+# wmbus/+/diag/meter_snapshot subscriber. webui turns count_window / elapsed_s /
+# avg_interval_s into a per-meter reception % (the real quality signal, #15) —
+# best across ESPs. Absent when diagnostics are off / no highlight_meters.
+STATUS_ESP_METER_SNAPSHOT_JSON = BASE / "status_esp_meter_snapshot.json"
 # ESP events TSV and per-event detail files (written by bridge.sh event subscriber)
 STATUS_ESP_EVENTS_FILE = BASE / "status_esp_events.tsv"
 STATUS_ESP_SUGGESTION_FILE = BASE / "status_esp_suggestion.json"
@@ -791,10 +797,45 @@ def state(include_ignored: bool = False) -> dict:
                     if _hn:
                         esp_flagged_ids.add(_hn)
 
+    # Per-meter reception % (#15) from the opt-in diag meter_snapshot. For each
+    # fresh per-ESP snapshot, reception% = count_window / (elapsed_s/avg_interval_s),
+    # capped at 100; take the BEST across ESPs (a meter reads well if any receiver
+    # gets it well). -1 (absent) when there is no usable data — diagnostics off, no
+    # highlight_meters, stale, or the window is shorter than one interval.
+    reception_by_id: dict[str, int] = {}
+    _snap_raw = read_json(STATUS_ESP_METER_SNAPSHOT_JSON)
+    if isinstance(_snap_raw, dict):
+        _rx_now = _time_esp.time()
+        for _sdev, _snap in _snap_raw.items():
+            if not isinstance(_snap, dict):
+                continue
+            # ~20 min freshness (snapshot fires every 15 min).
+            if (_rx_now - safe_int(_snap.get("_bridge_rx_epoch", 0))) > 1200:
+                continue
+            _elapsed = safe_int(_snap.get("elapsed_s", 0))
+            _mlist = _snap.get("meters")
+            if _elapsed <= 0 or not isinstance(_mlist, list):
+                continue
+            for _mw in _mlist:
+                if not isinstance(_mw, dict):
+                    continue
+                _mid = normalize_meter_id(_mw.get("id"))
+                _ai = safe_int(_mw.get("avg_interval_s", 0))
+                if not _mid or _ai <= 0:
+                    continue
+                _expected = _elapsed / _ai
+                if _expected < 1:   # window shorter than one interval → unreliable
+                    continue
+                _pct = int(round(min(100.0, (safe_int(_mw.get("count_window", 0)) / _expected) * 100.0)))
+                if _pct > reception_by_id.get(_mid, -1):
+                    reception_by_id[_mid] = _pct
+
     for c in candidates:
         c["ignored"] = "true" if c.get("id") in ignored else "false"
         c["analysis"] = analysis_by_id.get(normalize_meter_id(c.get("id")), {})
         c["esp_flagged"] = "true" if normalize_meter_id(c.get("id")) in esp_flagged_ids else "false"
+        # Per-meter reception % (#15); -1 = no data (diag off / not highlighted / stale).
+        c["reception_pct"] = reception_by_id.get(normalize_meter_id(c.get("id")), -1)
         # preview_active = there's a preview config for this candidate.
         # Single source of truth = filesystem; one-shot RAW decoders consume the
         # config without touching the always-on LISTEN pipeline.
@@ -814,6 +855,7 @@ def state(include_ignored: bool = False) -> dict:
     # it is in the add-on's meters), the badge confirms alignment.
     for m in meters:
         m["esp_flagged"] = "true" if normalize_meter_id(m.get("id") or m.get("meter_id")) in esp_flagged_ids else "false"
+        m["reception_pct"] = reception_by_id.get(normalize_meter_id(m.get("id") or m.get("meter_id")), -1)
 
     # Build normalized options_meter_ids early — used both for TSV filtering and
     # candidate dedup. Do not write back to status_meters.tsv from this read path.
