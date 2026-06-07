@@ -2450,8 +2450,14 @@
       morphdom(app, tmp, {
         // Never replace the app root itself — only its children.
         onBeforeElUpdated(from, to) {
-          // Skip elements the user is actively interacting with.
-          if (from === document.activeElement) return false;
+          // Preserve a field the user is actively editing — but ONLY real form
+          // inputs. The old guard skipped ANY focused element, which froze a
+          // focused <button> (e.g. a pipeline tile clicked to open its workspace)
+          // and all of its subtree: the tile then showed stale data (wrong rate,
+          // a "pulse stopped" warning that never cleared) while the rest of the
+          // page updated. Restrict the skip to editable controls.
+          if (from === document.activeElement &&
+              /^(INPUT|TEXTAREA|SELECT)$/.test(from.tagName)) return false;
           // Skip identical nodes (morphdom checks attrs, this adds textContent check).
           if (from.isEqualNode(to)) return false;
           return true;
