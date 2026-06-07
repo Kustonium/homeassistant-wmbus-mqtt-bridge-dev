@@ -1937,6 +1937,7 @@
           <h2>${escapeHtml(t("detected_candidates", "Detected candidates"))}</h2>
           <span id="discover-candidate-count" data-default="${escapeHtml(candidateCountLabel)}">${escapeHtml(candidateCountLabel)}</span>
         </div>
+        ${(() => { const dbg = data.esp_flagged_debug || {}; return `<p style="font-size:11px;color:#f3c84b;margin:0 0 8px;">DEBUG /meters → status_esp_meters.json: ${dbg.present ? "✅ jest" : "❌ brak"} · flagowane ID: [${asArray(dbg.ids).join(", ") || "—"}]</p>`; })()}
         ${filterChips()}
         ${candidateTable(filteredCandidates, true)}
       </section>

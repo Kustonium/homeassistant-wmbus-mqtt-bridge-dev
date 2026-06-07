@@ -895,7 +895,10 @@ def state(include_ignored: bool = False) -> dict:
         ),
         reverse=True,
     )
-    return {"status": status, "options": options, "meters": meters, "pending_meters": pending_meters, "candidates": candidates, "events": events, "ignored": sorted(ignored), "search_candidates": search_candidates, "search_matches": search_matches, "search_status": search_status, "analysis": analysis}
+    return {"status": status, "options": options, "meters": meters, "pending_meters": pending_meters, "candidates": candidates, "events": events, "ignored": sorted(ignored), "search_candidates": search_candidates, "search_matches": search_matches, "search_status": search_status, "analysis": analysis,
+            # TEMP diagnostic for the ESP meter-flags badge: did webui read
+            # status_esp_meters.json and which IDs did it parse? Remove once solved.
+            "esp_flagged_debug": {"present": STATUS_ESP_METERS_JSON.exists(), "ids": sorted(esp_flagged_ids)}}
 
 
 def search_config_model(data: dict) -> dict:
