@@ -1089,6 +1089,18 @@ def status_model(data: dict) -> dict:
             # wM-Bus cadence, intentionally deferred). -1 = never heard anything.
             "hears": 0 <= _sec_since_rx <= 90,
         }
+    elif _health_epoch > 0:
+        # We received a pulse before but it is no longer fresh: the ESP stopped
+        # publishing (powered off / lost connection). Distinct from "unknown"
+        # ("never seen a pulse" — mirrors the brainstorm "never vs went silent").
+        # The presence of a past pulse proves the firmware DOES support /health,
+        # so this must NOT blame firmware. Honest-witness: report what changed.
+        esp_health = {
+            "state": "stale",
+            "device": _esp_device_from_topic(esp_health_raw.get("_topic")),
+            "chip": str(esp_health_raw.get("chip", "")).strip(),
+            "last_pulse_epoch": _health_epoch,
+        }
 
     # Pending restart: options.json is newer than the last full bridge start or
     # explicit soft pipeline reload requested by this UI. status.json is rewritten

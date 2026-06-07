@@ -1206,8 +1206,12 @@
             <div>${escapeHtml(t("esp_health_ear", "Reception"))}</div>
             <div><span class="dot ${earDot}" style="margin-right:5px;"></span>${escapeHtml(earTxt)}</div>
           </div>`;
+      } else if (eh.state === "stale") {
+        // We saw a pulse before but it went stale → the ESP stopped publishing.
+        // Firmware is proven to support /health, so do NOT suggest updating it.
+        espHealthBlock = `<p style="font-size:11px;color:#8ea4b1;margin:8px 0 0;">⚪ ${escapeHtml(t("esp_health_stale", "Health pulse stopped — the ESP stopped publishing (powered off or lost connection)"))}</p>`;
       } else {
-        espHealthBlock = `<p style="font-size:11px;color:#8ea4b1;margin:8px 0 0;">⚪ ${escapeHtml(t("esp_health_unknown", "Radio health unavailable — no health pulse from ESP (update the ESP firmware)"))}</p>`;
+        espHealthBlock = `<p style="font-size:11px;color:#8ea4b1;margin:8px 0 0;">⚪ ${escapeHtml(t("esp_health_unknown", "No health pulse from ESP — needs ESP firmware with the health pulse (or the ESP hasn't published yet)"))}</p>`;
       }
       body = `
         <h3>📡 ESP — ${escapeHtml(t("workspace_esp_title", "ESP diagnostics"))}</h3>
