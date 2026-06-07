@@ -49,6 +49,12 @@ STATUS_ESP_DIAG_JSON = BASE / "status_esp_diag.json"
 # uptime_s, rx_total, sec_since_last_rx (proof the RX path is alive, not just
 # the loop), chip and listen_mode. _bridge_rx_epoch = freshness stamp.
 STATUS_ESP_HEALTH_JSON = BASE / "status_esp_health.json"
+# Always-on ESP meter flags (wmbus/+/meters), written by bridge.sh's background
+# subscriber as a map keyed by ESP device: {"<device>": {"target","highlight"[],
+# "_bridge_rx_epoch"}}. Union of target + highlight (across fresh entries) is the
+# set of meters the ESP is explicitly configured for; the WebUI badges matching
+# meters/candidates so an ESP-vs-add-on mismatch is visible.
+STATUS_ESP_METERS_JSON = BASE / "status_esp_meters.json"
 # ESP events TSV and per-event detail files (written by bridge.sh event subscriber)
 STATUS_ESP_EVENTS_FILE = BASE / "status_esp_events.tsv"
 STATUS_ESP_SUGGESTION_FILE = BASE / "status_esp_suggestion.json"
@@ -761,9 +767,34 @@ def state(include_ignored: bool = False) -> dict:
         for k, v in analysis.items()
         if normalize_meter_id(v.get("id") or k)
     }
+    # Meters the ESP is explicitly configured for (target + highlight), unioned
+    # across fresh wmbus/<device>/meters entries. Used to badge matching
+    # meters/candidates ("flagged on the ESP"). Stale entries (>150 s, mirrors the
+    # health window) are ignored so a since-removed ESP's flags don't linger.
+    import time as _time_esp
+    esp_flagged_ids: set[str] = set()
+    _esp_meters_raw = read_json(STATUS_ESP_METERS_JSON)
+    if isinstance(_esp_meters_raw, dict):
+        _esp_now = _time_esp.time()
+        for _dev, _m in _esp_meters_raw.items():
+            if not isinstance(_m, dict):
+                continue
+            if (_esp_now - safe_int(_m.get("_bridge_rx_epoch", 0))) > 150:
+                continue
+            _t = normalize_meter_id(_m.get("target"))
+            if _t:
+                esp_flagged_ids.add(_t)
+            _hl = _m.get("highlight")
+            if isinstance(_hl, list):
+                for _h in _hl:
+                    _hn = normalize_meter_id(_h)
+                    if _hn:
+                        esp_flagged_ids.add(_hn)
+
     for c in candidates:
         c["ignored"] = "true" if c.get("id") in ignored else "false"
         c["analysis"] = analysis_by_id.get(normalize_meter_id(c.get("id")), {})
+        c["esp_flagged"] = "true" if normalize_meter_id(c.get("id")) in esp_flagged_ids else "false"
         # preview_active = there's a preview config for this candidate.
         # Single source of truth = filesystem; one-shot RAW decoders consume the
         # config without touching the always-on LISTEN pipeline.
@@ -778,6 +809,11 @@ def state(include_ignored: bool = False) -> dict:
                 c["preview_ts"]        = pv.get("preview_ts", "")
             ps = preview_state_by_id.get(cid)
             c["preview_state"] = ps.get("state", "") if ps else ""
+
+    # Same ESP flag for configured meters: when both sides agree (ESP flags it and
+    # it is in the add-on's meters), the badge confirms alignment.
+    for m in meters:
+        m["esp_flagged"] = "true" if normalize_meter_id(m.get("id") or m.get("meter_id")) in esp_flagged_ids else "false"
 
     # Build normalized options_meter_ids early — used both for TSV filtering and
     # candidate dedup. Do not write back to status_meters.tsv from this read path.

@@ -1574,9 +1574,12 @@
                 const mfrCell    = mfrCompact
                   ? `<span style="font-size:12px;color:#9eafba;" title="${escapeHtml(mfrRaw)}">${escapeHtml(mfrCompact)}</span>`
                   : `<span style="color:#4a6070;">—</span>`;
+                const espBadge = row.esp_flagged === "true"
+                  ? ` <span title="${escapeHtml(t("esp_flagged_meter", "flagged on the ESP"))}" style="font-size:11px;cursor:help;">📡</span>`
+                  : "";
                 return `
                   <tr>
-                    <td><strong>${escapeHtml(id)}</strong></td>
+                    <td><strong>${escapeHtml(id)}</strong>${espBadge}</td>
                     <td><span style="margin-right:5px;font-size:15px;vertical-align:middle;">${mIcon}</span>${escapeHtml(row.name || row.id || "-")}</td>
                     <td>${escapeHtml(row.driver || "-")}</td>
                     <td>${mfrCell}</td>
@@ -1681,9 +1684,12 @@
                 const mfrCell    = mfrCompact
                   ? `<span style="font-size:12px;color:#9eafba;" title="${escapeHtml(mfrRaw)}">${escapeHtml(mfrCompact)}</span>`
                   : `<span style="color:#4a6070;">—</span>`;
+                const espBadge = row.esp_flagged === "true"
+                  ? ` <span title="${escapeHtml(t("esp_flagged_meter", "flagged on the ESP"))}" style="font-size:11px;cursor:help;">📡</span>`
+                  : "";
                 return `
                   <tr data-value="${escapeHtml(previewVal)}">
-                    <td><strong>${escapeHtml(id)}</strong></td>
+                    <td><strong>${escapeHtml(id)}</strong>${espBadge}</td>
                     <td>${escapeHtml(driver)}</td>
                     <td style="color:#9eafba;font-size:12px;">${escapeHtml(row.type || "-")}</td>
                     <td>${mediaIconHtml(row.type || "", driver)} ${escapeHtml(mediaLabel)}</td>

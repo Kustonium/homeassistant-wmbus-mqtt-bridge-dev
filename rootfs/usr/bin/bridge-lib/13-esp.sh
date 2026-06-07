@@ -75,6 +75,40 @@ STATUS_ESP_HEALTH_FILE="${BASE}/status_esp_health.json"
 ) &
 ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 
+# Background subscriber for the always-on ESP meter-flags topic (wmbus/+/meters).
+# The ESP publishes every 60 s (retain=false, independent of diagnostic_mode) the
+# meters it is explicitly configured for:
+#   {"target":"03534159","highlight":["12345678", ...]}
+# Stored as a MAP keyed by ESP device. webui.py unions target + highlight across
+# fresh entries and badges matching meters/candidates ("flagged on the ESP"), so
+# the user can spot an ESP-vs-add-on mismatch. Empty target/highlight (the common
+# listen-only case) simply yields no badges.
+STATUS_ESP_METERS_FILE="${BASE}/status_esp_meters.json"
+(
+  while true; do
+    while IFS=$'\t' read -r _meters_topic _meters_line; do
+          [[ -n "${_meters_line}" ]] || continue
+          # Device = topic segment between "wmbus/" and "/meters".
+          _meters_dev="${_meters_topic#wmbus/}"
+          _meters_dev="${_meters_dev%/meters}"
+          [[ -n "${_meters_dev}" && "${_meters_dev}" != "${_meters_topic}" ]] || continue
+          _ts="$(date +%s 2>/dev/null || echo 0)"
+          _meters_cur="$(cat "${STATUS_ESP_METERS_FILE}" 2>/dev/null)"
+          [[ -n "${_meters_cur}" ]] || _meters_cur="{}"
+          printf '%s' "${_meters_cur}" \
+            | jq --argjson t "${_ts}" --arg dev "${_meters_dev}" --argjson p "${_meters_line}" \
+                '. + {($dev): ($p + {_bridge_rx_epoch: $t})}' 2>/dev/null \
+            > "${STATUS_ESP_METERS_FILE}.tmp" \
+            && mv "${STATUS_ESP_METERS_FILE}.tmp" "${STATUS_ESP_METERS_FILE}" 2>/dev/null \
+            || true
+        done < <(
+          ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" -t "wmbus/+/meters" -F '%t\t%p' -W 90 2>/dev/null
+        )
+    sleep 5
+  done
+) &
+ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
+
 # Background subscriber for per-ESP-device telegram tracking.
 # Listens to the RAW telegram topic (with wildcard) and records each
 # distinct device name + last-seen epoch + telegram count to a TSV.
