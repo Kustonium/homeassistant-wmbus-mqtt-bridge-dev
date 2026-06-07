@@ -59,7 +59,10 @@ STATUS_ESP_HEALTH_FILE="${BASE}/status_esp_health.json"
           # Merge this device's pulse into the existing map (read-modify-write;
           # single subscriber process, so no concurrent writers). Malformed JSON
           # or a missing/empty file falls back to {} and never wipes the map.
-          _health_cur="$(cat "${STATUS_ESP_HEALTH_FILE}" 2>/dev/null)"
+          # `|| true` is REQUIRED: under `set -euo pipefail`, var="$(cat MISSING)"
+          # exits non-zero and aborts this subshell before the write ever runs —
+          # which is exactly why the file was never created on first run.
+          _health_cur="$(cat "${STATUS_ESP_HEALTH_FILE}" 2>/dev/null || true)"
           [[ -n "${_health_cur}" ]] || _health_cur="{}"
           printf '%s' "${_health_cur}" \
             | jq --argjson t "${_ts}" --arg dev "${_health_dev}" --argjson p "${_health_line}" \
@@ -95,7 +98,11 @@ log "ESP meters subscriber: starting on topic wmbus/+/meters (TEMP debug)"
           [[ -n "${_meters_dev}" && "${_meters_dev}" != "${_meters_topic}" ]] || continue
           log "ESP meters: rx topic='${_meters_topic}' dev='${_meters_dev}' payload='${_meters_line}' (TEMP debug)"
           _ts="$(date +%s 2>/dev/null || echo 0)"
-          _meters_cur="$(cat "${STATUS_ESP_METERS_FILE}" 2>/dev/null)"
+          # `|| true` is REQUIRED: under `set -euo pipefail`, var="$(cat MISSING)"
+          # exits non-zero and aborts this subshell before the write — the root
+          # cause of status_esp_meters.json never being created (the rx log above
+          # prints because it runs BEFORE this line).
+          _meters_cur="$(cat "${STATUS_ESP_METERS_FILE}" 2>/dev/null || true)"
           [[ -n "${_meters_cur}" ]] || _meters_cur="{}"
           # TEMP debug: capture jq exit + stderr to find why the write fails.
           set +e
