@@ -1575,7 +1575,7 @@
                   ? `<span style="font-size:12px;color:#9eafba;" title="${escapeHtml(mfrRaw)}">${escapeHtml(mfrCompact)}</span>`
                   : `<span style="color:#4a6070;">—</span>`;
                 const espBadge = row.esp_flagged === "true"
-                  ? ` <span title="${escapeHtml(t("esp_flagged_meter", "flagged on the ESP"))}" style="font-size:11px;cursor:help;">📡</span>`
+                  ? ` <span title="${escapeHtml(t("esp_flagged_meter", "flagged on the ESP"))}" style="display:inline-block;background:#0e4a52;color:#4dd0e1;font-size:10px;font-weight:700;padding:2px 7px;border-radius:9px;white-space:nowrap;vertical-align:middle;cursor:help;">📡 ESP</span>`
                   : "";
                 return `
                   <tr>
@@ -1685,7 +1685,7 @@
                   ? `<span style="font-size:12px;color:#9eafba;" title="${escapeHtml(mfrRaw)}">${escapeHtml(mfrCompact)}</span>`
                   : `<span style="color:#4a6070;">—</span>`;
                 const espBadge = row.esp_flagged === "true"
-                  ? ` <span title="${escapeHtml(t("esp_flagged_meter", "flagged on the ESP"))}" style="font-size:11px;cursor:help;">📡</span>`
+                  ? ` <span title="${escapeHtml(t("esp_flagged_meter", "flagged on the ESP"))}" style="display:inline-block;background:#0e4a52;color:#4dd0e1;font-size:10px;font-weight:700;padding:2px 7px;border-radius:9px;white-space:nowrap;vertical-align:middle;cursor:help;">📡 ESP</span>`
                   : "";
                 return `
                   <tr data-value="${escapeHtml(previewVal)}">
@@ -1937,7 +1937,6 @@
           <h2>${escapeHtml(t("detected_candidates", "Detected candidates"))}</h2>
           <span id="discover-candidate-count" data-default="${escapeHtml(candidateCountLabel)}">${escapeHtml(candidateCountLabel)}</span>
         </div>
-        ${(() => { const dbg = data.esp_flagged_debug || {}; return `<p style="font-size:11px;color:#f3c84b;margin:0 0 8px;">DEBUG → meters.json: ${dbg.present ? "✅ jest" : "❌ brak"} · health.json: ${dbg.health_present ? "✅ jest" : "❌ brak"} · flagowane ID: [${asArray(dbg.ids).join(", ") || "—"}]</p>`; })()}
         ${filterChips()}
         ${candidateTable(filteredCandidates, true)}
       </section>

@@ -87,7 +87,6 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 # the user can spot an ESP-vs-add-on mismatch. Empty target/highlight (the common
 # listen-only case) simply yields no badges.
 STATUS_ESP_METERS_FILE="${BASE}/status_esp_meters.json"
-log "ESP meters subscriber: starting on topic wmbus/+/meters (TEMP debug)"
 (
   while true; do
     while IFS=$'\t' read -r _meters_topic _meters_line; do
@@ -96,26 +95,18 @@ log "ESP meters subscriber: starting on topic wmbus/+/meters (TEMP debug)"
           _meters_dev="${_meters_topic#wmbus/}"
           _meters_dev="${_meters_dev%/meters}"
           [[ -n "${_meters_dev}" && "${_meters_dev}" != "${_meters_topic}" ]] || continue
-          log "ESP meters: rx topic='${_meters_topic}' dev='${_meters_dev}' payload='${_meters_line}' (TEMP debug)"
           _ts="$(date +%s 2>/dev/null || echo 0)"
           # `|| true` is REQUIRED: under `set -euo pipefail`, var="$(cat MISSING)"
           # exits non-zero and aborts this subshell before the write — the root
-          # cause of status_esp_meters.json never being created (the rx log above
-          # prints because it runs BEFORE this line).
+          # cause of status_esp_meters.json never being created on first run.
           _meters_cur="$(cat "${STATUS_ESP_METERS_FILE}" 2>/dev/null || true)"
           [[ -n "${_meters_cur}" ]] || _meters_cur="{}"
-          # TEMP debug: capture jq exit + stderr to find why the write fails.
-          set +e
-          _meters_out="$(printf '%s' "${_meters_cur}" | jq --argjson t "${_ts}" --arg dev "${_meters_dev}" --argjson p "${_meters_line}" '. + {($dev): ($p + {_bridge_rx_epoch: $t})}' 2>&1)"
-          _meters_rc=$?
-          set -e
-          log "ESP meters: jq rc=${_meters_rc} out_len=${#_meters_out} out='${_meters_out:0:160}' (TEMP debug)"
-          if [[ "${_meters_rc}" -eq 0 && -n "${_meters_out}" ]]; then
-            printf '%s' "${_meters_out}" > "${STATUS_ESP_METERS_FILE}.tmp" 2>/dev/null \
-              && mv "${STATUS_ESP_METERS_FILE}.tmp" "${STATUS_ESP_METERS_FILE}" 2>/dev/null \
-              || true
-            log "ESP meters: write done, file exists=$([[ -f "${STATUS_ESP_METERS_FILE}" ]] && echo yes || echo no) (TEMP debug)"
-          fi
+          printf '%s' "${_meters_cur}" \
+            | jq --argjson t "${_ts}" --arg dev "${_meters_dev}" --argjson p "${_meters_line}" \
+                '. + {($dev): ($p + {_bridge_rx_epoch: $t})}' 2>/dev/null \
+            > "${STATUS_ESP_METERS_FILE}.tmp" \
+            && mv "${STATUS_ESP_METERS_FILE}.tmp" "${STATUS_ESP_METERS_FILE}" 2>/dev/null \
+            || true
         done < <(
           ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" -t "wmbus/+/meters" -F '%t\t%p' -W 90 2>/dev/null
         )
