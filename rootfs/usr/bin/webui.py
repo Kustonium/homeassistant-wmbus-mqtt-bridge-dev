@@ -1356,6 +1356,21 @@ def _esp_payload() -> dict:
                 continue
             _hfresh = (now_epoch - _hep) <= 150
             _hsec = safe_int(_h.get("sec_since_last_rx", -1))
+            _hrx = safe_int(_h.get("rx_total", 0))
+            # Recent avg RSSI from the pulse (negative dBm). 1 = "no valid sample".
+            # Mapped to a qualitative band only — NEVER shown as a raw number — and
+            # only when fresh, with received frames, and a real (negative) value.
+            # Thresholds are 868 MHz wM-Bus rule-of-thumb; per-chip calibration is
+            # intentionally deferred (chip is carried for that future step).
+            _hrssi = safe_int(_h.get("rssi", 1))
+            _signal = ""
+            if _hfresh and _hrx > 0 and _hrssi < 0:
+                if _hrssi >= -75:
+                    _signal = "strong"
+                elif _hrssi >= -90:
+                    _signal = "adequate"
+                else:
+                    _signal = "weak"
             health_map[_hdev] = {
                 # alive = fresh pulse (ESP alive). stale = had a pulse, now silent
                 # (ESP stopped publishing) — NOT a firmware problem.
@@ -1363,11 +1378,14 @@ def _esp_payload() -> dict:
                 "chip": str(_h.get("chip", "")).strip(),
                 "listen_mode": str(_h.get("listen_mode", "")).strip(),
                 "uptime_s": safe_int(_h.get("uptime_s", 0)),
-                "rx_total": safe_int(_h.get("rx_total", 0)),
+                "rx_total": _hrx,
                 "sec_since_last_rx": _hsec,
                 # hears = heard ether traffic recently (~1.5x the 60 s pulse); NOT
                 # a per-meter rhythm verdict (learned cadence is deferred).
                 "hears": _hfresh and 0 <= _hsec <= 90,
+                # Signal STRENGTH as a qualitative band (strong/adequate/weak/""),
+                # NOT quality (ok/total stays in opt-in diag). "" when unknown.
+                "signal": _signal,
                 "last_pulse_epoch": _hep,
             }
 

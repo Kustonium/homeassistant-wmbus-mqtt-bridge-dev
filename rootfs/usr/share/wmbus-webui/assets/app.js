@@ -1190,7 +1190,12 @@
                   const sec = Number(dh.sec_since_last_rx);
                   const rxDot = dh.hears === true ? "ok live" : "warn";
                   const rxVal = sec < 0 ? "—" : `${sec}s`;
-                  rxCell = `<span class="dot ${rxDot}" style="margin-right:4px;"></span>${dh.chip ? escapeHtml(String(dh.chip)) + " · " : ""}${escapeHtml(rxVal)}`;
+                  // Signal STRENGTH band (qualitative, never a dBm number). "" = unknown.
+                  const sigKey = String(dh.signal || "");
+                  const sigLabel = sigKey
+                    ? ` · ${t("esp_signal_" + sigKey, sigKey)}`
+                    : "";
+                  rxCell = `<span class="dot ${rxDot}" style="margin-right:4px;"></span>${dh.chip ? escapeHtml(String(dh.chip)) + " · " : ""}${escapeHtml(rxVal)}${escapeHtml(sigLabel)}`;
                 } else if (dh.state === "stale") {
                   rxCell = `<span class="pill muted" style="font-size:10px;">${escapeHtml(t("esp_health_stopped_short", "stopped"))}</span>`;
                 } else {
