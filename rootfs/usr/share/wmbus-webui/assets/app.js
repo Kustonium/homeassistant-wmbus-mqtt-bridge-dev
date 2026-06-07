@@ -969,6 +969,14 @@
     const espCount         = Number(espPayload.devices_count || espActiveDevices.length || 0);
     const isMultiEsp       = espCount > 1;
     const espTitle         = isMultiEsp ? `${espCount} × ESP` : "ESP";
+    // Always-on health aggregate (#24): when an ESP that publishes /health stops
+    // pulsing, surface it on the TILE too — not only in the workspace detail —
+    // so a healthy rate from another ESP can't keep the tile fully green while a
+    // receiver is silent. Only triggers for health-reporting ESPs (old firmware
+    // without /health stays "unknown" and never trips this).
+    const espHealthAgg     = espPayload.health_aggregate || {state: "unknown"};
+    const espSomeStale     = espHealthAgg.state === "some_stale";
+    const espStoppedNames  = asArray(espHealthAgg.stopped).join(", ");
     const raw15m           = Number(model.raw_15m || 0);
     // Telegrams are the primary sign of life. A live telegram rate
     // (rate_current_min > 0, which webui.py zeroes once it is older than 90 s)
@@ -1082,9 +1090,10 @@
           <button class="${cls("esp")}" data-action="open-workspace" data-ws="esp" type="button">
             <div class="pipeline-icon">📡</div>
             <div class="pipeline-title">${escapeHtml(espTitle)}</div>
-            <div class="pipeline-meta">${dot(espOnline, espWarn, espOnline && hasLiveRate && espRateFromDiag)} ${escapeHtml(espStatus)}</div>
+            <div class="pipeline-meta">${dot(espOnline && !espSomeStale, espWarn || espSomeStale, espOnline && hasLiveRate && espRateFromDiag && !espSomeStale)} ${escapeHtml(espStatus)}</div>
             <div class="pipeline-sub">${escapeHtml(espVisibleLine)}</div>
             <div class="pipeline-sub pipeline-device" title="${escapeHtml(primaryTopic || "")}">${escapeHtml(espDeviceLine)}</div>
+            ${(!bridgeStale && espSomeStale) ? `<div class="pipeline-sub" style="font-size:11px;color:#f3c84b;">⚠ ${escapeHtml(t("pipeline_esp_pulse_stopped", "pulse stopped"))}: ${escapeHtml(espStoppedNames)}</div>` : ""}
           </button>
           <div class="pipeline-arrow"><span>${escapeHtml(rateLabel)}</span></div>
           <button class="${cls("mqtt")}" data-action="open-workspace" data-ws="mqtt" type="button">
