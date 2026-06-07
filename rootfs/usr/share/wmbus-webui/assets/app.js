@@ -946,7 +946,7 @@
     // Expand affordance: every pipeline tile is a button that opens its workspace
     // below. Show ▾ (collapsed) / ▲ (this tile's workspace is open) so it reads as
     // expandable rather than static.
-    const chevron = (ws) => `<div class="pipeline-chevron" aria-hidden="true" style="text-align:center;font-size:11px;line-height:1;color:#5a7180;margin-top:4px;">${state.workspace === ws ? "▲" : "▾"}</div>`;
+    const chevron = (ws) => `<div class="pipeline-chevron" aria-hidden="true" style="text-align:center;font-size:15px;letter-spacing:3px;line-height:1;color:#7d97a8;margin-top:6px;">${state.workspace === ws ? "▲▲▲" : "▾▾▾"}</div>`;
 
     const meterCount     = Number(model.meter_count || 0);
     const candidateCount = Number(model.candidate_count || 0);
