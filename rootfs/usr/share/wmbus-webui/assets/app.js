@@ -365,15 +365,36 @@
       : "";
     let rxHtml = "";
     if (esps.length) {
-      rxHtml = esps.map((e) => {
+      // Collapse entries whose short label collides — e.g. a renamed ESP whose
+      // old and new topic_name both shorten to the same name — keeping the best %.
+      const byLabel = new Map();
+      esps.forEach((e) => {
+        const label = shortEsp(e.esp);
         const p = Number(e.pct);
-        return `<span title="${escapeHtml(t("reception_pct_per_esp", "reception % on this ESP"))}: ${escapeHtml(String(e.esp))}" style="${pill}${rxPctStyle(p)}">📶 ${escapeHtml(shortEsp(e.esp))} ${p}%</span>`;
-      }).join("");
+        if (!byLabel.has(label) || p > byLabel.get(label)) byLabel.set(label, p);
+      });
+      rxHtml = Array.from(byLabel.entries()).map(([label, p]) =>
+        `<span title="${escapeHtml(t("reception_pct_per_esp", "reception % on this ESP"))}: ${escapeHtml(label)}" style="${pill}${rxPctStyle(p)}">📶 ${escapeHtml(label)} ${p}%</span>`
+      ).join("");
     } else if (bestPct >= 0) {
       rxHtml = `<span title="${escapeHtml(t("reception_pct_title", "reception % over the diagnostic window"))}" style="${pill}${rxPctStyle(bestPct)}">📶 ${bestPct}%</span>`;
     }
     if (!flagBadge && !rxHtml) return "";
     return `<div style="margin-top:5px;display:flex;flex-direction:column;align-items:flex-start;gap:4px;">${flagBadge}${rxHtml}</div>`;
+  }
+
+  // Compact legend for the reception-column badges. Rendered once under a meters
+  // table so the icons on the right are self-explanatory.
+  function receptionLegend() {
+    const pill = "display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:9px;vertical-align:middle;";
+    return `
+      <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;font-size:11px;color:#8aa0ad;padding:7px 11px;background:#0e1a23;border:1px solid #1e3040;border-radius:6px;">
+        <strong style="color:#9eafba;font-weight:600;">${escapeHtml(t("legend_title", "Legend"))}:</strong>
+        <span><span style="${pill}background:#0e4a52;color:#4dd0e1;">📡 ESP</span> — ${escapeHtml(t("esp_flagged_meter", "flagged on the ESP"))}</span>
+        <span><span style="${pill}background:#0e3a1e;color:#4df08d;">📶 esp N%</span> — ${escapeHtml(t("legend_reception_pct", "reception % per ESP (diagnostic window)"))}</span>
+        <span>${signalBars(10)} — ${escapeHtml(t("legend_signal_bars", "telegrams in the last 15 min"))}</span>
+        <span>${escapeHtml(t("legend_pct_colors", "% colour: green ≥90 · amber ≥50 · red <50"))}</span>
+      </div>`;
   }
 
   // ── #1 Encryption badge (shared by candidateTable + pendingMetersSection) ─
@@ -1816,6 +1837,7 @@
         </div>
         ${filterChips()}
         ${meterTable(filtered, true)}
+        ${filtered.length ? receptionLegend() : ""}
         ${pending.length ? pendingMetersSection(pending, data.analysis || {}) : ""}
       </section>
     `;
@@ -1934,6 +1956,7 @@
             </tbody>
           </table>
         </div>
+        ${receptionLegend()}
       </section>
     `;
   }
