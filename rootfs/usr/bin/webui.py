@@ -1523,10 +1523,17 @@ def _esp_payload() -> dict:
             ("summary" if last_sum > 0 else "event")
         )
 
+    # Drop devices not seen for over 12 h: long-dead ghosts (e.g. an ESP whose
+    # topic_name was renamed) fall off the list entirely. The window is long on
+    # purpose — a genuinely stopped ESP stays visible (and keeps raising the
+    # "pulse stopped" verdict) well within it, so this never hides a recently
+    # silenced receiver (honest-witness).
+    HIDE_AFTER_S = 12 * 60 * 60
     # Sort: active first (by recency), then inactive. Stale ghost entries
     # from MQTT retained messages drift to the bottom.
     devices_list = sorted(
-        devices.values(),
+        (d for d in devices.values()
+         if d["last_seen_epoch"] > 0 and (now_epoch - d["last_seen_epoch"]) <= HIDE_AFTER_S),
         key=lambda d: (not d["active"], -d["last_seen_epoch"]),
     )
     devices_active_count = sum(1 for d in devices_list if d["active"])

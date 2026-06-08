@@ -373,7 +373,7 @@
       rxHtml = `<span title="${escapeHtml(t("reception_pct_title", "reception % over the diagnostic window"))}" style="${pill}${rxPctStyle(bestPct)}">📶 ${bestPct}%</span>`;
     }
     if (!flagBadge && !rxHtml) return "";
-    return `<div style="margin-top:5px;display:flex;gap:4px;flex-wrap:wrap;">${flagBadge}${rxHtml}</div>`;
+    return `<div style="margin-top:5px;display:flex;flex-direction:column;align-items:flex-start;gap:4px;">${flagBadge}${rxHtml}</div>`;
   }
 
   // ── #1 Encryption badge (shared by candidateTable + pendingMetersSection) ─
