@@ -1,3 +1,9 @@
+## 1.5.31-dev.165
+
+### Added
+- drop ESP devices silent >12h; stack reception badges vertically (e40ecc9)
+- feed per-ESP reception % from the frequent meter_window topic (28d17c6)
+
 ## 1.5.31-dev.164
 
 ### Added
