@@ -1,3 +1,9 @@
+## 1.5.31-dev.166
+
+### Added
+- add reception-column legend; dedupe per-ESP badges by short name (bb67eae)
+- drop ESP devices silent >12h; stack reception badges vertically (e40ecc9)
+
 ## 1.5.31-dev.165
 
 ### Added
