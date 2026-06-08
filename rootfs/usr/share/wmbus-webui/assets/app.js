@@ -328,6 +328,51 @@
     return             {label: t("offline_label", "offline"), color: "#ff646b"};
   }
 
+  // Short, human ESP device label (strip the common esphome/wmbus prefixes that
+  // every device name shares, so the per-ESP pills stay compact).
+  function shortEsp(name) {
+    const s = String(name || "").trim()
+      .replace(/^esphome[-_]/i, "")
+      .replace(/^wmbus[-_]/i, "")
+      .replace(/^esp[-_]/i, "")
+      .replace(/^tx[-_]/i, "");
+    return s.length > 16 ? s.slice(0, 15) + "…" : (s || "ESP");
+  }
+
+  function rxPctStyle(p) {
+    return p >= 90 ? "background:#0e3a1e;color:#4df08d"
+         : p >= 50 ? "background:#3a330e;color:#f3c84b"
+         :           "background:#3a0e0e;color:#ff646b";
+  }
+
+  // ESP reception block shown on the right, next to the reception column. Two
+  // signals: the always-on "📡 ESP" flag (meter highlighted on a board) and a
+  // per-ESP reception % breakdown from the opt-in diagnostic snapshot — one pill
+  // per board (N receivers, iterative), so the user sees which ESP hears the
+  // meter and how well, instead of a single aggregate "online". When there is no
+  // per-ESP data we fall back to the single best-across-ESP %. Honest-witness:
+  // nothing is rendered when there is neither a flag nor any reception data.
+  function espReceptionBadges(row) {
+    const flagged = row.esp_flagged === "true";
+    const esps    = Array.isArray(row.reception_esps) ? row.reception_esps : [];
+    const bestPct = Number(row.reception_pct);
+    const pill = "display:inline-block;font-size:10px;font-weight:700;padding:2px 6px;border-radius:9px;white-space:nowrap;vertical-align:middle;";
+    const flagBadge = flagged
+      ? `<span title="${escapeHtml(t("esp_flagged_meter", "flagged on the ESP"))}" style="${pill}background:#0e4a52;color:#4dd0e1;cursor:help;">📡 ESP</span>`
+      : "";
+    let rxHtml = "";
+    if (esps.length) {
+      rxHtml = esps.map((e) => {
+        const p = Number(e.pct);
+        return `<span title="${escapeHtml(t("reception_pct_per_esp", "reception % on this ESP"))}: ${escapeHtml(String(e.esp))}" style="${pill}${rxPctStyle(p)}">📶 ${escapeHtml(shortEsp(e.esp))} ${p}%</span>`;
+      }).join("");
+    } else if (bestPct >= 0) {
+      rxHtml = `<span title="${escapeHtml(t("reception_pct_title", "reception % over the diagnostic window"))}" style="${pill}${rxPctStyle(bestPct)}">📶 ${bestPct}%</span>`;
+    }
+    if (!flagBadge && !rxHtml) return "";
+    return `<div style="margin-top:5px;display:flex;gap:4px;flex-wrap:wrap;">${flagBadge}${rxHtml}</div>`;
+  }
+
   // ── #1 Encryption badge (shared by candidateTable + pendingMetersSection) ─
   // bridge.sh sets encryption="unknown" when type_line contains no "encrypted"
   // or "aes" keyword — meaning wmbusmeters did NOT flag it as AES-encrypted.
@@ -1584,17 +1629,9 @@
                 const mfrCell    = mfrCompact
                   ? `<span style="font-size:12px;color:#9eafba;" title="${escapeHtml(mfrRaw)}">${escapeHtml(mfrCompact)}</span>`
                   : `<span style="color:#4a6070;">—</span>`;
-                const espBadge = row.esp_flagged === "true"
-                  ? ` <span title="${escapeHtml(t("esp_flagged_meter", "flagged on the ESP"))}" style="display:inline-block;background:#0e4a52;color:#4dd0e1;font-size:10px;font-weight:700;padding:2px 7px;border-radius:9px;white-space:nowrap;vertical-align:middle;cursor:help;">📡 ESP</span>`
-                  : "";
-                // Per-meter reception % (#15, opt-in diag). -1/absent → no badge.
-                const rxPct = Number(row.reception_pct);
-                const rxBadge = rxPct >= 0
-                  ? ` <span title="${escapeHtml(t("reception_pct_title", "reception % over the diagnostic window"))}" style="display:inline-block;font-size:10px;font-weight:700;padding:2px 6px;border-radius:9px;white-space:nowrap;vertical-align:middle;${rxPct >= 90 ? "background:#0e3a1e;color:#4df08d" : rxPct >= 50 ? "background:#3a330e;color:#f3c84b" : "background:#3a0e0e;color:#ff646b"}">📶 ${rxPct}%</span>`
-                  : "";
                 return `
                   <tr>
-                    <td><strong>${escapeHtml(id)}</strong>${espBadge}${rxBadge}</td>
+                    <td><strong>${escapeHtml(id)}</strong></td>
                     <td><span style="margin-right:5px;font-size:15px;vertical-align:middle;">${mIcon}</span>${escapeHtml(row.name || row.id || "-")}</td>
                     <td>${escapeHtml(row.driver || "-")}</td>
                     <td>${mfrCell}</td>
@@ -1606,6 +1643,7 @@
                       <span style="color:${statusColor};font-size:11px;font-weight:600;">${escapeHtml(statusLabel)}</span>
                       <span style="margin-left:5px;">${signalBars(seen15m)}</span>
                       <div style="font-size:10px;color:#607a88;">${escapeHtml(fmtInterval(row.avg_interval_s))}</div>
+                      ${espReceptionBadges(row)}
                     </td>
                     ${
                       withActions
@@ -1699,17 +1737,9 @@
                 const mfrCell    = mfrCompact
                   ? `<span style="font-size:12px;color:#9eafba;" title="${escapeHtml(mfrRaw)}">${escapeHtml(mfrCompact)}</span>`
                   : `<span style="color:#4a6070;">—</span>`;
-                const espBadge = row.esp_flagged === "true"
-                  ? ` <span title="${escapeHtml(t("esp_flagged_meter", "flagged on the ESP"))}" style="display:inline-block;background:#0e4a52;color:#4dd0e1;font-size:10px;font-weight:700;padding:2px 7px;border-radius:9px;white-space:nowrap;vertical-align:middle;cursor:help;">📡 ESP</span>`
-                  : "";
-                // Per-meter reception % (#15, opt-in diag). -1/absent → no badge.
-                const rxPct = Number(row.reception_pct);
-                const rxBadge = rxPct >= 0
-                  ? ` <span title="${escapeHtml(t("reception_pct_title", "reception % over the diagnostic window"))}" style="display:inline-block;font-size:10px;font-weight:700;padding:2px 6px;border-radius:9px;white-space:nowrap;vertical-align:middle;${rxPct >= 90 ? "background:#0e3a1e;color:#4df08d" : rxPct >= 50 ? "background:#3a330e;color:#f3c84b" : "background:#3a0e0e;color:#ff646b"}">📶 ${rxPct}%</span>`
-                  : "";
                 return `
                   <tr data-value="${escapeHtml(previewVal)}">
-                    <td><strong>${escapeHtml(id)}</strong>${espBadge}${rxBadge}</td>
+                    <td><strong>${escapeHtml(id)}</strong></td>
                     <td>${escapeHtml(driver)}</td>
                     <td style="color:#9eafba;font-size:12px;">${escapeHtml(row.type || "-")}</td>
                     <td>${mediaIconHtml(row.type || "", driver)} ${escapeHtml(mediaLabel)}</td>
@@ -1719,7 +1749,7 @@
                     <td>${fmtTime(row.last_seen)}</td>
                     <td>${escapeHtml(String(seen15mAdj))}</td>
                     <td>${escapeHtml(String(seen60mAdj))}</td>
-                    <td style="color:#607a88;font-size:12px;">${escapeHtml(fmtInterval(row.avg_interval_s))}</td>
+                    <td style="color:#607a88;font-size:12px;">${escapeHtml(fmtInterval(row.avg_interval_s))}${espReceptionBadges(row)}</td>
                     ${
                       withActions
                         ? `<td><div class="actions">
@@ -1869,17 +1899,9 @@
                 const mfrCell    = mfrCompact
                   ? `<span style="font-size:12px;color:#9eafba;" title="${escapeHtml(mfrRaw)}">${escapeHtml(mfrCompact)}</span>`
                   : `<span style="color:#4a6070;">—</span>`;
-                // Same ESP + reception% badges as the other tables, for consistency.
-                const espBadge = row.esp_flagged === "true"
-                  ? ` <span title="${escapeHtml(t("esp_flagged_meter", "flagged on the ESP"))}" style="display:inline-block;background:#0e4a52;color:#4dd0e1;font-size:10px;font-weight:700;padding:2px 7px;border-radius:9px;white-space:nowrap;vertical-align:middle;cursor:help;">📡 ESP</span>`
-                  : "";
-                const rxPct = Number(row.reception_pct);
-                const rxBadge = rxPct >= 0
-                  ? ` <span title="${escapeHtml(t("reception_pct_title", "reception % over the diagnostic window"))}" style="display:inline-block;font-size:10px;font-weight:700;padding:2px 6px;border-radius:9px;white-space:nowrap;vertical-align:middle;${rxPct >= 90 ? "background:#0e3a1e;color:#4df08d" : rxPct >= 50 ? "background:#3a330e;color:#f3c84b" : "background:#3a0e0e;color:#ff646b"}">📶 ${rxPct}%</span>`
-                  : "";
                 return `
                   <tr data-value="${escapeHtml(dataVal)}">
-                    <td><strong>${escapeHtml(id)}</strong>${espBadge}${rxBadge}</td>
+                    <td><strong>${escapeHtml(id)}</strong></td>
                     <td><span style="margin-right:5px;font-size:15px;vertical-align:middle;">${mIcon}</span>${escapeHtml(row.name || id || "-")}</td>
                     <td>${escapeHtml(row.driver || "-")}</td>
                     <td>${mfrCell}</td>
@@ -1890,7 +1912,7 @@
                     <td>${fmtTime(row.last_seen)}</td>
                     <td>${escapeHtml(String(seen15mAdj))}</td>
                     <td>${escapeHtml(String(seen60mAdj))}</td>
-                    <td style="color:#607a88;font-size:12px;">${escapeHtml(fmtInterval(row.avg_interval_s))}</td>
+                    <td style="color:#607a88;font-size:12px;">${escapeHtml(fmtInterval(row.avg_interval_s))}${espReceptionBadges(row)}</td>
                     <td><div class="actions">
                       ${row.preview_active === "true" ? `<button class="btn" data-action="cancel-preview" data-id="${escapeHtml(id)}">${escapeHtml(t("cancel_preview", "Cancel preview"))}</button>` : ""}
                       <button class="btn danger" data-action="remove-meter" data-id="${escapeHtml(id)}">${escapeHtml(t("remove_from_config", "Remove from config"))}</button>

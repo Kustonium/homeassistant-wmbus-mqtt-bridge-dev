@@ -803,6 +803,10 @@ def state(include_ignored: bool = False) -> dict:
     # gets it well). -1 (absent) when there is no usable data — diagnostics off, no
     # highlight_meters, stale, or the window is shorter than one interval.
     reception_by_id: dict[str, int] = {}
+    # Per-ESP breakdown: mid -> {esp_device: pct}. Lets the UI show how each
+    # board behaves for the same meter (architectural differences), not just the
+    # best-across-ESP number. Scales to N receivers.
+    reception_by_esp: dict[str, dict[str, int]] = {}
     _snap_raw = read_json(STATUS_ESP_METER_SNAPSHOT_JSON)
     if isinstance(_snap_raw, dict):
         _rx_now = _time_esp.time()
@@ -829,6 +833,16 @@ def state(include_ignored: bool = False) -> dict:
                 _pct = int(round(min(100.0, (safe_int(_mw.get("count_window", 0)) / _expected) * 100.0)))
                 if _pct > reception_by_id.get(_mid, -1):
                     reception_by_id[_mid] = _pct
+                _per = reception_by_esp.setdefault(_mid, {})
+                if _pct > _per.get(_sdev, -1):
+                    _per[_sdev] = _pct
+
+    def _rx_esps(mid: str) -> list:
+        _per = reception_by_esp.get(mid)
+        if not _per:
+            return []
+        return [{"esp": k, "pct": v}
+                for k, v in sorted(_per.items(), key=lambda kv: (-kv[1], kv[0]))]
 
     for c in candidates:
         c["ignored"] = "true" if c.get("id") in ignored else "false"
@@ -836,6 +850,7 @@ def state(include_ignored: bool = False) -> dict:
         c["esp_flagged"] = "true" if normalize_meter_id(c.get("id")) in esp_flagged_ids else "false"
         # Per-meter reception % (#15); -1 = no data (diag off / not highlighted / stale).
         c["reception_pct"] = reception_by_id.get(normalize_meter_id(c.get("id")), -1)
+        c["reception_esps"] = _rx_esps(normalize_meter_id(c.get("id")))
         # preview_active = there's a preview config for this candidate.
         # Single source of truth = filesystem; one-shot RAW decoders consume the
         # config without touching the always-on LISTEN pipeline.
@@ -856,6 +871,7 @@ def state(include_ignored: bool = False) -> dict:
     for m in meters:
         m["esp_flagged"] = "true" if normalize_meter_id(m.get("id") or m.get("meter_id")) in esp_flagged_ids else "false"
         m["reception_pct"] = reception_by_id.get(normalize_meter_id(m.get("id") or m.get("meter_id")), -1)
+        m["reception_esps"] = _rx_esps(normalize_meter_id(m.get("id") or m.get("meter_id")))
 
     # Build normalized options_meter_ids early — used both for TSV filtering and
     # candidate dedup. Do not write back to status_meters.tsv from this read path.
