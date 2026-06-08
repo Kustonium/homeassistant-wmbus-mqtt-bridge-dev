@@ -1,3 +1,9 @@
+## 1.5.31-dev.161
+
+### Fixed
+- correct the configured-meters panel subtitle (DECODE not LISTEN) (ea92d7e)
+- make pipeline expand chevron readable (triple arrow) (1cd35c1)
+
 ## 1.5.31-dev.160
 
 ### Added
