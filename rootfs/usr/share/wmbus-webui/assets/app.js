@@ -1829,7 +1829,7 @@
           <h2>${escapeHtml(t("configured_meters_panel_title", "Configured meters on air"))}</h2>
           <span id="discover-configured-count" data-default="${rows.length}">${rows.length}</span>
         </div>
-        <p style="font-size:11px;color:#607a88;margin:0 0 10px;">${escapeHtml(t("configured_meters_panel_sub", "These IDs are already in your options.json. The parallel listen instance keeps their reception stats live."))}</p>
+        <p style="font-size:11px;color:#607a88;margin:0 0 10px;">${escapeHtml(t("configured_meters_panel_sub", "These IDs are already in your options.json — the decode instance (primary wmbusmeters) keeps their reception stats. The 15m/60m counters start fresh when a meter is added."))}</p>
         <div class="table-wrap">
           <table>
             <thead>
