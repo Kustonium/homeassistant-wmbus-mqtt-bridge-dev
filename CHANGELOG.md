@@ -1,3 +1,9 @@
+## 1.5.31-dev.163
+
+### Added
+- bulk-remove configured meters via checkboxes + toolbar (7f771a5)
+- move ESP/reception badges to the reception side with per-ESP breakdown (e73ea4a)
+
 ## 1.5.31-dev.162
 
 ### Added
