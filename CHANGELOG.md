@@ -1,3 +1,9 @@
+## 1.5.31-dev.164
+
+### Added
+- feed per-ESP reception % from the frequent meter_window topic (28d17c6)
+- bulk-remove configured meters via checkboxes + toolbar (7f771a5)
+
 ## 1.5.31-dev.163
 
 ### Added
