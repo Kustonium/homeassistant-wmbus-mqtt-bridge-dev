@@ -1,3 +1,10 @@
+## 1.5.31-dev.168
+
+### Added
+- move reception legend onto the column header (info tooltip) (d29b84a)
+- show per-ESP telegram count alongside the reception % (64ebbca)
+- add reception-column legend; dedupe per-ESP badges by short name (bb67eae)
+
 ## 1.5.31-dev.166
 
 ### Added
