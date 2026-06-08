@@ -78,6 +78,9 @@
     dashboardView: loadDashboardView(),
     // Drill-down workspace when a pipeline node is clicked. null = no drill-down.
     workspace: null,  // "esp" | "mqtt" | "wmbus" | "ha" | null
+    // IDs ticked for bulk removal in the configured-meters panel. Persisted in
+    // state so the selection survives the polling re-render (morphdom).
+    selectedRemoval: new Set(),
   };
 
   let liveSource = null;
@@ -1853,6 +1856,9 @@
 
   function discoverConfiguredPanel(rows) {
     if (!rows.length) return "";
+    const rowIds   = rows.map(r => r.id || r.meter_id || "").filter(Boolean);
+    const selCount = rowIds.filter(i => state.selectedRemoval.has(i)).length;
+    const allSel   = rowIds.length > 0 && selCount === rowIds.length;
     return `
       <section class="section">
         <div class="section-head">
@@ -1860,10 +1866,16 @@
           <span id="discover-configured-count" data-default="${rows.length}">${rows.length}</span>
         </div>
         <p style="font-size:11px;color:#607a88;margin:0 0 10px;">${escapeHtml(t("configured_meters_panel_sub", "These IDs are already in your options.json — the decode instance (primary wmbusmeters) keeps their reception stats. The 15m/60m counters start fresh when a meter is added."))}</p>
+        <div style="display:flex;align-items:center;gap:10px;margin:0 0 10px;flex-wrap:wrap;">
+          <button class="btn danger" type="button" data-action="remove-selected-meters" ${selCount ? "" : "disabled"}
+            style="${selCount ? "" : "opacity:.5;cursor:not-allowed;"}white-space:nowrap;">🗑 ${escapeHtml(t("remove_selected", "Remove selected"))}${selCount ? ` (${selCount})` : ""}</button>
+          <span style="font-size:11px;color:#607a88;">${escapeHtml(t("remove_selected_hint", "Tick the meters you want to remove from the configuration."))}</span>
+        </div>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
+                <th style="width:28px;text-align:center;"><input type="checkbox" data-action="select-all-meters" ${allSel ? "checked" : ""} title="${escapeHtml(t("select_all", "Select all"))}" style="cursor:pointer;"></th>
                 <th>${escapeHtml(t("webui_id", "ID"))}</th>
                 <th>${escapeHtml(t("webui_name", "Name"))}</th>
                 <th>${escapeHtml(t("driver", "Driver"))}</th>
@@ -1901,6 +1913,7 @@
                   : `<span style="color:#4a6070;">—</span>`;
                 return `
                   <tr data-value="${escapeHtml(dataVal)}">
+                    <td style="text-align:center;"><input type="checkbox" data-action="toggle-select-meter" data-id="${escapeHtml(id)}" ${state.selectedRemoval.has(id) ? "checked" : ""} style="cursor:pointer;"></td>
                     <td><strong>${escapeHtml(id)}</strong></td>
                     <td><span style="margin-right:5px;font-size:15px;vertical-align:middle;">${mIcon}</span>${escapeHtml(row.name || id || "-")}</td>
                     <td>${escapeHtml(row.driver || "-")}</td>
@@ -1915,7 +1928,6 @@
                     <td style="color:#607a88;font-size:12px;">${escapeHtml(fmtInterval(row.avg_interval_s))}${espReceptionBadges(row)}</td>
                     <td><div class="actions">
                       ${row.preview_active === "true" ? `<button class="btn" data-action="cancel-preview" data-id="${escapeHtml(id)}">${escapeHtml(t("cancel_preview", "Cancel preview"))}</button>` : ""}
-                      <button class="btn danger" data-action="remove-meter" data-id="${escapeHtml(id)}">${escapeHtml(t("remove_from_config", "Remove from config"))}</button>
                     </div></td>
                   </tr>`;
               }).join("")}
@@ -2580,6 +2592,43 @@
       if (!id || !window.confirm(t("webui_remove_confirm", "Remove meter {id}?", {id}))) return;
       try {
         await postApi("remove-meter", {meter_id: id});
+        triggerSoftReload(`${t("webui_meter_removed", "Meter removed.")} ${t("reloading_pipeline", "Applying meter changes…")}`);
+      } catch (error) {
+        toast(error.message, true);
+      }
+      return;
+    }
+
+    // Bulk removal in the configured-meters panel: per-row checkboxes feed a
+    // selection Set in state; the toolbar button removes them all at once.
+    if (action === "toggle-select-meter") {
+      const id = target.dataset.id || "";
+      if (!id) return;
+      if (state.selectedRemoval.has(id)) state.selectedRemoval.delete(id);
+      else state.selectedRemoval.add(id);
+      render();
+      return;
+    }
+
+    if (action === "select-all-meters") {
+      const ids = Array.from(
+        document.querySelectorAll('#discover-configured-tbody input[data-action="toggle-select-meter"]')
+      ).map(b => b.dataset.id).filter(Boolean);
+      const allSel = ids.length > 0 && ids.every(i => state.selectedRemoval.has(i));
+      ids.forEach(i => allSel ? state.selectedRemoval.delete(i) : state.selectedRemoval.add(i));
+      render();
+      return;
+    }
+
+    if (action === "remove-selected-meters") {
+      const ids = Array.from(state.selectedRemoval);
+      if (!ids.length) return;
+      if (!window.confirm(t("remove_selected_confirm", "Remove {n} selected meter(s) from the configuration?", {n: ids.length}))) return;
+      try {
+        for (const id of ids) {
+          await postApi("remove-meter", {meter_id: id});
+        }
+        state.selectedRemoval.clear();
         triggerSoftReload(`${t("webui_meter_removed", "Meter removed.")} ${t("reloading_pipeline", "Applying meter changes…")}`);
       } catch (error) {
         toast(error.message, true);
