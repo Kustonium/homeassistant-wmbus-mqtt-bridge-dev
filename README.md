@@ -8,6 +8,8 @@
 **Pełna dokumentacja / Full documentation:**
 [🇵🇱 PL](docs/README.pl.md) · [🇬🇧 EN](docs/README.en.md) · [🇩🇪 DE](docs/README.de.md) · [🇨🇿 CS](docs/README.cs.md) · [🇸🇰 SK](docs/README.sk.md)
 
+**Architektura / internals (maintainers):** [ARCHITECTURE.md](docs/ARCHITECTURE.md)
+
 > ⚠️ Tłumaczenia maszynowe — mogą zawierać błędy w dowolnym języku, w tym PL i EN. / Machine-generated translations — may contain errors in any language, including PL and EN.
 
 ---
@@ -84,7 +86,7 @@ Widoki:
 - **Ustawienia** — aktywna konfiguracja runtime i snapshot `options.json`; globalny restart dodatku jest w górnym pasku WebUI.
 - **O projekcie** — krótki opis architektury.
 
-Interfejs jest dostępny w 5 językach (🇬🇧 EN · 🇵🇱 PL · 🇩🇪 DE · 🇨🇿 CS · 🇸🇰 SK) — przełącznik w prawym górnym rogu. Pełny opis widoków: [dokumentacja PL](docs/README.pl.md) · [EN §5](docs/README.en.md#5-webui--main-views).
+Interfejs jest dostępny w 5 językach (🇬🇧 EN · 🇵🇱 PL · 🇩🇪 DE · 🇨🇿 CS · 🇸🇰 SK) — przełącznik w prawym górnym rogu. Pełny opis widoków: [dokumentacja PL](docs/README.pl.md) · [EN §5](docs/README.en.md#5-the-webui--what-you-see).
 
 ---
 
@@ -344,7 +346,7 @@ Views:
 - **Settings** — active runtime configuration and `options.json` snapshot; the global add-on restart button is in the WebUI top bar.
 - **About** — a short architecture description.
 
-The interface is available in 5 languages (🇬🇧 EN · 🇵🇱 PL · 🇩🇪 DE · 🇨🇿 CS · 🇸🇰 SK) — switcher in the top-right corner. Full description of the views: [docs EN §5](docs/README.en.md#5-webui--main-views).
+The interface is available in 5 languages (🇬🇧 EN · 🇵🇱 PL · 🇩🇪 DE · 🇨🇿 CS · 🇸🇰 SK) — switcher in the top-right corner. Full description of the views: [docs EN §5](docs/README.en.md#5-the-webui--what-you-see).
 
 ---
 
