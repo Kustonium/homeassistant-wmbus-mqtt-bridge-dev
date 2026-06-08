@@ -150,6 +150,45 @@ STATUS_ESP_METER_SNAPSHOT_FILE="${BASE}/status_esp_meter_snapshot.json"
 ) &
 ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 
+# Background subscriber for per-meter reception WINDOWS
+# (wmbus/+/diag/meter/<id>/<mode>/window/<trigger>). Same reception fields as
+# meter_snapshot (id, count_window, avg_interval_s, elapsed_s) but published per
+# meter on the frequent "count" trigger (every N telegrams) — so the per-ESP %
+# in webui.py populates within minutes and for every ESP, instead of waiting for
+# a board's first 15-min summary_15min batch. Stored as a nested MAP keyed by ESP
+# device then meter id, so webui.py can merge it with the snapshot per-ESP data.
+STATUS_ESP_METER_WINDOW_FILE="${BASE}/status_esp_meter_window.json"
+(
+  while true; do
+    while IFS=$'\t' read -r _mw_topic _mw_line; do
+          [[ -n "${_mw_line}" ]] || continue
+          # Device = topic segment between "wmbus/" and "/diag/meter/...".
+          _mw_dev="${_mw_topic#wmbus/}"
+          _mw_dev="${_mw_dev%%/diag/meter/*}"
+          [[ -n "${_mw_dev}" && "${_mw_dev}" != "${_mw_topic}" ]] || continue
+          _ts="$(date +%s 2>/dev/null || echo 0)"
+          # `|| true` REQUIRED under set -euo pipefail (the #16 cat-abort lesson):
+          # a missing file on the first message must not abort the subshell.
+          _mw_cur="$(cat "${STATUS_ESP_METER_WINDOW_FILE}" 2>/dev/null || true)"
+          [[ -n "${_mw_cur}" ]] || _mw_cur="{}"
+          # Key the entry by the payload's own id; nest under the device map.
+          printf '%s' "${_mw_cur}" \
+            | jq --argjson t "${_ts}" --arg dev "${_mw_dev}" --argjson p "${_mw_line}" \
+                '($p.id // "") as $id
+                 | if $id == "" then .
+                   else .[$dev] = ((.[$dev] // {}) + {($id): ($p + {_bridge_rx_epoch: $t})})
+                   end' 2>/dev/null \
+            > "${STATUS_ESP_METER_WINDOW_FILE}.tmp" \
+            && mv "${STATUS_ESP_METER_WINDOW_FILE}.tmp" "${STATUS_ESP_METER_WINDOW_FILE}" 2>/dev/null \
+            || true
+        done < <(
+          ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" -t "wmbus/+/diag/meter/+/+/window/+" -F '%t\t%p' -W 90 2>/dev/null
+        )
+    sleep 5
+  done
+) &
+ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
+
 # Background subscriber for per-ESP-device telegram tracking.
 # Listens to the RAW telegram topic (with wildcard) and records each
 # distinct device name + last-seen epoch + telegram count to a TSV.

@@ -61,6 +61,11 @@ STATUS_ESP_METERS_JSON = BASE / "status_esp_meters.json"
 # avg_interval_s into a per-meter reception % (the real quality signal, #15) —
 # best across ESPs. Absent when diagnostics are off / no highlight_meters.
 STATUS_ESP_METER_SNAPSHOT_JSON = BASE / "status_esp_meter_snapshot.json"
+# Per-meter reception window (wmbus/+/diag/meter/<id>/<mode>/window/<trigger>).
+# Same reception fields as the 15-min snapshot but published per meter on the
+# frequent "count" trigger (every N telegrams), so the per-ESP % populates in
+# minutes instead of waiting for the 15-min batch. Map keyed dev -> id -> fields.
+STATUS_ESP_METER_WINDOW_JSON = BASE / "status_esp_meter_window.json"
 # ESP events TSV and per-event detail files (written by bridge.sh event subscriber)
 STATUS_ESP_EVENTS_FILE = BASE / "status_esp_events.tsv"
 STATUS_ESP_SUGGESTION_FILE = BASE / "status_esp_suggestion.json"
@@ -836,6 +841,38 @@ def state(include_ignored: bool = False) -> dict:
                 _per = reception_by_esp.setdefault(_mid, {})
                 if _pct > _per.get(_sdev, -1):
                     _per[_sdev] = _pct
+
+    # Per-meter reception windows (count-triggered, frequent). Same formula and
+    # the same reception maps as the 15-min snapshot, merged with max() — this
+    # makes the per-ESP % appear within minutes and for every ESP, instead of
+    # only after a board's first 15-min summary. Map: dev -> {id -> fields}.
+    _win_raw = read_json(STATUS_ESP_METER_WINDOW_JSON)
+    if isinstance(_win_raw, dict):
+        _rx_now_w = _time_esp.time()
+        for _wdev, _wmeters in _win_raw.items():
+            if not isinstance(_wmeters, dict):
+                continue
+            for _wmid_raw, _wrow in _wmeters.items():
+                if not isinstance(_wrow, dict):
+                    continue
+                # ~30 min freshness: the count trigger cadence is 10*interval, so
+                # a slow meter legitimately updates less often than the snapshot.
+                if (_rx_now_w - safe_int(_wrow.get("_bridge_rx_epoch", 0))) > 1800:
+                    continue
+                _wmid = normalize_meter_id(_wrow.get("id") or _wmid_raw)
+                _wai = safe_int(_wrow.get("avg_interval_s", 0))
+                _welapsed = safe_int(_wrow.get("elapsed_s", 0))
+                if not _wmid or _wai <= 0 or _welapsed <= 0:
+                    continue
+                _wexpected = _welapsed / _wai
+                if _wexpected < 1:
+                    continue
+                _wpct = int(round(min(100.0, (safe_int(_wrow.get("count_window", 0)) / _wexpected) * 100.0)))
+                if _wpct > reception_by_id.get(_wmid, -1):
+                    reception_by_id[_wmid] = _wpct
+                _wper = reception_by_esp.setdefault(_wmid, {})
+                if _wpct > _wper.get(_wdev, -1):
+                    _wper[_wdev] = _wpct
 
     def _rx_esps(mid: str) -> list:
         _per = reception_by_esp.get(mid)
