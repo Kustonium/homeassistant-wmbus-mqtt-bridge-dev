@@ -1,3 +1,11 @@
+## 1.5.31-dev.162
+
+### Added
+- move ESP/reception badges to the reception side with per-ESP breakdown (e73ea4a)
+
+### Fixed
+- correct the configured-meters panel subtitle (DECODE not LISTEN) (ea92d7e)
+
 ## 1.5.31-dev.161
 
 ### Fixed
