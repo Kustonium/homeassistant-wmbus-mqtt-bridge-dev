@@ -366,15 +366,18 @@
     let rxHtml = "";
     if (esps.length) {
       // Collapse entries whose short label collides — e.g. a renamed ESP whose
-      // old and new topic_name both shorten to the same name — keeping the best %.
+      // old and new topic_name both shorten to the same name — keeping the entry
+      // with the most telegrams read.
       const byLabel = new Map();
       esps.forEach((e) => {
         const label = shortEsp(e.esp);
-        const p = Number(e.pct);
-        if (!byLabel.has(label) || p > byLabel.get(label)) byLabel.set(label, p);
+        const c = Number(e.count) || 0;
+        const cur = byLabel.get(label);
+        if (!cur || c > cur.count) byLabel.set(label, {pct: Number(e.pct), count: c});
       });
-      rxHtml = Array.from(byLabel.entries()).map(([label, p]) =>
-        `<span title="${escapeHtml(t("reception_pct_per_esp", "reception % on this ESP"))}: ${escapeHtml(label)}" style="${pill}${rxPctStyle(p)}">📶 ${escapeHtml(label)} ${p}%</span>`
+      const fmtTel = (n) => n >= 1000 ? `${Math.round(n / 100) / 10}k` : String(n);
+      rxHtml = Array.from(byLabel.entries()).map(([label, v]) =>
+        `<span title="${escapeHtml(t("reception_pct_per_esp", "reception % on this ESP"))}: ${escapeHtml(label)}" style="${pill}${rxPctStyle(v.pct)}">📶 ${escapeHtml(label)} ${v.pct}%${v.count > 0 ? ` · ${fmtTel(v.count)}` : ""}</span>`
       ).join("");
     } else if (bestPct >= 0) {
       rxHtml = `<span title="${escapeHtml(t("reception_pct_title", "reception % over the diagnostic window"))}" style="${pill}${rxPctStyle(bestPct)}">📶 ${bestPct}%</span>`;
@@ -391,7 +394,7 @@
       <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;font-size:11px;color:#8aa0ad;padding:7px 11px;background:#0e1a23;border:1px solid #1e3040;border-radius:6px;">
         <strong style="color:#9eafba;font-weight:600;">${escapeHtml(t("legend_title", "Legend"))}:</strong>
         <span><span style="${pill}background:#0e4a52;color:#4dd0e1;">📡 ESP</span> — ${escapeHtml(t("esp_flagged_meter", "flagged on the ESP"))}</span>
-        <span><span style="${pill}background:#0e3a1e;color:#4df08d;">📶 esp N%</span> — ${escapeHtml(t("legend_reception_pct", "reception % per ESP (diagnostic window)"))}</span>
+        <span><span style="${pill}background:#0e3a1e;color:#4df08d;">📶 esp N% · 1.2k</span> — ${escapeHtml(t("legend_reception_pct", "reception % and telegrams read per ESP (diagnostic window)"))}</span>
         <span>${signalBars(10)} — ${escapeHtml(t("legend_signal_bars", "telegrams in the last 15 min"))}</span>
         <span>${escapeHtml(t("legend_pct_colors", "% colour: green ≥90 · amber ≥50 · red <50"))}</span>
       </div>`;

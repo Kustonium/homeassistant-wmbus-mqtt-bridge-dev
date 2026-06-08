@@ -808,10 +808,11 @@ def state(include_ignored: bool = False) -> dict:
     # gets it well). -1 (absent) when there is no usable data — diagnostics off, no
     # highlight_meters, stale, or the window is shorter than one interval.
     reception_by_id: dict[str, int] = {}
-    # Per-ESP breakdown: mid -> {esp_device: pct}. Lets the UI show how each
-    # board behaves for the same meter (architectural differences), not just the
-    # best-across-ESP number. Scales to N receivers.
-    reception_by_esp: dict[str, dict[str, int]] = {}
+    # Per-ESP breakdown: mid -> {esp_device: {"pct": int, "count": int}}. Lets the
+    # UI show how each board behaves for the same meter (architectural differences
+    # and how many telegrams each receiver actually read), not just the best
+    # aggregate. Scales to N receivers.
+    reception_by_esp: dict[str, dict[str, dict]] = {}
     _snap_raw = read_json(STATUS_ESP_METER_SNAPSHOT_JSON)
     if isinstance(_snap_raw, dict):
         _rx_now = _time_esp.time()
@@ -836,11 +837,13 @@ def state(include_ignored: bool = False) -> dict:
                 if _expected < 1:   # window shorter than one interval → unreliable
                     continue
                 _pct = int(round(min(100.0, (safe_int(_mw.get("count_window", 0)) / _expected) * 100.0)))
+                _ct = safe_int(_mw.get("count_total", _mw.get("count_window", 0)))
                 if _pct > reception_by_id.get(_mid, -1):
                     reception_by_id[_mid] = _pct
                 _per = reception_by_esp.setdefault(_mid, {})
-                if _pct > _per.get(_sdev, -1):
-                    _per[_sdev] = _pct
+                _cur = _per.get(_sdev)
+                if _cur is None or _ct >= _cur["count"]:
+                    _per[_sdev] = {"pct": _pct, "count": _ct}
 
     # Per-meter reception windows (count-triggered, frequent). Same formula and
     # the same reception maps as the 15-min snapshot, merged with max() — this
@@ -868,18 +871,22 @@ def state(include_ignored: bool = False) -> dict:
                 if _wexpected < 1:
                     continue
                 _wpct = int(round(min(100.0, (safe_int(_wrow.get("count_window", 0)) / _wexpected) * 100.0)))
+                _wct = safe_int(_wrow.get("count_total", _wrow.get("count_window", 0)))
                 if _wpct > reception_by_id.get(_wmid, -1):
                     reception_by_id[_wmid] = _wpct
                 _wper = reception_by_esp.setdefault(_wmid, {})
-                if _wpct > _wper.get(_wdev, -1):
-                    _wper[_wdev] = _wpct
+                _wcur = _wper.get(_wdev)
+                if _wcur is None or _wct >= _wcur["count"]:
+                    _wper[_wdev] = {"pct": _wpct, "count": _wct}
 
     def _rx_esps(mid: str) -> list:
         _per = reception_by_esp.get(mid)
         if not _per:
             return []
-        return [{"esp": k, "pct": v}
-                for k, v in sorted(_per.items(), key=lambda kv: (-kv[1], kv[0]))]
+        # Sort most-reading first: by telegram count, then %, then name.
+        return [{"esp": k, "pct": v["pct"], "count": v["count"]}
+                for k, v in sorted(_per.items(),
+                                   key=lambda kv: (-kv[1]["count"], -kv[1]["pct"], kv[0]))]
 
     for c in candidates:
         c["ignored"] = "true" if c.get("id") in ignored else "false"
