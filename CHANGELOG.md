@@ -1,86 +1,27 @@
-## 1.5.31-dev.168
-
-### Added
-- move reception legend onto the column header (info tooltip) (d29b84a)
-- show per-ESP telegram count alongside the reception % (64ebbca)
-- add reception-column legend; dedupe per-ESP badges by short name (bb67eae)
-
-## 1.5.31-dev.166
-
-### Added
-- add reception-column legend; dedupe per-ESP badges by short name (bb67eae)
-- drop ESP devices silent >12h; stack reception badges vertically (e40ecc9)
-
-## 1.5.31-dev.165
-
-### Added
-- drop ESP devices silent >12h; stack reception badges vertically (e40ecc9)
-- feed per-ESP reception % from the frequent meter_window topic (28d17c6)
-
-## 1.5.31-dev.164
-
-### Added
-- feed per-ESP reception % from the frequent meter_window topic (28d17c6)
-- bulk-remove configured meters via checkboxes + toolbar (7f771a5)
-
-## 1.5.31-dev.163
-
-### Added
-- bulk-remove configured meters via checkboxes + toolbar (7f771a5)
-- move ESP/reception badges to the reception side with per-ESP breakdown (e73ea4a)
-
-## 1.5.31-dev.162
-
-### Added
-- move ESP/reception badges to the reception side with per-ESP breakdown (e73ea4a)
-
-### Fixed
-- correct the configured-meters panel subtitle (DECODE not LISTEN) (ea92d7e)
-
-## 1.5.31-dev.161
-
-### Fixed
-- correct the configured-meters panel subtitle (DECODE not LISTEN) (ea92d7e)
-- make pipeline expand chevron readable (triple arrow) (1cd35c1)
-
-## 1.5.31-dev.160
-
-### Added
-- unify ESP/reception badges across meter tables + add expand chevrons to pipeline tiles (c900de0)
-
-### Fixed
-- make pipeline expand chevron readable (triple arrow) (1cd35c1)
-
-## 1.5.31-dev.159
-
-### Added
-- unify ESP/reception badges across meter tables + add expand chevrons to pipeline tiles (c900de0)
-- per-meter reception % from the opt-in diag meter_snapshot (fda2daa)
-
-## 1.5.31-dev.158
-
-### Added
-- per-meter reception % from the opt-in diag meter_snapshot (fda2daa)
-
-### Fixed
-- remove the RSSI signal-strength band (RSSI unreliable across boards) (5acf7fa)
-
-## 1.5.31-dev.157
-
-### Added
-- adaptive per-ESP RSSI band (chip-fair signal strength) (bb3ec67)
-
-### Fixed
-- remove the RSSI signal-strength band (RSSI unreliable across boards) (5acf7fa)
-
-## 1.5.31-dev.156
-
-### Added
-- adaptive per-ESP RSSI band (chip-fair signal strength) (bb3ec67)
-
 ## 1.5.31-dev
 
-<!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
+### Added
+- Per-ESP reception quality for each configured meter: the dashboard now shows,
+  per receiver, the reception % and the telegram count for a meter, sourced from
+  the ESP's opt-in diagnostics (`meter_snapshot` and the more frequent
+  `meter_window`). It populates within minutes and scales to any number of ESPs.
+- Reception badges (the ESP flag and per-ESP reception %) shown in the reception
+  column across all meter tables, stacked one per line, with a legend on the
+  column header explaining what each marker means.
+- Bulk removal of configured meters via per-row checkboxes and a toolbar action.
+
+### Changed
+- ESP devices silent for over 12 h are dropped from the "Connected ESP" list
+  (e.g. after a topic_name rename), while a recently stopped ESP stays visible
+  and still raises the "pulse stopped" verdict.
+
+### Fixed
+- Removed the RSSI signal-strength band: field testing showed RSSI is not
+  trustworthy across boards, so reception % — not RSSI — is the quality signal.
+- Corrected the "configured meters on air" panel subtitle: the 15m/60m counters
+  come from the decode instance (primary wmbusmeters), not the parallel listen
+  instance.
+- Made the pipeline expand affordance readable (triple chevron).
 
 ## 1.5.30-dev
 
