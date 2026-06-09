@@ -1,3 +1,12 @@
+## 1.5.34-dev.176
+
+### Added
+- prune long-silent candidates from status_candidates.tsv (24h) (c8dc73c)
+- sink no-reception candidates to the bottom + media-group dividers (909ea78)
+
+### Fixed
+- align candidate silent-detection with the age-adjusted UI counters (2ba28b0)
+
 ## 1.5.34-dev.175
 
 ### Added
