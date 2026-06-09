@@ -1,3 +1,9 @@
+## 1.5.34-dev.175
+
+### Added
+- sink no-reception candidates to the bottom + media-group dividers (909ea78)
+- stable candidate sort — group by media, then telegram count, then id (71640fc)
+
 ## 1.5.34-dev.174
 
 ### Added
