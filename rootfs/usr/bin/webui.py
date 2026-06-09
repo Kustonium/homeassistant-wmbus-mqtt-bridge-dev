@@ -1045,9 +1045,19 @@ def state(include_ignored: bool = False) -> dict:
         if "water" in t or "0x07" in t or "0x16" in t:
             return 0  # (cold) water
         return 4      # other
+    # "Silent" = no telegram in the last hour (seen_15m == seen_60m == 0). These
+    # candidates (still inside the 24h freshness window, but currently quiet /
+    # "decoding…") sink BELOW the actively-heard ones as their own block — they
+    # are not part of the live "known" listing. Flag exposed so the table can draw
+    # a divider before the block.
+    def _silent(c: dict) -> int:
+        return 0 if (safe_int(c.get("seen_15m")) > 0 or safe_int(c.get("seen_60m")) > 0) else 1
+    for c in candidates:
+        c["recent_silent"] = "true" if _silent(c) else "false"
     candidates = sorted(
         candidates,
         key=lambda c: (
+            _silent(c),
             _media_group(c),
             -safe_int(c.get("seen_count")),
             normalize_meter_id(c.get("id")) or str(c.get("id") or ""),
