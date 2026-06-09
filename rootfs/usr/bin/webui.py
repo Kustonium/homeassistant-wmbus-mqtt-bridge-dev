@@ -1050,8 +1050,25 @@ def state(include_ignored: bool = False) -> dict:
     # "decoding…") sink BELOW the actively-heard ones as their own block — they
     # are not part of the live "known" listing. Flag exposed so the table can draw
     # a divider before the block.
+    #
+    # IMPORTANT: age-adjust the stored counters exactly like app.js does before
+    # display (seen15mAdj/seen60mAdj). status_candidates.tsv keeps the LAST known
+    # positive seen_15m/seen_60m even after the meter goes quiet; without this the
+    # backend sort would treat a long-silent candidate (UI shows 0/0) as active
+    # and float it to the TOP of its group, contradicting the displayed 0/0.
+    def _seen_age_s(c: dict):
+        dt = parse_iso_time(str(c.get("last_seen") or ""))
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return (_now_utc - dt).total_seconds()
+
     def _silent(c: dict) -> int:
-        return 0 if (safe_int(c.get("seen_15m")) > 0 or safe_int(c.get("seen_60m")) > 0) else 1
+        age_s = _seen_age_s(c)
+        seen_15m = safe_int(c.get("seen_15m")) if (age_s is None or age_s <= 15 * 60) else 0
+        seen_60m = safe_int(c.get("seen_60m")) if (age_s is None or age_s <= 60 * 60) else 0
+        return 0 if (seen_15m > 0 or seen_60m > 0) else 1
     for c in candidates:
         c["recent_silent"] = "true" if _silent(c) else "false"
     candidates = sorted(
