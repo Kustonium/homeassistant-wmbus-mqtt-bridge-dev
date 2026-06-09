@@ -1002,6 +1002,24 @@ def state(include_ignored: bool = False) -> dict:
 
     if not include_ignored:
         candidates = [c for c in candidates if c.get("ignored") != "true"]
+
+    # Drop STALE candidates from the active list: a meter last heard long ago is
+    # not "being heard" now, so listing it (and counting it) as a current
+    # candidate is misleading — it was heard, in the past. Keep discovery to what
+    # is actually arriving (honest-witness). Only hide when last_seen is
+    # confidently older than the window; a missing/unparseable timestamp is kept.
+    # status_candidates.tsv is NOT modified — this is a display freshness filter.
+    CANDIDATE_STALE_AFTER_S = 24 * 60 * 60
+    _now_utc = datetime.now(timezone.utc)
+    def _candidate_fresh(c: dict) -> bool:
+        dt = parse_iso_time(str(c.get("last_seen") or ""))
+        if dt is None:
+            return True
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return (_now_utc - dt).total_seconds() <= CANDIDATE_STALE_AFTER_S
+    candidates = [c for c in candidates if _candidate_fresh(c)]
+
     meters = sorted(meters, key=lambda m: (m.get("last_seen") or ""), reverse=True)
     for m in meters:
         mid = normalize_meter_id(m.get("id") or "")

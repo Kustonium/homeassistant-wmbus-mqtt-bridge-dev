@@ -410,6 +410,7 @@
       `${t("legend_title", "Legend")}:`,
       `📡 ESP — ${t("esp_flagged_meter", "flagged on the ESP")}`,
       `📶 esp N% · 1.2k — ${t("legend_reception_pct", "reception % and telegrams read per ESP (diagnostic window)")}`,
+      t("legend_per_esp_note", "Per-ESP counts overlap (each ESP hears the same telegrams) and use the diagnostic window — they do not sum to 15m/60m."),
       `▁▃▅▇ — ${t("legend_signal_bars", "telegrams in the last 15 min")}`,
       t("legend_pct_colors", "% colour: green ≥90 · amber ≥50 · red <50"),
       t("legend_empty_hint", "Empty here = this meter has no ESP diagnostic data (diagnostic_mode off or not highlighted)."),
