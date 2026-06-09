@@ -1027,15 +1027,31 @@ def state(include_ignored: bool = False) -> dict:
             m["preview_active"] = "true" if (PREVIEW_METER_DIR / f"meter-preview-{mid}").exists() else "false"
             if not m.get("manufacturer"):
                 m["manufacturer"] = candidate_by_id.get(mid, {}).get("manufacturer", "")
+    # Candidate order: STABLE, grouped by media, then "biggest chatterbox" first.
+    # Primary = media group (water / warm water / heat / electricity / other) —
+    # a meter's media never changes, so rows don't reshuffle. Secondary = total
+    # telegrams (seen_count) descending — the chattiest candidate sits at the top
+    # of its group; seen_count grows slowly so it does not reorder on every
+    # refresh (no "elevator" effect, unlike last_seen/seen_15m). Tertiary = id,
+    # a fully stable tie-break. NB ascending sort: group asc, -count for desc.
+    def _media_group(c: dict) -> int:
+        t = (str(c.get("type") or "") + " " + str(c.get("driver") or "")).lower()
+        if "warm water" in t or "0x06" in t or "0x62" in t or "0x72" in t:
+            return 1  # warm water
+        if "heat" in t or "0xc3" in t:
+            return 2  # heat
+        if "electric" in t or "0x02" in t:
+            return 3  # electricity
+        if "water" in t or "0x07" in t or "0x16" in t:
+            return 0  # (cold) water
+        return 4      # other
     candidates = sorted(
         candidates,
         key=lambda c: (
-            safe_int(c.get("seen_15m")),
-            safe_int(c.get("seen_60m")),
-            safe_int(c.get("seen_count")),
-            c.get("last_seen") or "",
+            _media_group(c),
+            -safe_int(c.get("seen_count")),
+            normalize_meter_id(c.get("id")) or str(c.get("id") or ""),
         ),
-        reverse=True,
     )
     return {"status": status, "options": options, "meters": meters, "pending_meters": pending_meters, "candidates": candidates, "events": events, "ignored": sorted(ignored), "search_candidates": search_candidates, "search_matches": search_matches, "search_status": search_status, "analysis": analysis}
 
