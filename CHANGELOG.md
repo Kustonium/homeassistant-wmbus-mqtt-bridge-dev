@@ -1,3 +1,8 @@
+## 1.5.34-dev.174
+
+### Added
+- stable candidate sort — group by media, then telegram count, then id (71640fc)
+
 ## 1.5.34-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
