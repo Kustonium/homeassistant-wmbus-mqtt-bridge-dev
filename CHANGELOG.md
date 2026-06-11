@@ -1,3 +1,12 @@
+## 1.5.35-dev.186
+
+### Added
+- decrypt issue-report analysis with the configured AES key (1a37d14)
+
+### Fixed
+- add change-driver action to the configured-on-air table (264bca5)
+- browsable driver select, input validation and modal click-close bug (1e206cf)
+
 ## 1.5.35-dev.185
 
 ### Added
