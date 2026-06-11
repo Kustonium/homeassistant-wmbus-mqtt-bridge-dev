@@ -1,6 +1,6 @@
 # Home Assistant Add-on: wMBus MQTT Bridge
 
-**Dokumentacja do wersji / Documentation for version:** 1.5.35-dev.
+**Dokumentacja do wersji / Documentation for version:** 1.5.35.
 
 **Szybka nawigacja / Quick navigation:**
 [🇵🇱 PL (poniżej)](#-opis-pl) · [🇬🇧 EN (below)](#-description-en)
