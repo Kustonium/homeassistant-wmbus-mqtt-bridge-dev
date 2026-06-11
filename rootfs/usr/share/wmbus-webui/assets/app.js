@@ -95,16 +95,38 @@
   let liveSource = null;
   let liveLang = "";
   let liveRenderTimer = null;
+  let liveRenderDeferred = false;
 
   // Debounced render for SSE live updates — coalesces rapid events into one
   // DOM patch. 150ms is enough to batch bursts without feeling sluggish.
+  //
+  // Hover guard: live updates re-sort table rows, so a row could move under
+  // the user's cursor between aiming and clicking — confirmed in the wild as
+  // 'Preview canceled' events fired by clicks aimed at the report button.
+  // While the pointer is over a table (and no modal is open), the live
+  // re-render is held; it fires when the pointer leaves the table (the
+  // mouseover listener below) or on the next live tick after that. Renders
+  // triggered directly by user actions (render() calls) are not gated.
   function scheduleRender() {
     if (liveRenderTimer) return;
     liveRenderTimer = window.setTimeout(() => {
       liveRenderTimer = null;
+      if (document.querySelector(".table-wrap:hover")
+          && !state.modal && !state.reportModal && !state.editModal) {
+        liveRenderDeferred = true;
+        return;
+      }
+      liveRenderDeferred = false;
       render();
     }, 150);
   }
+
+  document.addEventListener("mouseover", () => {
+    if (liveRenderDeferred && !document.querySelector(".table-wrap:hover")) {
+      liveRenderDeferred = false;
+      scheduleRender();
+    }
+  });
 
   function currentRoute() {
     const hash = window.location.hash.replace(/^#\/?/, "");
