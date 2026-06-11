@@ -249,6 +249,18 @@ Concretely:
 - Decoded meters are published as HA MQTT Discovery entities (prefix configurable,
   retained). `discovery_published` is file-flagged (`status_discovery_published.flag`)
   so the frequent raw-counter subshell can't clobber it.
+- **Per-field availability** (`09-discovery.sh`, `emit_discovery_from_json`): every
+  entity's config carries an availability template on its own state topic —
+  `{{ 'online' if value_json.get('<key>') is not none else 'offline' }}`. A field
+  missing from the latest (partial) telegram turns only that entity `unavailable`
+  instead of leaving a stale/false value (local analog of upstream issue #1922).
+  `value_template` uses the warning-free `value_json.get(...) | default(none)`.
+  No `availability_mode` is needed — this is the only availability source.
+- **`expire_after` self-tunes**: 2× the meter's observed average telegram interval
+  (from `status_seen_stats`), floor 3600 s, rounded to whole minutes; the rounded
+  value is part of the discovery cache key, so a changed interval republishes the
+  config. The in-memory cache is empty on restart, so existing installs pick up
+  config changes automatically.
 - **MQTT→HA healthcheck**: the add-on detects publishing to a broker HA does not
   consume. HA presence is reported honestly — confirmed on the native broker
   (`core-mosquitto` / `mqtt_mode=ha`) or via a seen `online` birth message; the
@@ -300,7 +312,38 @@ repo) makes stable a copy of dev **minus the dev identity**:
 
 ---
 
-## 12. Conventions
+## 12. wmbusmeters build pin & decode smoke gate
+
+- **Pin:** the Dockerfile builds wmbusmeters from a fixed commit
+  (`ARG WMBUSMETERS_COMMIT`), not master HEAD. Rationale: upstream's codebase
+  restructuring (wmbusmeters/wmbusmeters#1940) broke master compilation
+  (2026-06-11) and any upstream breakage propagated straight into our CI.
+  The clone stays **full** (not `--depth 1`): the Makefile derives the binary's
+  version string via `git describe --tags`.
+- **Bumping the pin is a deliberate act**: change `WMBUSMETERS_COMMIT`, push, and
+  let the `decode-smoke` CI job validate the new decoder against the golden
+  fixtures before any version is published.
+- **`decode-smoke` (`.github/workflows/build.yaml`)**: after the arch images are
+  built, the job runs `tests/test_decode_smoke.sh` **inside the freshly built
+  amd64 image**. The `bump` job depends on it — a failed smoke-test means
+  `config.yaml` keeps the previous version and HA users never see the broken
+  image (which still lands in GHCR, unversioned).
+- **Fixtures** (`tests/fixtures/golden.tsv`): `<dir>/<id> TAB <driver> TAB <key>`;
+  key is `NOKEY`, a literal 32-hex key (**only for already-public keys**, e.g.
+  upstream driver test keys) or an env-var name (private keys via repo secrets —
+  never in git). `<dir>/<id>.hex` is the raw telegram, `<dir>/<id>.golden.json`
+  the expected decode (jq -S normalized, `timestamp`/`name` dropped). All
+  committed fixtures are public (upstream driver tests + the public replay
+  corpus). Meter ids are lowercased before the wmbusmeters call — id matching is
+  case-sensitive.
+- **Regenerating goldens** (after an accepted decode change): build wmbusmeters
+  at the pinned commit, re-run the fixtures, commit the new `.golden.json`; or
+  temporarily set `GOLDEN_REQUIRE=0` in the workflow — missing goldens are then
+  printed by the job instead of failing it.
+
+---
+
+## 13. Conventions
 
 - **Commits:** Conventional Commits (`fix:`/`feat:`/`docs:`/`chore:`/`refactor:`/`test:`),
   no AI attribution footer. Public repo — write for external reviewers.

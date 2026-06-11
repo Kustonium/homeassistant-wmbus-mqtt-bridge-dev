@@ -224,6 +224,14 @@ From [`config.yaml`](../config.yaml).
 | `state_retain` | bool | `false` | Retained state |
 | `verify_ha_entities` | bool | `false` | (Opt-in) ask the HA Core API whether the entities were actually created. Enabling it grants read-only HA Core API access. |
 
+Every discovered entity carries an **availability template**: when a field is
+missing from the meter's latest telegram (some meters alternate between short
+and full frames), the entity shows `unavailable` instead of a stale or false
+value, and recovers automatically with the next telegram that contains the
+field. Independently, an auto-tuned `expire_after` (about 2× the meter's
+observed transmit interval, minimum 1 h) marks entities `unavailable` when the
+meter goes silent.
+
 ### SEARCH mode
 
 | Field | Type | Default | Description |

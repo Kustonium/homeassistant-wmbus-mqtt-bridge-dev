@@ -226,6 +226,14 @@ Aus [`config.yaml`](../config.yaml).
 | `state_retain` | bool | `false` | Retained State |
 | `verify_ha_entities` | bool | `false` | (Opt-in) die HA Core API fragen, ob die Entitäten tatsächlich erstellt wurden. Aktivierung gewährt Lesezugriff auf die HA Core API. |
 
+Jede per Discovery angelegte Entität trägt ein **Availability-Template**: fehlt
+ein Feld im letzten Telegramm des Zählers (manche Zähler senden abwechselnd
+kurze und vollständige Rahmen), zeigt die Entität `unavailable` statt eines
+veralteten oder falschen Werts — und erholt sich automatisch mit dem nächsten
+Telegramm, das das Feld enthält. Unabhängig davon markiert ein automatisch
+abgestimmtes `expire_after` (ca. 2× das beobachtete Sendeintervall des Zählers,
+mindestens 1 h) Entitäten als `unavailable`, wenn der Zähler verstummt.
+
 ### SEARCH-Modus
 
 | Feld | Typ | Default | Beschreibung |

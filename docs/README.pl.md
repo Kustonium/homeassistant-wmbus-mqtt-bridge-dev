@@ -225,6 +225,14 @@ Z [`config.yaml`](../config.yaml).
 | `state_retain` | bool | `false` | Retained dla stanu |
 | `verify_ha_entities` | bool | `false` | (Opt-in) pyta HA Core API, czy encje faktycznie powstały. Włączenie nadaje read-only dostęp do HA Core API. |
 
+Każda encja z Discovery ma **availability template**: gdy w ostatnim telegramie
+licznika brakuje danego pola (niektóre liczniki wysyłają naprzemiennie ramki
+krótkie i pełne), encja pokazuje `unavailable` zamiast przestarzałej lub
+fałszywej wartości — i wraca automatycznie przy następnym telegramie
+zawierającym to pole. Niezależnie od tego auto-strojony `expire_after`
+(ok. 2× zaobserwowany interwał nadawania licznika, minimum 1 h) oznacza encje
+jako `unavailable`, gdy licznik zamilknie.
+
 ### Tryb SEARCH
 
 | Pole | Typ | Domyślnie | Opis |

@@ -219,6 +219,13 @@ Z [`config.yaml`](../config.yaml).
 | `state_retain` | bool | `false` | Retained stav |
 | `verify_ha_entities` | bool | `false` | (Opt-in) opýtaj sa HA Core API, či entity skutočne vznikli. Zapnutie udelí read-only prístup k HA Core API. |
 
+Každá entita z Discovery má **availability template**: ak v poslednom telegrame
+merača chýba dané pole (niektoré merače striedajú krátke a plné rámce), entita
+zobrazí `unavailable` namiesto zastaranej alebo falošnej hodnoty — a
+automaticky sa obnoví s ďalším telegramom, ktorý pole obsahuje. Nezávisle od
+toho automaticky ladené `expire_after` (cca 2× pozorovaný interval vysielania
+merača, minimálne 1 h) označí entity ako `unavailable`, keď merač stíchne.
+
 ### Režim SEARCH
 
 | Pole | Typ | Predvolené | Popis |
