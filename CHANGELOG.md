@@ -1,3 +1,9 @@
+## 1.5.35-dev.188
+
+### Fixed
+- hold live table re-render while the pointer is over a table (9205126)
+- pass prune python program via -c (stdin heredoc broke in production) (6adb814)
+
 ## 1.5.35-dev.187
 
 ### Fixed
