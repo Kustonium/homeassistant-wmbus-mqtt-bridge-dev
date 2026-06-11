@@ -1,3 +1,8 @@
+## 1.5.35-dev.178
+
+### Added
+- per-field availability template in MQTT Discovery configs (afb096d)
+
 ## 1.5.35-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
