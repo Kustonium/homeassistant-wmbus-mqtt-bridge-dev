@@ -1,3 +1,11 @@
+## 1.5.35-dev.183
+
+### Added
+- issue-report export, driver picker and post-add driver change (2d22724)
+
+### Fixed
+- lowercase meter id in izar fixture test (id match is case-sensitive) (9a5c3b5)
+
 ## 1.5.35-dev.182
 
 ### Fixed
