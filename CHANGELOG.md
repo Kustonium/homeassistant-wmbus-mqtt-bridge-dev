@@ -1,3 +1,8 @@
+## 1.5.35-dev.182
+
+### Fixed
+- lowercase meter id in izar fixture test (id match is case-sensitive) (9a5c3b5)
+
 ## 1.5.35-dev.180
 
 ### Added
