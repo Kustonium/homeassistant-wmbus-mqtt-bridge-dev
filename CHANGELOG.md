@@ -1,3 +1,11 @@
+## 1.5.35-dev.180
+
+### Added
+- per-field availability template in MQTT Discovery configs (afb096d)
+
+### Fixed
+- pin wmbusmeters build to last known-good commit 8c35c4a1 (171e0d1)
+
 ## 1.5.35-dev.178
 
 ### Added
