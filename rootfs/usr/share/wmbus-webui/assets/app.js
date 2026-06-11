@@ -2551,6 +2551,7 @@
           </div>
           <div class="modal-body">
             <p style="font-size:11px;color:#f3c84b;margin:0 0 8px;">⚠️ ${escapeHtml(t("export_report_privacy", "The telegram contains your meter's serial number. The AES key is never included."))}</p>
+            ${rm.keyUsed ? `<p style="font-size:11px;color:#f3c84b;margin:0 0 8px;">🔓 ${escapeHtml(t("export_report_key_used", "The analysis was decrypted with your configured AES key — the report reveals meter readings, but never the key itself."))}</p>` : ""}
             ${body}
           </div>
           <div class="modal-actions">
@@ -2817,7 +2818,7 @@
         const resp = await fetch(`api/candidate-report?meter_id=${encodeURIComponent(id)}`, {cache: "no-store"});
         const data = await resp.json().catch(() => ({}));
         if (resp.ok && data.ok) {
-          state.reportModal = {id, report: data.report || ""};
+          state.reportModal = {id, report: data.report || "", keyUsed: !!data.key_used};
         } else {
           const msg = data.error === "no_raw_telegram"
             ? t("export_report_no_raw", "No raw telegram stored for this candidate yet.")

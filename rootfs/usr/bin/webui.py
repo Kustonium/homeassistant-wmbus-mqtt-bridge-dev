@@ -303,10 +303,26 @@ def candidate_issue_report(meter_id: str) -> tuple[bool, dict]:
     mtype = str(cand.get("type") or "").strip() or "unknown"
     manufacturer = str(cand.get("manufacturer") or "").strip() or "unknown"
 
+    # When a 32-hex AES key is configured for this id in options.json, run
+    # the analysis decrypted (--analyze=<key>). The analyze output then shows
+    # the decoded DV entries — far more useful for an upstream driver author —
+    # while the key itself is never part of the output or the report. The
+    # report does reveal meter readings in that case (flagged to the UI).
+    key = ""
+    options = read_json(OPTIONS_JSON)
+    if isinstance(options, dict):
+        for m in options.get("meters", []) or []:
+            if isinstance(m, dict) and normalize_meter_id(m.get("meter_id")) == mid:
+                cand_key = str(m.get("key") or "").strip()
+                if re.match(r"^[0-9A-Fa-f]{32}$", cand_key):
+                    key = cand_key
+                break
+
+    analyze_arg = f"--analyze={key}" if key else "--analyze"
     analyze_output = ""
     try:
         proc = subprocess.run(
-            [WMBUSMETERS_BIN, "--analyze", raw],
+            [WMBUSMETERS_BIN, analyze_arg, raw],
             capture_output=True, text=True, timeout=20,
         )
         analyze_output = (proc.stdout or "") + (proc.stderr or "")
@@ -316,13 +332,18 @@ def candidate_issue_report(meter_id: str) -> tuple[bool, dict]:
         analyze_output = "(wmbusmeters --analyze timed out)"
     analyze_output = analyze_output.strip()
 
+    analyze_note = (
+        "--- wmbusmeters --analyze output (decrypted with the configured AES key; key not included) ---"
+        if key
+        else "--- wmbusmeters --analyze output ---"
+    )
     report = "\n".join([
         f"telegram=|{raw}|",
         f"manufacturer: {manufacturer}",
         f"type/medium: {mtype}",
         f"suggested driver: {driver}",
         "",
-        "--- wmbusmeters --analyze output ---",
+        analyze_note,
         "```",
         analyze_output or "(no output)",
         "```",
@@ -332,6 +353,7 @@ def candidate_issue_report(meter_id: str) -> tuple[bool, dict]:
         "meter_id": mid,
         "report": report,
         "raw_ts": str((raw_row or {}).get("ts") or ""),
+        "key_used": bool(key),
     }
 
 
