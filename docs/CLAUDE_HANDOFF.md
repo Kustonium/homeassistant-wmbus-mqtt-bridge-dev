@@ -76,6 +76,20 @@ kursorem (potwierdzone: 2× „Preview canceled" z kliknięć celowanych w
 `scheduleRender` wstrzymuje render SSE gdy `.table-wrap:hover` i brak modala;
 `mouseover` dorenderowuje po zjechaniu.
 
+**10. Picker w stanie aplikacji (`dd91c05`)** — user zgłosił „zmieniłem driver
+z auto na istawater i GUI tego nie pokazuje" (i miał rację, wbrew pierwszej
+diagnozie „to timing"): renderowanie SSE przebudowuje otwarty modal, a morphdom
+oszczędza TYLKO sfokusowany kontrolkę — niesfokusowany select + hidden input
+resetowały się do prefillu `auto`, więc Zapisz wysyłał `auto` (potwierdzone:
+options.json zostawał na `type=auto`, log pokazywał reloady z `driver=auto`;
+wcześniejsze evo868 przeszło fartem przed tickiem). Fix: każdy wybór drivera
+(select i pole „Inny") zapisuje się do `state.modal.driver` /
+`state.editModal.driver` przez `window.__driverPickerSet`; pole klucza AES w
+modalu edycji przez `window.__editModalKeySet`; `save-edit-driver` czyta STAN,
+nie DOM. **Reguła na przyszłość: wartości edytowane w modalach muszą żyć w
+state, nie w DOM** — każdy nowy input w modalu dostaje sink do state, inaczej
+re-render SSE go zresetuje.
+
 ## Weryfikacja na żywo (user, testowe HA, dev.187+)
 - availability: encje `niedostępny` przy częściowych ramkach ✓
 - zmiana drivera `auto→istawater→evo868` na `10685115` (ISTA, klucz z issue
