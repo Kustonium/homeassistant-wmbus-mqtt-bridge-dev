@@ -56,10 +56,15 @@ while IFS=$'\t' read -r meter_id driver expected_key expected_value; do
     continue
   fi
 
+  # Meter id matching in wmbusmeters is case-sensitive against the
+  # lowercase hex id from the telegram — pass the id lowercased
+  # (fixture file names stay uppercase).
+  meter_id_lc="$(echo "${meter_id}" | tr '[:upper:]' '[:lower:]')"
+
   hex="$(tr -d '\r\n[:space:]' < "${hex_file}")"
   decoded_json="$(
     printf '%s\n' "${hex}" \
-      | wmbusmeters --silent --format=json stdin:hex "fixture_${meter_id}" "${driver}" "${meter_id}" NOKEY \
+      | wmbusmeters --silent --format=json stdin:hex "fixture_${meter_id_lc}" "${driver}" "${meter_id_lc}" NOKEY \
       | jq -c 'select(type=="object")' \
       | head -n 1
   )"
