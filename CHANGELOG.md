@@ -1,3 +1,12 @@
+## 1.5.35-dev.185
+
+### Added
+- decrypt issue-report analysis with the configured AES key (1a37d14)
+- published-fields expander on the meters view (ecbded7)
+
+### Fixed
+- browsable driver select, input validation and modal click-close bug (1e206cf)
+
 ## 1.5.35-dev.184
 
 ### Added
