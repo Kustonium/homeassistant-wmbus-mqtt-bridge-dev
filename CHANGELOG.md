@@ -1,3 +1,9 @@
+## 1.5.35-dev.184
+
+### Added
+- published-fields expander on the meters view (ecbded7)
+- issue-report export, driver picker and post-add driver change (2d22724)
+
 ## 1.5.35-dev.183
 
 ### Added
