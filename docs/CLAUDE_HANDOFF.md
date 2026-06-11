@@ -1,3 +1,114 @@
+# Handoff — sesja 2026-06-11 (roadmapa 1/3/5, pin wmbusmeters + golden gate, pakiet UI driverów)
+
+> Stan na koniec sesji: cykl **1.5.35-dev** (buildy do ~dev.189). Wszystkie
+> zmiany zweryfikowane na żywym testowym HA usera (druga instancja HA, MCP
+> `home-assistant-test` w konfiguracji Claude — **używać wyłącznie za
+> każdorazową zgodą usera**, patrz pamięć `no-ha-mcp-without-consent`).
+
+## Co zrobiono w tej sesji (commity od najstarszego)
+
+**1. Zadanie 1 roadmapy (`afb096d`)** — per-field availability template w MQTT
+Discovery (`09-discovery.sh`, `emit_discovery_from_json`): pole nieobecne w
+ostatnim telegramie → encja `unavailable` zamiast stale/false. Potwierdzone na
+żywo (encje `niedostępny` przy częściowych ramkach). Bez `availability_mode`
+(jedyne źródło availability). Roadmapa: `wmbusmeters-issues-roadmap.md` (root,
+nieśledzony plik roboczy).
+
+**2. Pin wmbusmeters (`171e0d1`)** — upstream zaczął merge restrukturyzacji
+(#1940) i master przestał się kompilować (util.h bez `<ctime>`). Dockerfile:
+`ARG WMBUSMETERS_COMMIT=8c35c4a1...` = stan ostatniego działającego obrazu
+(`--version` = `2.0.0-521-g8c35c4a1`). Pełny klon (Makefile robi `git describe
+--tags`). Podbicie pina = świadoma decyzja, bramkowana przez decode-smoke.
+**Zadanie 6 roadmapy przestało być „tylko obserwacją"** — refaktor już psuje.
+
+**3. Zadanie 5 roadmapy (`f5607eb`)** — golden decode smoke-test:
+`tests/test_decode_smoke.sh` + `tests/fixtures/golden.tsv` (13 fixtures, 11
+driverów; wszystko publiczne — testy driverów upstream + publiczny korpus
+replay; klucz elf2 to opublikowany klucz testowy upstreamu). Job `decode-smoke`
+w `build.yaml` odpala fixtures **wewnątrz świeżego obrazu amd64**; `bump`
+zależy od niego. `GOLDEN_REQUIRE=1`. Klucze prywatne → kolumna z nazwą env var
++ secret (mechanizm jest, obecnie nieużywany). Goldeny generowane lokalnie
+binarką z pina (build w WSL: `~/wmbusmeters-pin/build/wmbusmeters` + `~/bin/jq`).
+
+**4. Docs (`0b7641b`, `1513222`)** — README ×5 języków (availability), ARCHITECTURE
+§9 (availability/expire) + nowa §12 (pin + decode smoke gate; stare Conventions
+→ §13). Nagłówek README = **„do wersji X.Y.Z" bez `-dev`** (promote kopiuje
+docs verbatim — pamięć `docs-update-with-code`).
+
+**5. Fix testu izar (`9a5c3b5`)** — id licznika lowercase przy `stdin:hex`
+(dopasowanie id jest case-sensitive na pinie); test przechodził 0/2 → 2/2.
+
+**6. Zadanie 3 roadmapy + pakiet UI driverów (`2d22724`, `1a37d14`, `1e206cf`,
+`264bca5`)**:
+- Eksport zgłoszenia: GET `/api/candidate-report` (raw z
+  `status_candidate_raw.tsv` + `wmbusmeters --analyze`), modal „Zgłoszenie…"
+  z Kopiuj + linkiem do issue. Klucz AES NIGDY w raporcie; gdy id ma klucz w
+  options.json, analiza odpalana `--analyze=<key>` (raport pokazuje odszyfrowane
+  DV-entries, response ma `key_used` → dodatkowe ostrzeżenie w modalu).
+- Katalog driverów: `assets/drivers.json` generowany w Dockerfile ze źródeł
+  pina (`drivers/src/*.xmq` + `--listmeters`; na pinie `--listmeters` pomija
+  drivery xmq — fix wszedł upstream po pinie). ~120 driverów z typami.
+- Wybór drivera = `driverPickerHtml()`: prawdziwy `<select>` z `<optgroup>` po
+  typie + opcja „Inny (wpisz ręcznie)…" z walidacją `[A-Za-z0-9_]` na żywo i
+  server-side. Prefill `unknown` → `auto`. Datalist NIE wystarczał (filtrował
+  po prefillu i ukrywał listę).
+- Zmiana drivera po dodaniu: POST `/api/update-meter` →
+  `update_meter_in_options` (Supervisor-first jak add/remove; klucz zachowany
+  gdy pole puste). Przycisk „Driver…" w **trzech** widokach: METERS,
+  oczekujące, skonfigurowane-w-eterze.
+- Fix: `data-action="close-…"` na backdropie modali zamykał okno przy kliku
+  W ŚRODKU (global handler robi `closest("[data-action]")`) — zdjęte.
+
+**7. Rozwijka „Pola" (`ecbded7`)** — koncepcja usera: co licznik publikuje.
+`status_meter_last_json.tsv` (zapis w `status_meter_seen`), webui dokleja
+`last_json`/`last_json_ts` do meters, przycisk „Pola ▾" rozwija tabelę pól
+z jednostkami. ARCHITECTURE §5: plik dopisany do tabeli stanu.
+
+**8. Prune bug — PRODUKCYJNY (`6adb814`)** — `prune_stale_candidates`: heredoc
+do `python3 -` w zagnieżdżonym `$( (flock…) )` z tickera tła dostawał na stdin
+tekst skryptu za `PYEOF` → `IndentationError` co tick → **prune nigdy nie
+działał w produkcji** (potwierdzone logiem add-onu). Fix: program w zmiennej +
+`python3 -c`. Test także z `exec 0<&-`.
+
+**9. Hover-guard (`9205126`)** — live-update przestawiał wiersze/przyciski pod
+kursorem (potwierdzone: 2× „Preview canceled" z kliknięć celowanych w
+„Zgłoszenie…"; gorzej w CS — dłuższe etykiety zawijają akcje na 2 linie).
+`scheduleRender` wstrzymuje render SSE gdy `.table-wrap:hover` i brak modala;
+`mouseover` dorenderowuje po zjechaniu.
+
+## Weryfikacja na żywo (user, testowe HA, dev.187+)
+- availability: encje `niedostępny` przy częściowych ramkach ✓
+- zmiana drivera `auto→istawater→evo868` na `10685115` (ISTA, klucz z issue
+  #992): pełna sekwencja w logu — zapis → Supervisor → soft reload →
+  `driver=evo868` → dekodowanie (total 1.035, historia, status OK) ✓
+- zgłoszenie (modal raportu) we wszystkich językach ✓ (po fixach)
+- dodanie licznika na driverze auto ✓
+
+## Otwarte tematy
+1. **Zadanie 2 roadmapy** (Discovery Doctor) i **Zadanie 4** (UX szyfrowanych
+   bez klucza) — nieruszone.
+2. **Boot smoke-test Docker standalone w CI** — chip/task zaproponowany
+   (entrypoint → options.json → bridge startuje → bump zależny).
+3. **Pliki `(Conflicted copy 2026-06-09 by RYZEN)`** — 10 sztuk, nieśledzone,
+   do skasowania za zgodą usera.
+4. Modal „Zmień driver" nie pozwala **skasować** klucza (puste = zachowaj) —
+   świadome; ewentualny przycisk „usuń klucz" gdy zajdzie potrzeba.
+5. CHANGELOG: cykl 1.5.35-dev ma marker `PROMOTE-CHANGELOG-REQUIRED`; przy
+   wydaniu skonsolidować per-build sekcje (procedura w pamięci i niżej, sesja
+   2026-06-06).
+
+## Prompt na następną sesję
+
+> Kontynuuj prace nad homeassistant-wmbus-mqtt-bridge-dev. Przeczytaj
+> docs/CLAUDE_HANDOFF.md (sesja 2026-06-11) i wmbusmeters-issues-roadmap.md.
+> W kolejce: Zadanie 2 (Discovery Doctor w WebUI) lub Zadanie 4 (UX kandydatów
+> szyfrowanych bez klucza). Pamiętaj: wersja z config.yaml z dysku po fetchu;
+> walidacja bash -n + shellcheck przed pushem; docs (5 języków) razem z kodem;
+> wybór driverów w UI zawsze z kopii wmbusmeters w obrazie; HA MCP tylko za
+> jawną zgodą usera.
+
+---
+
 # Handoff — sesja 2026-06-06 (release 1.5.29 do stable + per-build/promote reconciliation)
 
 > Stan na koniec sesji: **stable wydane jako `1.5.29`** (repo
