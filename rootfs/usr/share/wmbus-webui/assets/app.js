@@ -2542,12 +2542,25 @@
   // final value always lands in a hidden input (name/id = hiddenId) so form
   // submission and save handlers read one place. A prefill of "unknown"
   // maps to "auto" — an undetected candidate must not block manual choice.
+  //
+  // Every change is ALSO written into state (state.modal.driver /
+  // state.editModal.driver) via window.__driverPickerSet: live SSE renders
+  // rebuild the modal and morphdom preserves only the FOCUSED form control,
+  // so an unfocused select/hidden input silently reset to the prefill and
+  // the save then persisted "auto" instead of the user's pick (confirmed in
+  // the wild: options.json kept type=auto after choosing istawater). With
+  // the choice in state, every rebuild renders the user's current pick.
   function driverPickerHtml(prefill, hiddenId, hiddenName) {
     const drivers = state.drivers || [];
     const known = new Set(drivers.map(d => d.driver));
+    // prefill === "" means "custom mode, empty text" (mid-typing across a
+    // re-render); other empty-ish/unknown prefills fall back to "auto".
+    const customEmpty = prefill === "";
     let pre = String(prefill || "auto").trim();
-    if (!pre || pre === "unknown") pre = "auto";
-    const isCustom = pre !== "auto" && !known.has(pre);
+    if (pre === "unknown") pre = "auto";
+    const isCustom = customEmpty || (pre !== "auto" && !known.has(pre));
+    const customVal = customEmpty ? "" : (isCustom ? pre : "");
+    const hiddenVal = isCustom ? customVal : pre;
     const groups = {};
     drivers.forEach(d => {
       const n = d.driver || "";
@@ -2561,8 +2574,8 @@
     const selId = `${hiddenId}-select`;
     const customId = `${hiddenId}-custom`;
     const wrapId = `${hiddenId}-custom-wrap`;
-    const selectJs = `(function(s){var w=document.getElementById('${wrapId}');var h=document.getElementById('${hiddenId}');var c=document.getElementById('${customId}');if(s.value==='__custom__'){w.style.display='';h.value=(c.value||'').trim();c.focus();}else{w.style.display='none';h.value=s.value;}})(this)`;
-    const customJs = `(function(i){var v=i.value.replace(/[^A-Za-z0-9_]/g,'');i.value=v;document.getElementById('${hiddenId}').value=v;})(this)`;
+    const selectJs = `(function(s){var w=document.getElementById('${wrapId}');var c=document.getElementById('${customId}');if(s.value==='__custom__'){w.style.display='';window.__driverPickerSet('${hiddenId}',((c&&c.value)||'').trim());if(c)c.focus();}else{w.style.display='none';window.__driverPickerSet('${hiddenId}',s.value);}})(this)`;
+    const customJs = `(function(i){var v=i.value.replace(/[^A-Za-z0-9_]/g,'');i.value=v;window.__driverPickerSet('${hiddenId}',v);})(this)`;
     return `
       <select id="${selId}" onchange="${selectJs}">
         <option value="auto"${(!isCustom && pre === "auto") ? " selected" : ""}>auto</option>
@@ -2570,11 +2583,25 @@
         <option value="__custom__"${isCustom ? " selected" : ""}>${escapeHtml(t("driver_custom_option", "Other (type manually)…"))}</option>
       </select>
       <div id="${wrapId}" style="${isCustom ? "" : "display:none;"}margin-top:6px;">
-        <input id="${customId}" value="${escapeHtml(isCustom ? pre : "")}" oninput="${customJs}" placeholder="${escapeHtml(t("driver_custom_placeholder", "driver name (letters, digits, _)"))}">
+        <input id="${customId}" value="${escapeHtml(customVal)}" oninput="${customJs}" placeholder="${escapeHtml(t("driver_custom_placeholder", "driver name (letters, digits, _)"))}">
       </div>
-      <input type="hidden" id="${hiddenId}"${hiddenName ? ` name="${hiddenName}"` : ""} value="${escapeHtml(pre)}">
+      <input type="hidden" id="${hiddenId}"${hiddenName ? ` name="${hiddenName}"` : ""} value="${escapeHtml(hiddenVal)}">
       ${state.drivers === null ? `<div style="font-size:10px;color:#607a88;margin-top:4px;">${escapeHtml(t("webui_loading", "Loading…"))}</div>` : ""}`;
   }
+
+  // State-side sink for driverPickerHtml (see comment there) and the
+  // change-driver modal's key field. Updates state WITHOUT re-rendering, so
+  // typing keeps focus; the next live render rebuilds from the stored value.
+  window.__driverPickerSet = function (hiddenId, value) {
+    const v = String(value == null ? "" : value);
+    if (hiddenId === "meter-driver" && state.modal) state.modal.driver = v;
+    if (hiddenId === "edit-meter-driver" && state.editModal) state.editModal.driver = v;
+    const h = document.getElementById(hiddenId);
+    if (h) h.value = v;
+  };
+  window.__editModalKeySet = function (value) {
+    if (state.editModal) state.editModal.key = String(value == null ? "" : value);
+  };
 
   function renderEditDriverModal() {
     const em = state.editModal || {};
@@ -2588,7 +2615,7 @@
             <label for="edit-meter-driver-select">${escapeHtml(t("driver", "Driver"))}</label>
             ${driverPickerHtml(em.driver, "edit-meter-driver", "")}
             <label for="edit-meter-key" style="margin-top:8px;">${escapeHtml(t("aes_key_label", "AES key"))}</label>
-            <input id="edit-meter-key" value="" placeholder="${escapeHtml(t("change_driver_keep_key", "Leave empty to keep the current key."))}">
+            <input id="edit-meter-key" value="${escapeHtml(em.key || "")}" oninput="window.__editModalKeySet(this.value)" placeholder="${escapeHtml(t("change_driver_keep_key", "Leave empty to keep the current key."))}">
           </div>
           <div class="modal-actions">
             <button class="btn" type="button" data-action="close-edit-modal">${escapeHtml(t("webui_cancel", "Cancel"))}</button>
@@ -2853,10 +2880,11 @@
 
     if (action === "save-edit-driver") {
       const id = target.dataset.id || "";
-      const driverInput = document.getElementById("edit-meter-driver");
-      const keyInput = document.getElementById("edit-meter-key");
-      const driver = (driverInput && driverInput.value || "").trim();
-      const key = (keyInput && keyInput.value || "").trim();
+      // State is the source of truth — the DOM inputs get rebuilt (and would
+      // reset) on every live render while the modal is open.
+      const em = state.editModal || {};
+      const driver = String(em.driver || "").trim();
+      const key = String(em.key || "").trim();
       if (!id || !driver) return;
       try {
         await postApi("update-meter", key ? {meter_id: id, driver, key} : {meter_id: id, driver});
