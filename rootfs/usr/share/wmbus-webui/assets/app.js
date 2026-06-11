@@ -2512,19 +2512,58 @@
     `;
   }
 
+  // Driver picker shared by the add-meter and change-driver modals.
+  // A real <select> (mouse-browsable, grouped by meter type, built from
+  // assets/drivers.json = the wmbusmeters copy shipped in THIS image) plus a
+  // "custom" option revealing a text input restricted to [A-Za-z0-9_]. The
+  // final value always lands in a hidden input (name/id = hiddenId) so form
+  // submission and save handlers read one place. A prefill of "unknown"
+  // maps to "auto" — an undetected candidate must not block manual choice.
+  function driverPickerHtml(prefill, hiddenId, hiddenName) {
+    const drivers = state.drivers || [];
+    const known = new Set(drivers.map(d => d.driver));
+    let pre = String(prefill || "auto").trim();
+    if (!pre || pre === "unknown") pre = "auto";
+    const isCustom = pre !== "auto" && !known.has(pre);
+    const groups = {};
+    drivers.forEach(d => {
+      const n = d.driver || "";
+      if (!n || n === "auto" || n === "unknown") return;
+      const g = d.type || "Other";
+      (groups[g] = groups[g] || []).push(n);
+    });
+    const optgroups = Object.keys(groups).sort().map(g =>
+      `<optgroup label="${escapeHtml(g)}">${groups[g].sort().map(n =>
+        `<option value="${escapeHtml(n)}"${(!isCustom && n === pre) ? " selected" : ""}>${escapeHtml(n)}</option>`).join("")}</optgroup>`).join("");
+    const selId = `${hiddenId}-select`;
+    const customId = `${hiddenId}-custom`;
+    const wrapId = `${hiddenId}-custom-wrap`;
+    const selectJs = `(function(s){var w=document.getElementById('${wrapId}');var h=document.getElementById('${hiddenId}');var c=document.getElementById('${customId}');if(s.value==='__custom__'){w.style.display='';h.value=(c.value||'').trim();c.focus();}else{w.style.display='none';h.value=s.value;}})(this)`;
+    const customJs = `(function(i){var v=i.value.replace(/[^A-Za-z0-9_]/g,'');i.value=v;document.getElementById('${hiddenId}').value=v;})(this)`;
+    return `
+      <select id="${selId}" onchange="${selectJs}">
+        <option value="auto"${(!isCustom && pre === "auto") ? " selected" : ""}>auto</option>
+        ${optgroups}
+        <option value="__custom__"${isCustom ? " selected" : ""}>${escapeHtml(t("driver_custom_option", "Other (type manually)…"))}</option>
+      </select>
+      <div id="${wrapId}" style="${isCustom ? "" : "display:none;"}margin-top:6px;">
+        <input id="${customId}" value="${escapeHtml(isCustom ? pre : "")}" oninput="${customJs}" placeholder="${escapeHtml(t("driver_custom_placeholder", "driver name (letters, digits, _)"))}">
+      </div>
+      <input type="hidden" id="${hiddenId}"${hiddenName ? ` name="${hiddenName}"` : ""} value="${escapeHtml(pre)}">
+      ${state.drivers === null ? `<div style="font-size:10px;color:#607a88;margin-top:4px;">${escapeHtml(t("webui_loading", "Loading…"))}</div>` : ""}`;
+  }
+
   function renderEditDriverModal() {
     const em = state.editModal || {};
-    const datalist = `<datalist id="edit-driver-datalist">${(state.drivers || []).map(d => `<option value="${escapeHtml(d.driver || "")}" label="${escapeHtml(d.type || "")}"></option>`).join("")}</datalist>`;
     return `
-      <div class="modal-backdrop" data-action="close-edit-modal">
+      <div class="modal-backdrop">
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="edit-driver-title">
           <div class="modal-head">
             <h2 id="edit-driver-title">${escapeHtml(t("change_driver_title", "Change driver"))} — ${escapeHtml(em.id || "")}</h2>
           </div>
           <div class="modal-body">
-            <label for="edit-meter-driver">${escapeHtml(t("driver", "Driver"))}</label>
-            <input id="edit-meter-driver" value="${escapeHtml(em.driver || "auto")}" list="edit-driver-datalist">
-            ${datalist}
+            <label for="edit-meter-driver-select">${escapeHtml(t("driver", "Driver"))}</label>
+            ${driverPickerHtml(em.driver, "edit-meter-driver", "")}
             <label for="edit-meter-key" style="margin-top:8px;">${escapeHtml(t("aes_key_label", "AES key"))}</label>
             <input id="edit-meter-key" value="" placeholder="${escapeHtml(t("change_driver_keep_key", "Leave empty to keep the current key."))}">
           </div>
@@ -2544,7 +2583,7 @@
         ? `<p style="color:#f3c84b;">${escapeHtml(rm.error)}</p>`
         : `<pre class="mono" style="max-height:50vh;overflow:auto;white-space:pre-wrap;word-break:break-all;background:#0b141b;border:1px solid #1d2f3c;border-radius:6px;padding:10px;font-size:11px;">${escapeHtml(rm.report || "")}</pre>`;
     return `
-      <div class="modal-backdrop" data-action="close-report-modal">
+      <div class="modal-backdrop">
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="export-report-title">
           <div class="modal-head">
             <h2 id="export-report-title">${escapeHtml(t("export_report_title", "wmbusmeters issue report"))} — ${escapeHtml(rm.id || "")}</h2>
@@ -2608,9 +2647,8 @@
                   <input id="meter-name" name="meter_name" value="${escapeHtml(modal.name || "")}">
                 </div>
                 <div class="field">
-                  <label for="meter-driver">${escapeHtml(t("driver", "Driver"))}</label>
-                  <input id="meter-driver" name="driver" value="${escapeHtml(modal.driver || "auto")}" list="driver-datalist">
-                  <datalist id="driver-datalist">${(state.drivers || []).map(d => `<option value="${escapeHtml(d.driver || "")}" label="${escapeHtml(d.type || "")}"></option>`).join("")}</datalist>
+                  <label for="meter-driver-select">${escapeHtml(t("driver", "Driver"))}</label>
+                  ${driverPickerHtml(modal.driver, "meter-driver", "driver")}
                 </div>
                 <div class="field">
                   <label for="meter-key">
@@ -2785,10 +2823,8 @@
     }
 
     if (action === "close-edit-modal") {
-      if (event.target.classList.contains("modal-backdrop") || target.dataset.action === "close-edit-modal") {
-        state.editModal = null;
-        render();
-      }
+      state.editModal = null;
+      render();
       return;
     }
 
@@ -2833,10 +2869,8 @@
     }
 
     if (action === "close-report-modal") {
-      if (event.target.classList.contains("modal-backdrop") || target.dataset.action === "close-report-modal") {
-        state.reportModal = null;
-        render();
-      }
+      state.reportModal = null;
+      render();
       return;
     }
 

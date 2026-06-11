@@ -578,6 +578,10 @@ def add_meter_to_options(meter_id: str, driver: str, key: str, meter_name: str =
     if key and not re.match(r"^[0-9A-Fa-f]{32}$", key):
         return False, f"Invalid AES key — must be exactly 32 HEX chars, got {len(key)}."
 
+    driver = (driver or "").strip()
+    if driver and not re.match(r"^[A-Za-z0-9_]+$", driver):
+        return False, f"Invalid driver: {driver}"
+
     # Read current state from options.json (Supervisor-written, most recent values)
     options = read_json(OPTIONS_JSON)
     if not isinstance(options, dict):
