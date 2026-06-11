@@ -36,6 +36,20 @@ RUN git clone https://github.com/wmbusmeters/wmbusmeters.git . \
   && install -d /out \
   && install -m 0755 build/wmbusmeters /out/wmbusmeters
 
+# Driver catalog for the WebUI "Add meter" driver suggestions. Generated at
+# build time from the pinned wmbusmeters sources (drivers/src/*.xmq) plus the
+# built-in C++ drivers reported by --listmeters, so a WMBUSMETERS_COMMIT bump
+# refreshes the list automatically. NB: at this pin --listmeters prints only
+# the built-in C++ drivers (the xmq drivers were added to its output upstream
+# after the pin), hence the explicit xmq scan.
+RUN { /out/wmbusmeters --listmeters 2>/dev/null | awk '{print $1"\t"$2}'; \
+      for f in drivers/src/*.xmq; do \
+        awk -F= '/^[[:space:]]*name[[:space:]]*=/{gsub(/[[:space:]]/,"",$2);n=$2} /^[[:space:]]*meter_type[[:space:]]*=/{gsub(/[[:space:]]/,"",$2);t=$2; print n"\t"t; exit}' "$f"; \
+      done; \
+    } | sort -u \
+      | awk -F'\t' 'BEGIN{printf "["; s=""} $1!=""{printf "%s{\"driver\":\"%s\",\"type\":\"%s\"}",s,$1,$2; s=","} END{print "]"}' \
+      > /out/drivers.json
+
 # --- runtime: HA add-on ---
 FROM ${BUILD_FROM} AS addon
 
@@ -48,6 +62,8 @@ RUN apk add --no-cache \
   libusb librtlsdr
 
 COPY --from=builder /out/wmbusmeters /usr/bin/wmbusmeters
+# Build-time driver catalog consumed by the WebUI driver <datalist>.
+COPY --from=builder /out/drivers.json /usr/share/wmbus-webui/assets/drivers.json
 ARG ADDON_VERSION=dev
 ENV ADDON_VERSION=${ADDON_VERSION}
 COPY rootfs /

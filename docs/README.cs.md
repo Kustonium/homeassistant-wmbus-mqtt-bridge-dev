@@ -179,6 +179,12 @@ flowchart TD
 Než přijde první telegram, dashboard ukazuje panel **„čeká na první telegram"**.
 Plný restart add-onu je jen nouzová záloha.
 
+**Nepodporovaný měřič?** Pokud se kandidát nikdy nedekóduje (neznámý driver /
+„unknown format signature"), použijte tlačítko **Hlášení…** v jeho řádku:
+add-on sestaví hotový blok hlášení pro upstream projekt wmbusmeters (surový
+telegram + výstup `wmbusmeters --analyze`). Telegram obsahuje sériové číslo
+měřiče; AES klíč není nikdy přiložen.
+
 ---
 
 ## 7. Režim SEARCH — když je slyšet příliš mnoho cizích měřičů

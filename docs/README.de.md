@@ -184,6 +184,13 @@ flowchart TD
 Bis das erste Telegramm eintrifft, zeigt das Dashboard ein Panel **„wartet auf das
 erste Telegramm"**. Ein voller Add-on-Neustart ist nur ein Notfall-Fallback.
 
+**Nicht unterstützter Zähler?** Wenn ein Kandidat nie dekodiert wird (unbekannter
+Treiber / „unknown format signature"), nutzen Sie den Button **Meldung…** in
+seiner Zeile: das Add-on erstellt einen fertigen Issue-Block für das
+wmbusmeters-Upstream-Projekt (Roh-Telegramm + `wmbusmeters --analyze`-Ausgabe).
+Das Telegramm enthält die Seriennummer des Zählers; der AES-Schlüssel wird nie
+beigefügt.
+
 ---
 
 ## 7. SEARCH-Modus — wenn zu viele fremde Zähler zu hören sind

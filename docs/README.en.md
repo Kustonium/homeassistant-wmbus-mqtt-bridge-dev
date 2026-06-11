@@ -182,6 +182,12 @@ flowchart TD
 Until the first telegram arrives the dashboard shows a **"waiting for the first
 telegram"** panel. A full add-on restart is only an emergency fallback.
 
+**Unsupported meter?** If a candidate never decodes (unknown driver / "unknown
+format signature"), use the **Report…** button in its row: the add-on builds a
+ready-to-paste issue block for the upstream wmbusmeters project (raw telegram +
+`wmbusmeters --analyze` output). The telegram contains the meter's serial
+number; the AES key is never included.
+
 ---
 
 ## 7. SEARCH mode — when you hear too many other meters

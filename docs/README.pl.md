@@ -183,6 +183,12 @@ flowchart TD
 Zanim przyjdzie pierwszy telegram, dashboard pokazuje sekcję **„czeka na pierwszy
 telegram"**. Pełny restart dodatku jest tylko awaryjnym fallbackiem.
 
+**Niewspierany licznik?** Jeśli kandydat nigdy się nie dekoduje (nieznany driver
+/ „unknown format signature"), użyj przycisku **Zgłoszenie…** w jego wierszu:
+add-on buduje gotowy do wklejenia blok zgłoszenia do projektu wmbusmeters
+(surowy telegram + wynik `wmbusmeters --analyze`). Telegram zawiera numer
+seryjny licznika; klucz AES nigdy nie jest dołączany.
+
 ---
 
 ## 7. Tryb SEARCH — gdy słychać za dużo cudzych liczników
