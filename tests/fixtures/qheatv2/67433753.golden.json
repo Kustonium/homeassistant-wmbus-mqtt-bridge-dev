@@ -1,0 +1,14 @@
+{
+  "_": "telegram",
+  "device_error_date": "2128-03-31",
+  "id": "67433753",
+  "media": "heat",
+  "meter": "qheatv2",
+  "meter_datetime": "2023-11-07 11:19",
+  "status": "OK",
+  "target_date": "2023-10-31",
+  "target_kwh": 2592.694444,
+  "target_year_date": "2022-12-31",
+  "target_year_kwh": 1067.666667,
+  "total_kwh": 2651.5
+}

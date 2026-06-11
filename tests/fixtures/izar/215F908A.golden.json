@@ -1,0 +1,16 @@
+{
+  "_": "telegram",
+  "current_alarms": "no_alarm",
+  "id": "215f908a",
+  "last_month_measure_date": "2026-04-30",
+  "last_month_total_m3": 407.603,
+  "manufacture_year": "2023",
+  "media": "water",
+  "meter": "izar",
+  "prefix": "C23UA",
+  "previous_alarms": "no_alarm",
+  "remaining_battery_life_y": 0.5,
+  "serial_number": "040138",
+  "total_m3": 430.142,
+  "transmit_period_s": 8
+}

@@ -1,0 +1,12 @@
+{
+  "_": "telegram",
+  "current_power_consumption_kw": 0.33,
+  "current_power_production_kw": 0,
+  "device_datetime": "2019-03-20 12:57",
+  "id": "10101010",
+  "media": "electricity",
+  "meter": "amiplus",
+  "total_energy_consumption_kwh": 15694.05,
+  "total_energy_production_kwh": 7.48,
+  "voltage_at_phase_1_v": 236
+}

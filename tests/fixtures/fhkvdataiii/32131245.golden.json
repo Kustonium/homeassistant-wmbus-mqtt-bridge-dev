@@ -1,0 +1,12 @@
+{
+  "_": "telegram",
+  "current_date": "2026-02-15",
+  "current_hca": 0,
+  "id": "32131245",
+  "media": "heat cost allocator",
+  "meter": "fhkvdataiii",
+  "previous_date": "2025-12-31",
+  "previous_hca": 0,
+  "temp_radiator_c": 18.09,
+  "temp_room_c": 18.22
+}

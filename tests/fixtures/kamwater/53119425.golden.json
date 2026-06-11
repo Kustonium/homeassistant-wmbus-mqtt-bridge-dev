@@ -1,0 +1,13 @@
+{
+  "_": "telegram",
+  "flow_m3h": 0,
+  "id": "53119425",
+  "max_external_temperature_c": 11,
+  "media": "cold water",
+  "meter": "kamwater",
+  "min_external_temperature_last_month_c": 4,
+  "status": "OK",
+  "target_date": "2026-03-01",
+  "target_m3": 32.782,
+  "total_m3": 35.65
+}

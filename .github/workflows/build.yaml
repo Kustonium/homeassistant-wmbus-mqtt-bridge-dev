@@ -9,6 +9,7 @@ on:
       - 'Dockerfile'
       - 'config.yaml'
       - 'translations/**'
+      - 'tests/**'
       - '.github/workflows/build.yaml'
   workflow_dispatch:
 
@@ -62,7 +63,7 @@ jobs:
           echo "Files changed in this push:"
           echo "${CHANGED}" | sed 's/^/  /'
 
-          PATTERN="^(rootfs/|Dockerfile|config\.yaml|translations/|\.github/workflows/build\.yaml$)"
+          PATTERN="^(rootfs/|Dockerfile|config\.yaml|translations/|tests/|\.github/workflows/build\.yaml$)"
           if echo "${CHANGED}" | grep -qE "${PATTERN}"; then
             echo "image-affecting change — building"
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -157,15 +158,68 @@ jobs:
             .
 
   # ---------------------------------------------------------------------------
-  # Bump — runs ONLY after BOTH arch images were pushed successfully
-  # (needs: build, which waits for every matrix leg). Writes the just-built
-  # version into config.yaml so Home Assistant never sees a version that has
-  # no image. If any arch build failed, this job is skipped and config.yaml
-  # keeps pointing at the previous, still-available image.
+  # Decode smoke-test — pipe the golden HEX fixtures through the freshly
+  # built amd64 image (wmbusmeters stdin:hex) and compare the JSON against
+  # committed golden files (tests/fixtures/golden.tsv). Guards
+  # WMBUSMETERS_COMMIT bumps in the Dockerfile: a bump that renames fields
+  # or breaks decoding of a known telegram fails here, and the version is
+  # never bumped (bump needs this job). All current fixtures are public
+  # (upstream driver test telegrams and the public replay corpus), so the
+  # AES key in golden.tsv is upstream's published test key. To add a
+  # fixture with a PRIVATE key: put an env var name in the key column,
+  # add the key as a repository secret and pass it through to docker run
+  # via -e (never commit private keys or echo them to the log).
+  # ---------------------------------------------------------------------------
+  decode-smoke:
+    name: Decode smoke-test (golden fixtures)
+    needs: [gate, build]
+    if: needs.gate.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: Kustonium
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Run golden decode fixtures in the built image
+        shell: bash
+        env:
+          # "1" = a fixture without a committed golden .json file is a
+          # failure. Set to "0" only while bootstrapping new fixtures
+          # (the job then prints the proposed golden instead of failing).
+          GOLDEN_REQUIRE: "1"
+        run: |
+          set -euo pipefail
+          OWNER_LC="${GITHUB_REPOSITORY_OWNER,,}"
+          CFG="config.yaml"
+          RAW_VER="$(sed -nE 's/^version:[[:space:]]*"?([^"[:space:]]+)"?[[:space:]]*$/\1/p' "${CFG}" | head -n1)"
+          CORE_VER="$(echo "${RAW_VER}" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
+          VER="${CORE_VER}-dev.${{ github.run_number }}"
+          IMG="ghcr.io/${OWNER_LC}/amd64-addon-wmbus_mqtt_bridge-dev:${VER}"
+          echo "Testing image ${IMG}"
+          docker run --rm \
+            -v "${PWD}/tests:/smoke:ro" \
+            -e GOLDEN_REQUIRE \
+            --entrypoint /bin/bash \
+            "${IMG}" \
+            /smoke/test_decode_smoke.sh
+
+  # ---------------------------------------------------------------------------
+  # Bump — runs ONLY after BOTH arch images were pushed successfully AND the
+  # decode smoke-test passed (needs: build + decode-smoke). Writes the
+  # just-built version into config.yaml so Home Assistant never sees a
+  # version that has no image. If any arch build or the smoke-test failed,
+  # this job is skipped and config.yaml keeps pointing at the previous,
+  # still-available image.
   # ---------------------------------------------------------------------------
   bump:
     name: Bump dev version in config.yaml
-    needs: [gate, build]
+    needs: [gate, build, decode-smoke]
     if: needs.gate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:

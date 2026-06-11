@@ -1,0 +1,16 @@
+{
+  "_": "telegram",
+  "current_alarms": "no_alarm",
+  "id": "2156b4c2",
+  "last_month_measure_date": "2026-04-30",
+  "last_month_total_m3": 201.229,
+  "manufacture_year": "2022",
+  "media": "water",
+  "meter": "izar",
+  "prefix": "C22UA",
+  "previous_alarms": "no_alarm",
+  "remaining_battery_life_y": 2.5,
+  "serial_number": "459586",
+  "total_m3": 205.626,
+  "transmit_period_s": 8
+}

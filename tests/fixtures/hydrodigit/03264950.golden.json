@@ -1,0 +1,12 @@
+{
+  "_": "telegram",
+  "contents": "BATTERY_VOLTAGE FRAUD_DATE",
+  "fraud_date": null,
+  "fraud_type": "NO_TYPE_INFO",
+  "id": "03264950",
+  "media": "water",
+  "meter": "hydrodigit",
+  "meter_datetime": "2025-05-29 17:16",
+  "total_m3": 0.066,
+  "voltage_v": 3.7
+}

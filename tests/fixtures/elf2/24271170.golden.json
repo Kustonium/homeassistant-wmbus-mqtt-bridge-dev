@@ -1,0 +1,20 @@
+{
+  "_": "telegram",
+  "current_power_kw": 0,
+  "current_volume_flow_m3h": 0,
+  "id": "24271170",
+  "input1_volume_m3": 0.002,
+  "input2_volume_m3": 0.002,
+  "media": "heat/cooling load",
+  "meter": "elf2",
+  "meter_datetime": "2025-10-15 14:39",
+  "status": "OK",
+  "t1_temperature_c": 22.5,
+  "t2_temperature_c": 22.6,
+  "total_energy_cooling_kwh": 1,
+  "total_energy_cooling_period_kwh": 1,
+  "total_energy_kwh": 144,
+  "total_energy_period_kwh": 72,
+  "total_volume_cooling_m3": 1.576,
+  "total_volume_m3": 17.856
+}
