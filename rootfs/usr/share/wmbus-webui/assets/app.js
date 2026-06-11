@@ -88,6 +88,8 @@
     // IDs ticked for bulk removal in the configured-meters panel. Persisted in
     // state so the selection survives the polling re-render (morphdom).
     selectedRemoval: new Set(),
+    // Meter ids with the "published fields" row expanded on the meters view.
+    expandedMeterFields: new Set(),
   };
 
   let liveSource = null;
@@ -1648,6 +1650,40 @@
     `;
   }
 
+  function meterFieldsRow(row, colspan) {
+    let fields = null;
+    try { fields = JSON.parse(row.last_json || ""); } catch (e) { fields = null; }
+    let inner;
+    if (!fields || typeof fields !== "object") {
+      inner = `<span style="color:#607a88;">${escapeHtml(t("published_fields_none", "No decoded telegram this session yet."))}</span>`;
+    } else {
+      const entries = Object.entries(fields)
+        .filter(([k]) => k !== "_")
+        .sort(([a], [b]) => a.localeCompare(b));
+      inner = `
+        <table style="width:auto;min-width:50%;">
+          <thead><tr>
+            <th>${escapeHtml(t("published_fields_field", "Field"))}</th>
+            <th>${escapeHtml(t("webui_value", "Value"))}</th>
+          </tr></thead>
+          <tbody>
+            ${entries.map(([k, v]) => {
+              const unit = typeof v === "number" ? unitFromKey(k) : "";
+              return `<tr>
+                <td class="mono" style="font-size:11px;">${escapeHtml(k)}</td>
+                <td class="mono" style="font-size:11px;">${escapeHtml(String(v))}${unit ? ` <span style="color:#607a88;">${escapeHtml(unit)}</span>` : ""}</td>
+              </tr>`;
+            }).join("")}
+          </tbody>
+        </table>`;
+    }
+    return `
+      <tr><td colspan="${colspan}" style="background:#0b141b;border-top:1px solid #1d2f3c;padding:10px 14px;">
+        <div style="font-size:11px;color:#9eafba;margin-bottom:6px;">${escapeHtml(t("published_fields_title", "Published fields (last telegram)"))}${row.last_json_ts ? ` · ${fmtTime(row.last_json_ts)}` : ""}</div>
+        ${inner}
+      </td></tr>`;
+  }
+
   function meterTable(rows, withActions = true) {
     if (!rows.length) return `<div class="empty">${escapeHtml(t("webui_no_meters", "No meters yet."))}</div>`;
     return `
@@ -1701,11 +1737,11 @@
                     </td>
                     ${
                       withActions
-                        ? `<td><div class="actions"><button class="btn" data-action="open-edit-driver" data-id="${escapeHtml(id)}" data-driver="${escapeHtml(row.driver || "auto")}">${escapeHtml(t("change_driver_btn", "Driver…"))}</button><button class="btn danger" data-action="remove-meter" data-id="${escapeHtml(id)}">${escapeHtml(t("webui_remove", "Remove"))}</button></div></td>`
+                        ? `<td><div class="actions"><button class="btn" data-action="toggle-meter-fields" data-id="${escapeHtml(id)}">${escapeHtml(t("published_fields_btn", "Fields"))} ${state.expandedMeterFields.has(id) ? "▴" : "▾"}</button><button class="btn" data-action="open-edit-driver" data-id="${escapeHtml(id)}" data-driver="${escapeHtml(row.driver || "auto")}">${escapeHtml(t("change_driver_btn", "Driver…"))}</button><button class="btn danger" data-action="remove-meter" data-id="${escapeHtml(id)}">${escapeHtml(t("webui_remove", "Remove"))}</button></div></td>`
                         : ""
                     }
                   </tr>
-                `;
+                ${state.expandedMeterFields.has(id) ? meterFieldsRow(row, withActions ? 8 : 7) : ""}`;
               })
               .join("")}
           </tbody>
@@ -2718,6 +2754,15 @@
         state.modal = null;
         render();
       }
+      return;
+    }
+
+    if (action === "toggle-meter-fields") {
+      const id = target.dataset.id || "";
+      if (!id) return;
+      if (state.expandedMeterFields.has(id)) state.expandedMeterFields.delete(id);
+      else state.expandedMeterFields.add(id);
+      render();
       return;
     }
 

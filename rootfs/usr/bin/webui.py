@@ -38,6 +38,9 @@ CANDIDATE_ANALYSIS_TSV = BASE / "status_candidate_analysis.tsv"
 # Last raw telegram per candidate, written by status_record_candidate_raw
 # (bridge-lib/06-candidates.sh). Feeds the "export for issue report" action.
 CANDIDATE_RAW_TSV = BASE / "status_candidate_raw.tsv"
+# Last full decoded JSON per configured meter (status_meter_seen in
+# bridge-lib/07-meters.sh). Feeds the "published fields" expander.
+METER_LAST_JSON_TSV = BASE / "status_meter_last_json.tsv"
 WMBUSMETERS_BIN = "/usr/bin/wmbusmeters"
 OPTIONS_JSON = BASE / "options.json"
 # Per-minute rate dashboard files written by bridge.sh
@@ -909,6 +912,19 @@ def state(include_ignored: bool = False) -> dict:
         METERS_TSV,
         ["id", "name", "driver", "media", "value_key", "value", "last_seen", "discovery", "seen_count", "avg_interval_s", "seen_15m", "seen_60m", "value_parts"],
     )
+    # Attach the last full decoded JSON (string, parsed client-side) so the
+    # meters view can expand a row into the list of published fields.
+    last_json_rows = read_tsv(METER_LAST_JSON_TSV, ["id", "ts", "json"])
+    last_json_by_id = {
+        normalize_meter_id(r.get("id")): r
+        for r in last_json_rows
+        if normalize_meter_id(r.get("id"))
+    }
+    for m in meters:
+        lj = last_json_by_id.get(normalize_meter_id(m.get("id")))
+        if lj:
+            m["last_json"] = lj.get("json", "")
+            m["last_json_ts"] = lj.get("ts", "")
     candidates = read_tsv(
         CANDIDATES_TSV,
         ["id", "driver", "type", "last_seen", "seen_count", "avg_interval_s", "seen_15m", "seen_60m", "manufacturer"],

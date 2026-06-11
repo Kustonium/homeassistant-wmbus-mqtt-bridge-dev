@@ -151,6 +151,7 @@ hold "this run only" data; the rest persist in `/data`.
 | `status_raw_count.txt` / `status_last_raw_seen.txt` | text | RAW telegram counter + last-seen (file-backed; subshell-safe) |
 | `status_recent_raw.tsv` | TSV | recent RAW hex (tail 200), for candidate RAW lookup |
 | `status_candidate_analysis.tsv` / `_raw.tsv` / `_values.tsv` / `_preview_state.tsv` | TSV | candidate encryption analysis, RAW, decoded preview values, preview state machine |
+| `status_meter_last_json.tsv` | TSV | `id <TAB> ts <TAB> json` — last full decoded JSON per configured meter (written by `status_meter_seen`); feeds the WebUI "published fields" expander |
 | `status_ha_presence.txt` / `status_broker_info.txt` / `status_ha_verification.txt` | text | MQTT→HA healthcheck signals (see [memory: mqtt-ha-healthcheck]) |
 | `status_heartbeat.txt` | text | liveness ticker (WebUI STALE threshold) — must survive soft reload |
 | `status_esp_telegram_devices.tsv` | TSV | per-ESP device tracker: name, last_telegram_epoch, topic, count (**truncated at startup**) |
