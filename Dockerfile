@@ -15,11 +15,22 @@ RUN apk add --no-cache \
 
 WORKDIR /src
 
+# Pin to a known-good upstream commit instead of master HEAD.
+# Upstream is mid-restructuring (wmbusmeters/wmbusmeters#1940) and master
+# does not always compile (e.g. util.h missing <ctime> after the util.cc
+# split, 2026-06-11). This SHA is the state of the last working image
+# (wmbusmeters --version reported 2.0.0-521-g8c35c4a1), so behaviour is
+# identical to what is deployed. Bump the SHA deliberately — ideally
+# gated by the decode smoke-test (roadmap task 5) — to pick up new
+# upstream drivers.
+# NB: the old `sed` stripping -flto from DEBUG_FLAGS is gone — at this
+# commit -flto appears only in a Makefile comment, so it was a no-op.
+# A full clone (not --depth 1) is required: the Makefile derives the
+# binary's version string via `git describe --tags`, which needs the
+# tag history to report e.g. 2.0.0-521-g8c35c4a1.
+ARG WMBUSMETERS_COMMIT=8c35c4a142c505f3a9e2791daa7a27930b9de5ce
 RUN git clone https://github.com/wmbusmeters/wmbusmeters.git . \
-# Aktualny upstream wmbusmeters potrafi wywalac build przy LTO (-flto)
-# na toolchainie uzywanym w tym add-onie (blad lto-wrapper / vsnprintf / fortify).
-# Dlatego usuwamy -flto z Makefile, ale nadal bierzemy najnowszy upstream.
-  && sed -i 's/DEBUG_FLAGS=-O2 -g -flto/DEBUG_FLAGS=-O2 -g/' Makefile \
+  && git checkout --detach "${WMBUSMETERS_COMMIT}" \
   && ./configure \
   && make \
   && install -d /out \
