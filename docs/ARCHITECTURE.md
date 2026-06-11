@@ -308,7 +308,10 @@ repo) makes stable a copy of dev **minus the dev identity**:
 > **Lesson:** promote originally synced only `rootfs/Dockerfile/translations`, so
 > `config.yaml` and `docker/` **drifted** — that is how the `izarv2` enum and the
 > standalone-Docker entrypoint went stale on stable while dev was already fixed.
-> A dev fix that lives outside the synced set never reaches users.
+> A dev fix that lives outside the synced set never reaches users. Since then the
+> `standalone-boot` CI job (§12) boots `docker/entrypoint.sh` on every dev build,
+> so a broken standalone entrypoint blocks the version bump instead of drifting
+> silently.
 
 ---
 
@@ -336,6 +339,16 @@ repo) makes stable a copy of dev **minus the dev identity**:
   committed fixtures are public (upstream driver tests + the public replay
   corpus). Meter ids are lowercased before the wmbusmeters call — id matching is
   case-sensitive.
+- **`standalone-boot` (`.github/workflows/build.yaml`)**: boots the amd64 image
+  the way the documented Docker-standalone deployment does — default entrypoint
+  `/usr/bin/docker-entrypoint.sh` next to an anonymous Mosquitto reachable as
+  host `mosquitto` (the target of the entrypoint's generated default
+  `options.json`). Asserts from the container logs that the entrypoint generated
+  `/config/options.json`, that `bridge.sh` connected to the broker
+  (`MQTT broker ready`), and that the container is still running. Like
+  `decode-smoke`, the `bump` job depends on it, so a broken standalone boot
+  never becomes a published version. Exists because nobody tests this mode by
+  hand (§11 lesson).
 - **Regenerating goldens** (after an accepted decode change): build wmbusmeters
   at the pinned commit, re-run the fixtures, commit the new `.golden.json`; or
   temporarily set `GOLDEN_REQUIRE=0` in the workflow — missing goldens are then

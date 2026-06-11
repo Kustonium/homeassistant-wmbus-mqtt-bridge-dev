@@ -10,6 +10,7 @@ on:
       - 'config.yaml'
       - 'translations/**'
       - 'tests/**'
+      - 'docker/**'
       - '.github/workflows/build.yaml'
   workflow_dispatch:
 
@@ -63,7 +64,7 @@ jobs:
           echo "Files changed in this push:"
           echo "${CHANGED}" | sed 's/^/  /'
 
-          PATTERN="^(rootfs/|Dockerfile|config\.yaml|translations/|tests/|\.github/workflows/build\.yaml$)"
+          PATTERN="^(rootfs/|Dockerfile|config\.yaml|translations/|tests/|docker/|\.github/workflows/build\.yaml$)"
           if echo "${CHANGED}" | grep -qE "${PATTERN}"; then
             echo "image-affecting change — building"
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -210,16 +211,101 @@ jobs:
             /smoke/test_decode_smoke.sh
 
   # ---------------------------------------------------------------------------
+  # Standalone boot-test — start the freshly built amd64 image the way the
+  # documented Docker-standalone deployment does (docker/examples/
+  # docker-compose.yml): default entrypoint /usr/bin/docker-entrypoint.sh,
+  # next to an anonymous Mosquitto broker reachable as host "mosquitto"
+  # (which is exactly what the entrypoint's generated default options.json
+  # points at). Nobody runs this mode by hand and it has drifted before
+  # (docs/ARCHITECTURE.md §11), so CI asserts the minimum boot contract:
+  #   1. the entrypoint generated /config/options.json,
+  #   2. bridge.sh started and connected to the test broker,
+  #   3. the container is still running after the grace period.
+  # The bump job needs this, so a broken standalone boot blocks the version
+  # bump the same way a decode regression does.
+  # ---------------------------------------------------------------------------
+  standalone-boot:
+    name: Standalone boot-test (docker-entrypoint.sh)
+    needs: [gate, build]
+    if: needs.gate.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: Kustonium
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Boot standalone container against a test broker
+        shell: bash
+        run: |
+          set -euo pipefail
+          OWNER_LC="${GITHUB_REPOSITORY_OWNER,,}"
+          CFG="config.yaml"
+          RAW_VER="$(sed -nE 's/^version:[[:space:]]*"?([^"[:space:]]+)"?[[:space:]]*$/\1/p' "${CFG}" | head -n1)"
+          CORE_VER="$(echo "${RAW_VER}" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
+          VER="${CORE_VER}-dev.${{ github.run_number }}"
+          IMG="ghcr.io/${OWNER_LC}/amd64-addon-wmbus_mqtt_bridge-dev:${VER}"
+          echo "Booting standalone container from ${IMG}"
+
+          docker network create wmbus-standalone
+
+          # Same broker image and config as the documented compose example.
+          docker run -d --name mosquitto --network wmbus-standalone \
+            -v "${PWD}/docker/examples/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro" \
+            eclipse-mosquitto:2
+
+          # No /config volume on purpose: a fresh container must generate the
+          # default options.json itself (external_mqtt_host = "mosquitto").
+          docker run -d --name wmbus --network wmbus-standalone \
+            --entrypoint /usr/bin/docker-entrypoint.sh \
+            "${IMG}"
+
+          # bridge.sh retries the broker every 2 s (wait_for_mqtt), so this
+          # comfortably covers a slow Mosquitto start.
+          sleep 20
+
+          LOGS="$(docker logs wmbus 2>&1 || true)"
+          echo "----- wmbus container logs -----"
+          echo "${LOGS}"
+          echo "--------------------------------"
+
+          fail=0
+          if ! grep -qF "Created default /config/options.json" <<<"${LOGS}"; then
+            echo "FAIL: entrypoint did not generate /config/options.json"
+            fail=1
+          fi
+          if ! grep -qF "Starting core bridge" <<<"${LOGS}"; then
+            echo "FAIL: entrypoint did not hand over to bridge.sh"
+            fail=1
+          fi
+          if ! grep -qF "MQTT broker ready" <<<"${LOGS}"; then
+            echo "FAIL: bridge.sh did not connect to the test broker"
+            fail=1
+          fi
+          if [[ "$(docker inspect -f '{{.State.Running}}' wmbus)" != "true" ]]; then
+            echo "FAIL: container exited (code $(docker inspect -f '{{.State.ExitCode}}' wmbus))"
+            echo "----- mosquitto logs (tail) -----"
+            docker logs mosquitto 2>&1 | tail -n 20 || true
+            fail=1
+          fi
+          exit ${fail}
+
+  # ---------------------------------------------------------------------------
   # Bump — runs ONLY after BOTH arch images were pushed successfully AND the
-  # decode smoke-test passed (needs: build + decode-smoke). Writes the
-  # just-built version into config.yaml so Home Assistant never sees a
-  # version that has no image. If any arch build or the smoke-test failed,
-  # this job is skipped and config.yaml keeps pointing at the previous,
-  # still-available image.
+  # decode smoke-test AND the standalone boot-test passed (needs: build +
+  # decode-smoke + standalone-boot). Writes the just-built version into
+  # config.yaml so Home Assistant never sees a version that has no image.
+  # If any arch build or either smoke-test failed, this job is skipped and
+  # config.yaml keeps pointing at the previous, still-available image.
   # ---------------------------------------------------------------------------
   bump:
     name: Bump dev version in config.yaml
-    needs: [gate, build, decode-smoke]
+    needs: [gate, build, decode-smoke, standalone-boot]
     if: needs.gate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
