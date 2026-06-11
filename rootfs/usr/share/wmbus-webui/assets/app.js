@@ -2035,6 +2035,7 @@
                     <td style="color:#607a88;font-size:12px;">${escapeHtml(fmtInterval(row.avg_interval_s))}${espReceptionBadges(row)}</td>
                     <td><div class="actions">
                       ${row.preview_active === "true" ? `<button class="btn" data-action="cancel-preview" data-id="${escapeHtml(id)}">${escapeHtml(t("cancel_preview", "Cancel preview"))}</button>` : ""}
+                      <button class="btn" data-action="open-edit-driver" data-id="${escapeHtml(id)}" data-driver="${escapeHtml(row.driver || "auto")}">${escapeHtml(t("change_driver_btn", "Driver…"))}</button>
                     </div></td>
                   </tr>`;
               }).join("")}
