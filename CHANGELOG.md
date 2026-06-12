@@ -1,3 +1,11 @@
+## 1.5.36-dev.194
+
+### Added
+- surface AES key problems for encrypted meters (roadmap task 4) (7c91d32)
+
+### Fixed
+- doctor checklist hides the hint on passing checks (f01ddaa)
+
 ## 1.5.36-dev.193
 
 ### Fixed
