@@ -1,3 +1,8 @@
+## 1.5.36-dev.190
+
+### Fixed
+- prefix check in Discovery Doctor also accepts the live HA birth signal (3ab1b78)
+
 ## 1.5.36-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
