@@ -1,3 +1,9 @@
+## 1.5.36-dev.191
+
+### Fixed
+- Discovery Doctor prefix check uses canary verification and honest unknown state (f448e7b)
+- prefix check in Discovery Doctor also accepts the live HA birth signal (3ab1b78)
+
 ## 1.5.36-dev.190
 
 ### Fixed
