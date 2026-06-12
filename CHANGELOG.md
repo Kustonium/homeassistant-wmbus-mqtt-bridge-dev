@@ -1,3 +1,10 @@
+## 1.5.36-dev.193
+
+### Fixed
+- doctor checklist hides the hint on passing checks (f01ddaa)
+- gate diffs the whole push range, not only the last commit (3258561)
+- Discovery Doctor prefix check uses canary verification and honest unknown state (f448e7b)
+
 ## 1.5.36-dev.191
 
 ### Fixed
