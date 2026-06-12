@@ -40,7 +40,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          fetch-depth: 2
+          # Full history: the gate diffs the WHOLE push range (event.before),
+          # which can be arbitrarily many commits behind HEAD.
+          fetch-depth: 0
 
       - name: Gate
         id: gate
@@ -54,7 +56,19 @@ jobs:
             exit 0
           fi
 
-          CHANGED="$(git diff --name-only HEAD~1 HEAD 2>/dev/null || true)"
+          # Diff the whole push range, not HEAD~1..HEAD. A multi-commit push
+          # ending with a docs-only commit used to skip the build even though
+          # an earlier commit in the same push touched rootfs/ — the image
+          # silently never shipped (observed: a prefix-check fix followed by
+          # a handoff commit produced Gate=skip and no version bump).
+          BASE="${{ github.event.before }}"
+          if [[ -z "${BASE}" ]] || [[ "${BASE}" =~ ^0+$ ]] || ! git cat-file -e "${BASE}" 2>/dev/null; then
+            echo "no usable push base (new branch / forced push) — building defensively"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CHANGED="$(git diff --name-only "${BASE}" HEAD 2>/dev/null || true)"
           if [[ -z "${CHANGED}" ]]; then
             echo "cannot determine changed files — building defensively"
             echo "skip=false" >> "$GITHUB_OUTPUT"
