@@ -2551,16 +2551,20 @@
           t("doctor_hint_retain", "Without discovery_retain Home Assistant loses the entities after every restart."),
           true),
         probe
-          // Two independent signals: a retained birth message captured by the
-          // probe, OR a live birth seen by the bridge's continuous healthcheck
-          // subscriber (status_ha_presence) — HA's birth is NOT retained by
-          // default, so on most setups only the live signal is available.
-          ? row(haBirth === "online" || d.ha_presence === "online",
+          // Three independent signals, strongest first: the opt-in canary
+          // verification ("verified" = HA Core API confirmed the entity
+          // exists), a retained birth captured by the probe, or a live birth
+          // seen by the bridge's continuous healthcheck subscriber. HA's
+          // birth is often NOT retained and is published only when the HA
+          // MQTT integration (re)starts — on a healthy system where the
+          // add-on restarted last, all MQTT-side signals can legitimately be
+          // absent, hence the actionable ⚠ wording instead of a false ❌.
+          ? row(d.ha_verification === "verified" || haBirth === "online" || d.ha_presence === "online",
               `${t("doctor_check_prefix", "HA listens on this discovery prefix")} (${d.discovery_prefix})`,
-              haBirth === "offline" || d.ha_presence === "offline"
+              (haBirth === "offline" || d.ha_presence === "offline" || d.ha_verification === "not_created")
                 ? t("doctor_hint_prefix_offline", "A retained HA birth message exists on this prefix, but reports offline — Home Assistant may be down or disconnected from this broker.")
-                : t("doctor_hint_prefix", "No HA birth message observed at <prefix>/status (retained or live). Either the HA MQTT integration uses a different prefix (default: homeassistant) or HA is connected to a different broker."),
-              haBirth === "" && d.ha_presence !== "offline")
+                : t("doctor_hint_prefix", "Cannot confirm from MQTT alone: HA's birth message is often not retained and is sent only when the HA MQTT integration starts. If your entities appear in HA, everything works. To get a definitive ✓: reload the MQTT integration in HA (publishes a fresh birth) and re-run, or enable verify_ha_entities."),
+              haBirth === "" && d.ha_presence !== "offline" && d.ha_verification !== "not_created")
           : row(false,
               t("doctor_check_probe", "Live broker probe"),
               t("doctor_hint_probe", "The bridge did not answer in time — is the pipeline running?")),

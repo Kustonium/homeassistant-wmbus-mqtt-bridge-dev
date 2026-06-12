@@ -2078,6 +2078,18 @@ class Handler(BaseHTTPRequestHandler):
                     ha_presence = _ha_state
             except OSError:
                 pass
+            # Third, strongest signal for the prefix check: the opt-in
+            # verify_ha_entities canary — "verified" means the HA Core API
+            # confirmed the canary entity exists, i.e. HA consumes Discovery
+            # from this broker on this prefix.
+            ha_verification = "unavailable"
+            try:
+                _hv_raw = STATUS_HA_VERIFICATION_FILE.read_text(encoding="utf-8").strip()
+                _hv_state = _hv_raw.split("\t")[0].strip().lower()
+                if _hv_state in ("verified", "not_created", "pending", "unavailable"):
+                    ha_verification = _hv_state
+            except OSError:
+                pass
             options = read_options()
             options = options if isinstance(options, dict) else {}
             self._send_json(200, {
@@ -2089,6 +2101,7 @@ class Handler(BaseHTTPRequestHandler):
                 "mqtt_host": str(mqtt.get("host") or ""),
                 "discovery_published": bool(pipeline.get("discovery_published")),
                 "ha_presence": ha_presence,
+                "ha_verification": ha_verification,
                 "discovery_enabled": bool(options.get("discovery_enabled", True)),
                 "discovery_prefix": str(options.get("discovery_prefix") or "homeassistant"),
                 "discovery_retain": bool(options.get("discovery_retain", True)),
