@@ -2551,12 +2551,16 @@
           t("doctor_hint_retain", "Without discovery_retain Home Assistant loses the entities after every restart."),
           true),
         probe
-          ? row(haBirth === "online",
+          // Two independent signals: a retained birth message captured by the
+          // probe, OR a live birth seen by the bridge's continuous healthcheck
+          // subscriber (status_ha_presence) — HA's birth is NOT retained by
+          // default, so on most setups only the live signal is available.
+          ? row(haBirth === "online" || d.ha_presence === "online",
               `${t("doctor_check_prefix", "HA listens on this discovery prefix")} (${d.discovery_prefix})`,
-              haBirth === "offline"
+              haBirth === "offline" || d.ha_presence === "offline"
                 ? t("doctor_hint_prefix_offline", "A retained HA birth message exists on this prefix, but reports offline — Home Assistant may be down or disconnected from this broker.")
-                : t("doctor_hint_prefix", "No retained HA birth message at <prefix>/status. Either the HA MQTT integration uses a different prefix (default: homeassistant) or HA is connected to a different broker."),
-              haBirth === "")
+                : t("doctor_hint_prefix", "No HA birth message observed at <prefix>/status (retained or live). Either the HA MQTT integration uses a different prefix (default: homeassistant) or HA is connected to a different broker."),
+              haBirth === "" && d.ha_presence !== "offline")
           : row(false,
               t("doctor_check_probe", "Live broker probe"),
               t("doctor_hint_probe", "The bridge did not answer in time — is the pipeline running?")),
