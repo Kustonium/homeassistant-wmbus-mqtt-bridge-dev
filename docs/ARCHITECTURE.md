@@ -152,6 +152,7 @@ hold "this run only" data; the rest persist in `/data`.
 | `status_recent_raw.tsv` | TSV | recent RAW hex (tail 200), for candidate RAW lookup |
 | `status_candidate_analysis.tsv` / `_raw.tsv` / `_values.tsv` / `_preview_state.tsv` | TSV | candidate encryption analysis, RAW, decoded preview values, preview state machine |
 | `status_meter_last_json.tsv` | TSV | `id <TAB> ts <TAB> json` — last full decoded JSON per configured meter (written by `status_meter_seen`); feeds the WebUI "published fields" expander |
+| `.discovery_doctor_request` / `status_discovery_doctor.json` | flag / JSON | Discovery Doctor: webui touches the flag, the heartbeat ticker runs `discovery_doctor_probe` (broker probe via `mosquitto_sub`) and writes the result |
 | `status_ha_presence.txt` / `status_broker_info.txt` / `status_ha_verification.txt` | text | MQTT→HA healthcheck signals (see [memory: mqtt-ha-healthcheck]) |
 | `status_heartbeat.txt` | text | liveness ticker (WebUI STALE threshold) — must survive soft reload |
 | `status_esp_telegram_devices.tsv` | TSV | per-ESP device tracker: name, last_telegram_epoch, topic, count (**truncated at startup**) |
@@ -270,6 +271,18 @@ Concretely:
   HA Core API (Template lookup by unique icon, robust to entity_id slugification)
   whether HA actually created it. Needs `homeassistant_api: true` (granted only
   when enabled).
+- **Discovery Doctor** (SETTINGS view): on-demand checklist for the "telegrams
+  reach the broker but no entities in HA" class of reports. The WebUI touches
+  `.discovery_doctor_request`; the bridge heartbeat ticker (which has the MQTT
+  credentials) runs `discovery_doctor_probe` (`09-discovery.sh`): a bounded
+  `mosquitto_sub` on `<prefix>/status` (retained HA birth proves HA listens on
+  this prefix on this broker) and on `<prefix>/sensor/wmbus_<id>/+/config` per
+  configured meter (retained configs arrive immediately on subscribe; count +
+  one sample payload). webui's POST `/api/discovery-doctor` waits ≤25 s for
+  the JSON result and merges static checks (mqtt connected, discovery
+  settings). "Force re-discovery" = the existing pipeline soft reload — the
+  in-memory `DISCOVERY_SENT_FIELD` cache resets, so configs republish with the
+  next telegrams.
 
 ---
 

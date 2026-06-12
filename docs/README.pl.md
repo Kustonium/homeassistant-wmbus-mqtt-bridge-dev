@@ -280,6 +280,16 @@ nagłówek `Accept-Language` → domyślnie `en`. Przełącznik w prawym górnym
 
 ## 10. Rozwiązywanie problemów
 
+### „Telegramy docierają do brokera, ale w HA nie ma encji"
+
+Uruchom **Discovery Doctor** (widok USTAWIENIA): checklista jednym kliknięciem
+sprawdza połączenie z brokerem, czy MQTT Discovery jest włączone i retained,
+czy Home Assistant faktycznie nasłuchuje skonfigurowanego `discovery_prefix`
+(po retained birth message HA) oraz czy retained configi discovery istnieją na
+brokerze dla każdego skonfigurowanego licznika — z podglądem payloadu i
+przyciskiem **Wymuś ponowne discovery**. Bez grzebania w logach i
+`mosquitto_sub`.
+
 ### „Nie widzę żadnych telegramów" (RAW count = 0)
 1. Odbiornik publikuje na `wmbus/<cokolwiek>/telegram`? Test: `mosquitto_sub -h <broker> -t 'wmbus/#' -v`.
 2. Bridge połączony i subskrybuje? Logi: `mqtt: connected` + `subscribed to wmbus/+/telegram`.

@@ -282,6 +282,16 @@ Häufige Treiber: Wasser — `multical21`, `iperl`, `hydrodigit`, `hydrus`, `mkr
 
 ## 10. Fehlerbehebung
 
+### „Telegramme erreichen den Broker, aber keine Entitäten in HA"
+
+Starten Sie den **Discovery Doctor** (Ansicht EINSTELLUNGEN): eine
+Ein-Klick-Checkliste prüft die Broker-Verbindung, ob MQTT Discovery aktiviert
+und retained ist, ob Home Assistant tatsächlich auf dem konfigurierten
+`discovery_prefix` hört (über HAs retained Birth-Message) und ob retained
+Discovery-Configs für jeden konfigurierten Zähler auf dem Broker existieren —
+mit Payload-Vorschau und einem Button **Re-Discovery erzwingen**. Kein
+Log-Graben, kein `mosquitto_sub`.
+
 ### „Ich sehe keine Telegramme" (RAW count = 0)
 1. Veröffentlicht der Empfänger auf `wmbus/<irgendetwas>/telegram`? Test: `mosquitto_sub -h <broker> -t 'wmbus/#' -v`.
 2. Ist die Bridge verbunden und subscribed? Log: `mqtt: connected` + `subscribed to wmbus/+/telegram`.

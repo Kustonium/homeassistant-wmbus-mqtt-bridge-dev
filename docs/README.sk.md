@@ -273,6 +273,15 @@ hlavička `Accept-Language` → predvolene `en`. Prepínač vpravo hore.
 
 ## 10. Riešenie problémov
 
+### „Telegramy dorazia na broker, ale v HA nie sú entity"
+
+Spusti **Discovery Doctor** (pohľad NASTAVENIA): checklist jedným kliknutím
+overí pripojenie k brokeru, či je MQTT Discovery zapnuté a retained, či Home
+Assistant skutočne počúva nakonfigurovaný `discovery_prefix` (cez retained
+birth message HA) a či na brokeri existujú retained discovery configy pre
+každý nakonfigurovaný merač — s náhľadom payloadu a tlačidlom **Vynútiť
+re-discovery**. Bez hrabania v logoch a `mosquitto_sub`.
+
 ### „Nevidím žiadne telegramy" (RAW count = 0)
 1. Publikuje prijímač na `wmbus/<čokoľvek>/telegram`? Test: `mosquitto_sub -h <broker> -t 'wmbus/#' -v`.
 2. Je bridge pripojený a subscribed? Log: `mqtt: connected` + `subscribed to wmbus/+/telegram`.
