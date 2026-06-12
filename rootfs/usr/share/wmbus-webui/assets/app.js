@@ -2528,7 +2528,7 @@
         <span style="font-size:15px;line-height:1;">${ok ? "✅" : (warn ? "⚠️" : "❌")}</span>
         <div>
           <div style="font-size:13px;">${escapeHtml(label)}</div>
-          ${(!ok || warn) && hint ? `<div style="font-size:11px;color:#9eafba;margin-top:2px;">${escapeHtml(hint)}</div>` : ""}
+          ${!ok && hint ? `<div style="font-size:11px;color:#9eafba;margin-top:2px;">${escapeHtml(hint)}</div>` : ""}
         </div>
       </div>`;
     let body;
