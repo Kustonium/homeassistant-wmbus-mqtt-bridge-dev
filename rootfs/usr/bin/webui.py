@@ -964,6 +964,16 @@ def state(include_ignored: bool = False) -> dict:
         for r in key_problem_rows
         if normalize_meter_id(r.get("id"))
     }
+    # Whether a meter has an AES key configured in options.json — feeds the
+    # green/red lock badge under the meter id in the meters tables.
+    _opts_for_keys = read_options()
+    has_key_by_id = {}
+    if isinstance(_opts_for_keys, dict):
+        for _om in _opts_for_keys.get("meters") or []:
+            if isinstance(_om, dict):
+                _omid = normalize_meter_id(_om.get("meter_id"))
+                if _omid:
+                    has_key_by_id[_omid] = bool(str(_om.get("key") or "").strip())
     for m in meters:
         mid_norm = normalize_meter_id(m.get("id"))
         lj = last_json_by_id.get(mid_norm)
@@ -972,6 +982,8 @@ def state(include_ignored: bool = False) -> dict:
             m["last_json_ts"] = lj.get("ts", "")
         if mid_norm in key_problem_by_id:
             m["key_problem"] = key_problem_by_id[mid_norm]
+        if has_key_by_id.get(mid_norm):
+            m["has_key"] = True
     candidates = read_tsv(
         CANDIDATES_TSV,
         ["id", "driver", "type", "last_seen", "seen_count", "avg_interval_s", "seen_15m", "seen_60m", "manufacturer"],

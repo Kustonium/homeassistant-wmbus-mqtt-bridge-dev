@@ -335,6 +335,20 @@
     `;
   }
 
+  // Small AES lock badge under the meter id: green = key configured and no
+  // detected problem (decryption works), red = key configured but the bridge
+  // detected a key problem. No badge for unencrypted meters (no key).
+  function aesLockBadge(row) {
+    const hasKey = row.has_key === true || String(row.has_key || "") === "true";
+    if (!hasKey) return "";
+    const bad = !!String(row.key_problem || "");
+    const color = bad ? "#e0596a" : "#4df08d";
+    const title = bad
+      ? t("key_problem_hint", "Fix the AES key via the Driver… button; the pipeline reloads and decoding resumes with the next telegram.")
+      : t("aes_lock_ok", "Encrypted meter — AES key configured and working.");
+    return `<div style="margin-top:2px;"><span style="font-size:10px;font-weight:700;color:${color};" title="${escapeHtml(title)}">🔒 AES</span></div>`;
+  }
+
   // Red key-problem pill — wmbusmeters detected a wrong/missing AES key and
   // permanently ignores the meter until the next pipeline reload; without
   // this the user only sees a silent "no data" (upstream pattern #1859).
@@ -1762,7 +1776,7 @@
                   : `<span style="color:#4a6070;">—</span>`;
                 return `
                   <tr>
-                    <td><strong>${escapeHtml(id)}</strong></td>
+                    <td><strong>${escapeHtml(id)}</strong>${aesLockBadge(row)}</td>
                     <td><span style="margin-right:5px;font-size:15px;vertical-align:middle;">${mIcon}</span>${escapeHtml(row.name || row.id || "-")}</td>
                     <td>${escapeHtml(row.driver || "-")}</td>
                     <td>${mfrCell}</td>
@@ -2062,7 +2076,7 @@
                 return `
                   <tr data-value="${escapeHtml(dataVal)}">
                     <td style="text-align:center;"><input type="checkbox" data-action="toggle-select-meter" data-id="${escapeHtml(id)}" ${state.selectedRemoval.has(id) ? "checked" : ""} style="cursor:pointer;"></td>
-                    <td><strong>${escapeHtml(id)}</strong></td>
+                    <td><strong>${escapeHtml(id)}</strong>${aesLockBadge(row)}</td>
                     <td><span style="margin-right:5px;font-size:15px;vertical-align:middle;">${mIcon}</span>${escapeHtml(row.name || id || "-")}</td>
                     <td>${escapeHtml(row.driver || "-")}</td>
                     <td>${mfrCell}</td>
@@ -2718,11 +2732,30 @@
             <label for="edit-meter-driver-select">${escapeHtml(t("driver", "Driver"))}</label>
             ${driverPickerHtml(em.driver, "edit-meter-driver", "")}
             <label for="edit-meter-key" style="margin-top:8px;">${escapeHtml(t("aes_key_label", "AES key"))}</label>
-            <input id="edit-meter-key" value="${escapeHtml(em.key || "")}" oninput="window.__editModalKeySet(this.value)" placeholder="${escapeHtml(t("change_driver_keep_key", "Leave empty to keep the current key."))}">
+            ${(() => {
+              // Same key UX as the add-meter modal: live hex-strip, 32-char
+              // counter, border colour, Save disabled at 1–31 chars. The
+              // visual state is ALSO derived from state (em.key) at render
+              // time so live SSE rebuilds repaint it correctly mid-typing.
+              const k = String(em.key || "");
+              const partial = k.length > 0 && k.length !== 32;
+              const border = k.length === 32 ? "#1e6b3a" : (partial ? "#6b4a1e" : "");
+              const cnt = k.length === 32 ? "✓ 32" : (k.length > 0 ? `${k.length}/32` : "");
+              const cntColor = k.length === 32 ? "#4df08d" : "#f3c84b";
+              const keyJs = `(function(inp){var v=inp.value.replace(/[^0-9A-Fa-f]/g,'').slice(0,32);inp.value=v;window.__editModalKeySet(v);var cnt=document.getElementById('edit-aes-key-count');var btn=document.getElementById('edit-driver-save');if(v.length===0){inp.style.borderColor='';if(cnt)cnt.textContent='';if(btn)btn.disabled=false;}else if(v.length===32){inp.style.borderColor='#1e6b3a';if(cnt){cnt.textContent='✓ 32';cnt.style.color='#4df08d';}if(btn)btn.disabled=false;}else{inp.style.borderColor='#6b4a1e';if(cnt){cnt.textContent=v.length+'/32';cnt.style.color='#f3c84b';}if(btn)btn.disabled=true;}})(this)`;
+              return `
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input id="edit-meter-key" autocomplete="off" maxlength="32" value="${escapeHtml(k)}"
+                style="font-family:monospace;flex:1;${border ? `border-color:${border};` : ""}"
+                placeholder="${escapeHtml(t("change_driver_keep_key", "Leave empty to keep the current key."))}"
+                oninput="${escapeHtml(keyJs)}">
+              <span id="edit-aes-key-count" style="font-size:11px;font-weight:700;min-width:40px;text-align:right;color:${cntColor};">${escapeHtml(cnt)}</span>
+            </div>`;
+            })()}
           </div>
           <div class="modal-actions">
             <button class="btn" type="button" data-action="close-edit-modal">${escapeHtml(t("webui_cancel", "Cancel"))}</button>
-            <button class="btn primary" type="button" data-action="save-edit-driver" data-id="${escapeHtml(em.id || "")}">${escapeHtml(t("save_btn", "Save"))}</button>
+            <button id="edit-driver-save" class="btn primary" type="button" data-action="save-edit-driver" data-id="${escapeHtml(em.id || "")}"${(String(em.key || "").length > 0 && String(em.key || "").length !== 32) ? " disabled" : ""}>${escapeHtml(t("save_btn", "Save"))}</button>
           </div>
         </div>
       </div>`;
@@ -3019,6 +3052,9 @@
       const driver = String(em.driver || "").trim();
       const key = String(em.key || "").trim();
       if (!id || !driver) return;
+      // Safety net behind the disabled Save button: a partial key never
+      // leaves the modal (the backend would reject it anyway).
+      if (key && key.length !== 32) return;
       try {
         await postApi("update-meter", key ? {meter_id: id, driver, key} : {meter_id: id, driver});
         state.editModal = null;
