@@ -90,6 +90,22 @@ nie DOM. **Reguła na przyszłość: wartości edytowane w modalach muszą żyć
 state, nie w DOM** — każdy nowy input w modalu dostaje sink do state, inaczej
 re-render SSE go zresetuje.
 
+**11. Zadanie 2 roadmapy — Discovery Doctor (`fc8e2de` + fix `3ab1b78`)** —
+checklista diagnostyczna „telegramy są na brokerze, encji w HA brak" (wzorzec
+upstream #1931). Architektura z istniejących klocków: webui dotyka
+`.discovery_doctor_request` → ticker heartbeat (ma creds MQTT w `SUB_ARGS`)
+odpala `discovery_doctor_probe` (09-discovery.sh): ograniczone czasowo
+`mosquitto_sub` na `<prefix>/status` (retained birth HA) i
+`<prefix>/sensor/wmbus_<id>/+/config` per licznik (retained configi + sample)
+→ atomowy `status_discovery_doctor.json` → POST `/api/discovery-doctor` czeka
+≤25 s i dokleja checki statyczne. „Wymuś ponowne discovery" = istniejący soft
+reload (reset cache `DISCOVERY_SENT_FIELD`). Modal read-only (odporny na SSE
+re-render z natury). 21 kluczy i18n ×5, Troubleshooting ×5, ARCHITECTURE §5/§9.
+**Fix z testu na żywo (EMQX usera):** birth HA domyślnie NIE jest retained —
+check prefiksu ⚠ na zdrowym systemie; teraz OR dwóch sygnałów: retained
+snapshot sondy LUB `ha_presence` z ciągłego subskrybenta healthchecku
+(13-esp.sh, ten sam topic); `offline` z któregokolwiek = ❌.
+
 ## Weryfikacja na żywo (user, testowe HA, dev.187+)
 - availability: encje `niedostępny` przy częściowych ramkach ✓
 - zmiana drivera `auto→istawater→evo868` na `10685115` (ISTA, klucz z issue
@@ -99,8 +115,8 @@ re-render SSE go zresetuje.
 - dodanie licznika na driverze auto ✓
 
 ## Otwarte tematy
-1. **Zadanie 2 roadmapy** (Discovery Doctor) i **Zadanie 4** (UX szyfrowanych
-   bez klucza) — nieruszone.
+1. **Zadanie 4 roadmapy** (UX kandydatów szyfrowanych bez klucza) — ostatnie
+   nieruszone zadanie z roadmapy (Zadanie 2 zrobione, pkt 11 wyżej).
 2. **Boot smoke-test Docker standalone w CI** — chip/task zaproponowany
    (entrypoint → options.json → bridge startuje → bump zależny).
 3. **Pliki `(Conflicted copy 2026-06-09 by RYZEN)`** — 10 sztuk, nieśledzone,
