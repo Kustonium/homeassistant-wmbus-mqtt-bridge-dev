@@ -153,6 +153,7 @@ hold "this run only" data; the rest persist in `/data`.
 | `status_candidate_analysis.tsv` / `_raw.tsv` / `_values.tsv` / `_preview_state.tsv` | TSV | candidate encryption analysis, RAW, decoded preview values, preview state machine |
 | `status_meter_last_json.tsv` | TSV | `id <TAB> ts <TAB> json` — last full decoded JSON per configured meter (written by `status_meter_seen`); feeds the WebUI "published fields" expander |
 | `.discovery_doctor_request` / `status_discovery_doctor.json` | flag / JSON | Discovery Doctor: webui touches the flag, the heartbeat ticker runs `discovery_doctor_probe` (broker probe via `mosquitto_sub`) and writes the result |
+| `status_meter_key_problem.tsv` | TSV | `id <TAB> reason <TAB> ts` — AES key problem (`key_missing` / `key_invalid`) detected by `status_detect_key_problem` from wmbusmeters warnings (which then permanently ignores the meter until reload); cleared by the next decoded JSON |
 | `status_ha_presence.txt` / `status_broker_info.txt` / `status_ha_verification.txt` | text | MQTT→HA healthcheck signals (see [memory: mqtt-ha-healthcheck]) |
 | `status_heartbeat.txt` | text | liveness ticker (WebUI STALE threshold) — must survive soft reload |
 | `status_esp_telegram_devices.tsv` | TSV | per-ESP device tracker: name, last_telegram_epoch, topic, count (**truncated at startup**) |

@@ -290,6 +290,18 @@ brokerze dla każdego skonfigurowanego licznika — z podglądem payloadu i
 przyciskiem **Wymuś ponowne discovery**. Bez grzebania w logach i
 `mosquitto_sub`.
 
+### „Mój licznik szyfruje telegramy — co dalej?"
+
+Większość liczników rozliczeniowych szyfruje payload (kandydat ma odznakę
+**AES req.**). Bez indywidualnego 128-bitowego klucza AES (32 znaki hex)
+dekodowanie jest niemożliwe — to nie jest błąd. Skąd wziąć klucz: **zarządca
+budynku / spółdzielnia**, **dostawca medium**, który rozlicza licznik, albo
+**instalator licznika**. Licznik możesz dodać bez klucza i uzupełnić go później
+przyciskiem **Driver…**. Jeśli klucz jest błędny lub go brak, wmbusmeters po
+cichu ignoruje licznik — add-on to wykrywa i pokazuje czerwony status **🔑
+klucz AES nieprawidłowy / brak klucza AES** przy liczniku; po poprawieniu
+klucza pipeline się przeładowuje i dekodowanie wraca przy następnym telegramie.
+
 ### „Nie widzę żadnych telegramów" (RAW count = 0)
 1. Odbiornik publikuje na `wmbus/<cokolwiek>/telegram`? Test: `mosquitto_sub -h <broker> -t 'wmbus/#' -v`.
 2. Bridge połączony i subskrybuje? Logi: `mqtt: connected` + `subscribed to wmbus/+/telegram`.

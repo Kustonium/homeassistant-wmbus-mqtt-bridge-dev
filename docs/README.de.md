@@ -292,6 +292,20 @@ Discovery-Configs für jeden konfigurierten Zähler auf dem Broker existieren �
 mit Payload-Vorschau und einem Button **Re-Discovery erzwingen**. Kein
 Log-Graben, kein `mosquitto_sub`.
 
+### „Mein Zähler verschlüsselt seine Telegramme — was nun?"
+
+Die meisten Abrechnungszähler verschlüsseln ihre Payload (der Kandidat zeigt
+das Badge **AES req.**). Ohne den individuellen 128-Bit-AES-Schlüssel (32
+Hex-Zeichen) ist keine Dekodierung möglich — das ist kein Fehler. Woher der
+Schlüssel kommt: **Hausverwaltung / Genossenschaft**, der **Versorger**, der
+den Zähler abrechnet, oder der **Installateur**. Sie können den Zähler ohne
+Schlüssel hinzufügen und ihn später über den **Treiber…**-Button nachtragen.
+Bei falschem oder fehlendem Schlüssel ignoriert wmbusmeters den Zähler
+stillschweigend — das Add-on erkennt das und zeigt einen roten Status **🔑
+AES-Schlüssel ungültig / AES-Schlüssel fehlt** an der Zählerzeile; nach der
+Korrektur lädt die Pipeline neu und die Dekodierung läuft mit dem nächsten
+Telegramm weiter.
+
 ### „Ich sehe keine Telegramme" (RAW count = 0)
 1. Veröffentlicht der Empfänger auf `wmbus/<irgendetwas>/telegram`? Test: `mosquitto_sub -h <broker> -t 'wmbus/#' -v`.
 2. Ist die Bridge verbunden und subscribed? Log: `mqtt: connected` + `subscribed to wmbus/+/telegram`.

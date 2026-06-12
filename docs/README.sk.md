@@ -282,6 +282,17 @@ birth message HA) a či na brokeri existujú retained discovery configy pre
 každý nakonfigurovaný merač — s náhľadom payloadu a tlačidlom **Vynútiť
 re-discovery**. Bez hrabania v logoch a `mosquitto_sub`.
 
+### „Môj merač šifruje telegramy — čo teraz?"
+
+Väčšina fakturačných meračov šifruje payload (kandidát má odznak **AES req.**).
+Bez individuálneho 128-bitového AES kľúča (32 hex znakov) je dekódovanie
+nemožné — nie je to chyba. Kde kľúč získať: **správca budovy / družstvo**,
+**dodávateľ média**, ktorý merač fakturuje, alebo **inštalatér merača**. Merač
+môžeš pridať bez kľúča a doplniť ho neskôr tlačidlom **Driver…**. Ak je kľúč
+chybný alebo chýba, wmbusmeters merač ticho ignoruje — add-on to deteguje a
+pri merači ukáže červený status **🔑 AES kľúč neplatný / chýba AES kľúč**; po
+oprave kľúča sa pipeline prenačíta a dekódovanie sa obnoví s ďalším telegramom.
+
 ### „Nevidím žiadne telegramy" (RAW count = 0)
 1. Publikuje prijímač na `wmbus/<čokoľvek>/telegram`? Test: `mosquitto_sub -h <broker> -t 'wmbus/#' -v`.
 2. Je bridge pripojený a subscribed? Log: `mqtt: connected` + `subscribed to wmbus/+/telegram`.

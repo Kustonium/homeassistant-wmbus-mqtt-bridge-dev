@@ -41,6 +41,10 @@ CANDIDATE_RAW_TSV = BASE / "status_candidate_raw.tsv"
 # Last full decoded JSON per configured meter (status_meter_seen in
 # bridge-lib/07-meters.sh). Feeds the "published fields" expander.
 METER_LAST_JSON_TSV = BASE / "status_meter_last_json.tsv"
+# Per-meter AES key problem (key_missing | key_invalid) detected by
+# status_detect_key_problem in bridge-lib/07-meters.sh from wmbusmeters
+# warnings; cleared by the next successfully decoded JSON.
+METER_KEY_PROBLEM_TSV = BASE / "status_meter_key_problem.tsv"
 # Discovery Doctor: the WebUI touches the request flag; bridge.sh's heartbeat
 # ticker runs the broker probe (discovery_doctor_probe, 09-discovery.sh) and
 # writes the JSON result.
@@ -951,11 +955,23 @@ def state(include_ignored: bool = False) -> dict:
         for r in last_json_rows
         if normalize_meter_id(r.get("id"))
     }
+    # AES key problems detected from wmbusmeters warnings — a wrong/missing
+    # key makes wmbusmeters permanently ignore the meter until the next
+    # pipeline reload, so without this the user only sees a silent "no data".
+    key_problem_rows = read_tsv(METER_KEY_PROBLEM_TSV, ["id", "reason", "ts"])
+    key_problem_by_id = {
+        normalize_meter_id(r.get("id")): str(r.get("reason") or "")
+        for r in key_problem_rows
+        if normalize_meter_id(r.get("id"))
+    }
     for m in meters:
-        lj = last_json_by_id.get(normalize_meter_id(m.get("id")))
+        mid_norm = normalize_meter_id(m.get("id"))
+        lj = last_json_by_id.get(mid_norm)
         if lj:
             m["last_json"] = lj.get("json", "")
             m["last_json_ts"] = lj.get("ts", "")
+        if mid_norm in key_problem_by_id:
+            m["key_problem"] = key_problem_by_id[mid_norm]
     candidates = read_tsv(
         CANDIDATES_TSV,
         ["id", "driver", "type", "last_seen", "seen_count", "avg_interval_s", "seen_15m", "seen_60m", "manufacturer"],
@@ -1168,6 +1184,7 @@ def state(include_ignored: bool = False) -> dict:
                 "type_other": opt_type_other,
                 "driver": driver,
                 "has_key": bool(str(opt.get("key") or "").strip()),
+                "key_problem": key_problem_by_id.get(mid, ""),
                 "manufacturer": candidate.get("manufacturer", ""),
                 "preview_value": preview.get("preview_value", ""),
                 "preview_value_key": preview.get("preview_value_key", ""),

@@ -289,6 +289,18 @@ discovery configs exist on the broker for every configured meter — with a
 payload preview and a **Force re-discovery** button. No log digging or
 `mosquitto_sub` needed.
 
+### "My meter encrypts its telegrams — what now?"
+
+Most utility meters encrypt their payload (the candidate shows an **AES req.**
+badge). Without the meter's individual 128-bit AES key (32 hex chars) decoding
+is impossible — this is not a bug. Where to get the key: your **building
+manager / housing association**, the **utility company** that bills the meter,
+or the **meter installer**. You can add the meter without the key and enter it
+later via the **Driver…** button. If the key is wrong or missing, wmbusmeters
+silently ignores the meter — the add-on detects this and shows a red **🔑 AES
+key invalid / AES key missing** status on the meter row; after fixing the key
+the pipeline reloads and decoding resumes with the next telegram.
+
 ### "I see no telegrams" (RAW count = 0)
 1. Is the receiver publishing to `wmbus/<anything>/telegram`? Test: `mosquitto_sub -h <broker> -t 'wmbus/#' -v`.
 2. Is the bridge connected and subscribed? Log: `mqtt: connected` + `subscribed to wmbus/+/telegram`.

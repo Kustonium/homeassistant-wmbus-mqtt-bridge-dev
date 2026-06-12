@@ -335,6 +335,17 @@
     `;
   }
 
+  // Red key-problem pill — wmbusmeters detected a wrong/missing AES key and
+  // permanently ignores the meter until the next pipeline reload; without
+  // this the user only sees a silent "no data" (upstream pattern #1859).
+  function keyProblemPill(kp) {
+    if (!kp) return "";
+    const label = kp === "key_missing"
+      ? t("key_problem_missing", "encrypted — AES key missing")
+      : t("key_problem_invalid", "AES key invalid");
+    return `<div style="margin-top:2px;"><span class="pill bad" title="${escapeHtml(t("key_problem_hint", "Fix the AES key via the Driver… button; the pipeline reloads and decoding resumes with the next telegram."))}">🔑 ${escapeHtml(label)}</span></div>`;
+  }
+
   function meterValueCell(row) {
     const unit = unitFromKey(row.value_key || "");
     const hasValue = !!(row.value && row.value !== "-");
@@ -344,6 +355,7 @@
       <span style="font-weight:700;color:${valueColor};">${escapeHtml(valueStr)}</span>${unit ? ` <span class="mono" style="color:#9eafba;font-size:11px;">${escapeHtml(unit)}</span>` : ""}
       ${tariffFlowHtml(row)}
       ${row.value_key ? `<div class="mono" style="font-size:10px;color:#4a6070;">${escapeHtml(row.value_key)}</div>` : ""}
+      ${keyProblemPill(String(row.key_problem || ""))}
     `;
   }
 
@@ -464,7 +476,10 @@
                   : unknown ? t("enc_unknown", "Not yet analyzed")
                   :            t("enc_no_aes", "no AES");
     const cls     = bad ? "bad" : unknown ? "muted" : "ok";
-    const title = note ? ` title="${escapeHtml(note)}"` : "";
+    // Encrypted candidates default to an educational tooltip: without the
+    // AES key decoding is impossible (not a bug) and where to obtain it.
+    const effNote = note || (bad ? t("enc_where_key", "This meter encrypts its telegrams — without the 32-hex AES key it cannot be decoded (this is not a bug). Ask your building manager, the utility company or the meter installer for the key.") : "");
+    const title = effNote ? ` title="${escapeHtml(effNote)}"` : "";
     return `<span class="pill ${cls}"${title}>${escapeHtml(label)}</span>`;
   }
 
@@ -566,6 +581,7 @@
         <td>${hasKey
           ? `<span class="pill ok">${escapeHtml(t("aes_key_set", "AES key set"))}</span>`
           : `<span class="pill muted">${escapeHtml(t("no_key", "No key"))}</span>`}
+          ${keyProblemPill(String(row.key_problem || ""))}
         </td>
         <td><div class="actions">
           ${row.preview_active === "true" ? `<button class="btn" data-action="cancel-preview" data-id="${escapeHtml(mid)}">${escapeHtml(t("cancel_preview", "Cancel preview"))}</button>` : ""}
@@ -1887,7 +1903,7 @@
                     ${
                       withActions
                         ? `<td><div class="actions">
-                            <button class="btn primary" data-action="open-add" data-id="${escapeHtml(id)}" data-driver="${escapeHtml(driver)}">${escapeHtml(t("webui_add", "Add"))}</button>
+                            <button class="btn primary" data-action="open-add" data-id="${escapeHtml(id)}" data-driver="${escapeHtml(driver)}" data-enc="${escapeHtml(effectiveEnc)}">${escapeHtml(t("webui_add", "Add"))}</button>
                             <button class="btn" data-action="ignore" data-id="${escapeHtml(id)}">${escapeHtml(t("ignore", "Ignore"))}</button>
                             <button class="btn" data-action="export-report" data-id="${escapeHtml(id)}" title="${escapeHtml(t("export_report_title", "wmbusmeters issue report"))}">${escapeHtml(t("export_report_btn", "Report…"))}</button>
                             ${row.preview_active === "true" ? `<button class="btn" data-action="cancel-preview" data-id="${escapeHtml(id)}">${escapeHtml(t("cancel_preview", "Cancel preview"))}</button>` : ""}
@@ -2800,6 +2816,7 @@
                     <span id="aes-key-count" style="font-size:11px;font-weight:700;min-width:40px;text-align:right;"></span>
                   </div>
                   <div style="font-size:10px;color:#4a6070;margin-top:3px;">${escapeHtml(t("no_aes_key_note", 'key: "" = no key'))} · zero-key: <span class="mono">0000…0000</span></div>
+                  ${modal.aesRequired ? `<div style="font-size:11px;color:#f3c84b;margin-top:6px;">🔐 ${escapeHtml(t("add_aes_warning", "This candidate is encrypted — without the 32-hex AES key it will NOT decode (this is not a bug). You can add it now and enter the key later via the Driver… button. Ask your building manager, the utility company or the meter installer for the key."))}</div>` : ""}
                 </div>
               </div>
             </div>
@@ -2909,7 +2926,11 @@
         electricity: `Electricity_${last4}`,
         heat:        `Heat_${last4}`,
       }[mc] || (driver && driver !== "auto" ? `${driver}_${last4}` : `meter_${id}`);
-      state.modal = {id, driver, name: suggestedName};
+      const enc = (target.dataset.enc || "").toLowerCase();
+      state.modal = {
+        id, driver, name: suggestedName,
+        aesRequired: ["encrypted", "aes_required", "aes"].includes(enc),
+      };
       // Lazy-load the driver catalog the first time the modal opens; the
       // <datalist> re-renders once the list arrives. Free text stays valid.
       if (state.drivers === null) {
