@@ -106,6 +106,27 @@ check prefiksu ⚠ na zdrowym systemie; teraz OR dwóch sygnałów: retained
 snapshot sondy LUB `ha_presence` z ciągłego subskrybenta healthchecku
 (13-esp.sh, ten sam topic); `offline` z któregokolwiek = ❌.
 
+**12. Zadanie 4 roadmapy — AES key problems (`7c91d32`)** — wzorzec upstream
+#1859: szyfrowany licznik bez/ze złym kluczem = cichy brak danych, bo
+wmbusmeters po jednym ostrzeżeniu **trwale ignoruje licznik do restartu
+pipeline'u**. `status_detect_key_problem` (07-meters.sh, wołany dla linii
+nie-JSON w obu gałęziach pętli dekodującej) parsuje 3 wzorce ostrzeżeń
+(zweryfikowane na binarce z pina; kotwica `Permanently ignoring telegrams
+from id:`): `no key to decrypt` → `key_missing`, `mac check failed` /
+`decrypted content failed check` → `key_invalid` →
+`status_meter_key_problem.tsv`; czyszczone przy udanym dekodzie. UI: czerwony
+pill 🔑 w meterValueCell (Liczniki + skonfigurowane-w-eterze) i sekcji
+oczekujących; tooltip edukacyjny na badge'u „AES req." (skąd wziąć klucz);
+notka 🔐 w add-modalu dla szyfrowanego kandydata; FAQ „Mój licznik szyfruje
+telegramy" w Troubleshooting ×5. **Potwierdzone na żywo:** amiplus 00089907
+dodany ze złym kluczem → pill „klucz AES ustawiony" + „🔑 klucz AES
+nieprawidłowy" obok siebie w sekcji oczekujących.
+
+**ROADMAPA wmbusmeters-issues-roadmap.md: KOMPLET.** Zadania 1/2/3/4/5
+zrealizowane i zweryfikowane na żywo; Zadanie 6 (restrukturyzacja upstream
+#1940) = aktywna obserwacja zabezpieczona pinem `WMBUSMETERS_COMMIT` +
+decode-smoke + standalone boot-test w CI.
+
 ## Weryfikacja na żywo (user, testowe HA, dev.187+)
 - availability: encje `niedostępny` przy częściowych ramkach ✓
 - zmiana drivera `auto→istawater→evo868` na `10685115` (ISTA, klucz z issue
@@ -115,8 +136,10 @@ snapshot sondy LUB `ha_presence` z ciągłego subskrybenta healthchecku
 - dodanie licznika na driverze auto ✓
 
 ## Otwarte tematy
-1. **Zadanie 4 roadmapy** (UX kandydatów szyfrowanych bez klucza) — ostatnie
-   nieruszone zadanie z roadmapy (Zadanie 2 zrobione, pkt 11 wyżej).
+1. **Roadmapa wykonana w całości** (pkt 12 wyżej). Następne prace = nowe
+   pomysły usera / kolejna analiza issues upstream / podbicie pina
+   `WMBUSMETERS_COMMIT` gdy upstream ustabilizuje refaktor #1940 (bramki:
+   decode-smoke + standalone boot-test).
 2. **Boot smoke-test Docker standalone w CI** — chip/task zaproponowany
    (entrypoint → options.json → bridge startuje → bump zależny).
 3. **Pliki `(Conflicted copy 2026-06-09 by RYZEN)`** — 10 sztuk, nieśledzone,
