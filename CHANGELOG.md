@@ -1,3 +1,9 @@
+## 1.5.36-dev.195
+
+### Added
+- AES lock badge under meter id; validated key field in change-driver modal (9d09334)
+- surface AES key problems for encrypted meters (roadmap task 4) (7c91d32)
+
 ## 1.5.36-dev.194
 
 ### Added
