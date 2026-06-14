@@ -73,6 +73,8 @@ flowchart LR
 
 > 🧱 **Verantwortungsgrenze.** Dieses Projekt liefert zwei MQTT-Clients — die ESP-Firmware (Funk → MQTT) und dieses Add-on (MQTT → Dekodierung → HA); sein Geltungsbereich endet am MQTT-Topic. **Der Broker selbst — Authentifizierung, ACLs, TLS, Netzwerk-Exposition und ein etwaiges Broker-zu-Broker-Bridging für entfernte/verteilte Setups (Standort A → Internet → Standort B) — liegt in der Verantwortung des Betreibers.** Empfohlen: Broker im LAN halten; für Fernzugriff Tunnel/VPN oder Broker-Bridging mit TLS nutzen; Port 1883 und die WebUI (8099) nicht direkt ins Internet stellen. Hinweis: bei AES-verschlüsselten Zählern bleibt die Nutzlast vom Zähler Ende-zu-Ende verschlüsselt, unabhängig vom Broker-Transport.
 
+> ⚠️ **Neu hier? Lies das, bevor du etwas exponierst.** Leite den Broker-Port (1883) oder Home Assistant **nicht** über deinen Heimrouter ins Internet weiter — ein exponierter Broker kann von jedem gelesen und missbraucht werden. Für Zugriff von außen nutze eine fertige, sichere Option: **Home Assistant Cloud (Nabu Casa)** oder die Add-ons **Tailscale** / **Cloudflare Tunnel**. Unsicher? Lass alles im Heimnetz — das Add-on braucht keinen Internetzugang.
+
 ---
 
 ## 3. Schnellstart — Home Assistant

@@ -71,6 +71,8 @@ flowchart LR
 
 > 🧱 **Responsibility boundary.** This project ships two MQTT clients — the ESP firmware (radio → MQTT) and this add-on (MQTT → decode → HA); its scope ends at the MQTT topic. **The broker itself — authentication, ACLs, TLS, network exposure and any broker-to-broker bridging for remote/distributed setups (site A → internet → site B) — is the operator's responsibility.** Recommended: keep the broker on your LAN; for remote access use a tunnel/VPN or TLS broker bridging; do not expose port 1883 or the WebUI (8099) directly to the internet. Note: for AES-encrypted meters the payload stays encrypted by the meter end-to-end, independent of broker transport.
 
+> ⚠️ **New to this? Read before exposing anything.** Do **not** forward your broker's port (1883) or Home Assistant to the internet on your home router — an exposed broker can be read and abused by anyone. To reach your system from outside, use a ready-made secure option: **Home Assistant Cloud (Nabu Casa)**, or the **Tailscale** / **Cloudflare Tunnel** add-ons. Not sure? Keep everything on your home network — the add-on does not need internet access to work.
+
 ---
 
 ## 3. Quick start — Home Assistant
