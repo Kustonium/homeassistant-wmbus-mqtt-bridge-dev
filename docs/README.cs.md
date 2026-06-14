@@ -50,6 +50,12 @@ flowchart LR
 > (ESP32 + CC1101/SX1276/SX1262, publikuje RAW HEX). Oba projekty jsou nezávislé —
 > add-on přijímá hex z libovolného zdroje publikujícího na `raw_topic`.
 
+> 🌉 **Jako celek tvoří ESP (RF přijímač) a tento add-on (dekodér)
+> distribuovaný _wM-Bus → Home Assistant gateway_** — rádio je tam, kde je
+> signál, a dekódování (dešifrování, drivery, ~120 typů měřičů) běží na HA.
+> Na rozdíl od monolitických wM-Bus gateway (rádio + dekodér v jedné krabičce)
+> nepotřebuje lokální USB dongle a škáluje přidáváním levných ESP uzlů.
+
 ---
 
 ## 2. Požadavky

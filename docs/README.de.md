@@ -51,6 +51,13 @@ flowchart LR
 > verwendet (ESP32 + CC1101/SX1276/SX1262, veröffentlicht RAW HEX). Beide Projekte
 > sind unabhängig — das Add-on nimmt Hex von jeder Quelle an, die auf `raw_topic` veröffentlicht.
 
+> 🌉 **Als Ganzes bilden der ESP (RF-Empfänger) und dieses Add-on (Decoder)
+> ein verteiltes _wM-Bus → Home-Assistant-Gateway_** — das Funkmodul steht dort,
+> wo Empfang ist, das Dekodieren (Entschlüsselung, Treiber, ~120 Zählertypen)
+> läuft auf HA. Anders als monolithische wM-Bus-Gateways (Funk + Decoder in
+> einer Box) braucht es keinen lokalen USB-Dongle und skaliert durch das
+> Hinzufügen günstiger ESP-Knoten.
+
 ---
 
 ## 2. Voraussetzungen

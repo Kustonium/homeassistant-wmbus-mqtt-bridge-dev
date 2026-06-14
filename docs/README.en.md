@@ -50,6 +50,12 @@ flowchart LR
 > firmware (ESP32 + CC1101/SX1276/SX1262, publishes RAW HEX). The two projects are
 > independent — the add-on accepts hex from any source publishing on `raw_topic`.
 
+> 🌉 **As a whole, the ESP (RF receiver) and this add-on (decoder) form a
+> distributed _wM-Bus → Home Assistant gateway_** — the radio sits where the
+> signal is, while decoding (decryption, drivers, ~120 meter types) runs on HA.
+> Unlike monolithic wM-Bus gateways (radio + decoder in one box) it needs no
+> local USB dongle and scales by adding cheap ESP nodes.
+
 ---
 
 ## 2. Requirements

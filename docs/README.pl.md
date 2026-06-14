@@ -52,6 +52,13 @@ flowchart LR
 > (ESP32 + CC1101/SX1276/SX1262, publikuje RAW HEX). Oba projekty są niezależne —
 > add-on przyjmuje hex z dowolnego źródła publikującego na `raw_topic`.
 
+> 🌉 **Całościowo ESP (odbiornik radiowy) i ten add-on (dekoder) tworzą
+> rozproszony _gateway wM-Bus → Home Assistant_** — radio stoi tam, gdzie jest
+> zasięg, a dekodowanie (deszyfracja, drivery, ~120 typów liczników) działa na
+> HA. W odróżnieniu od monolitycznych bramek wM-Bus (radio + dekoder w jednym
+> pudełku) nie wymaga lokalnego dongla USB i skaluje się przez dostawianie
+> tanich węzłów ESP.
+
 ---
 
 ## 2. Wymagania
