@@ -71,6 +71,8 @@ flowchart LR
 > ⚠️ Betreibe nicht parallel das offizielle `wmbusmeters`-Add-on — dieses Projekt
 > hat seine eigene Instanz und sie würden sich doppeln.
 
+> 🧱 **Verantwortungsgrenze.** Dieses Projekt liefert zwei MQTT-Clients — die ESP-Firmware (Funk → MQTT) und dieses Add-on (MQTT → Dekodierung → HA); sein Geltungsbereich endet am MQTT-Topic. **Der Broker selbst — Authentifizierung, ACLs, TLS, Netzwerk-Exposition und ein etwaiges Broker-zu-Broker-Bridging für entfernte/verteilte Setups (Standort A → Internet → Standort B) — liegt in der Verantwortung des Betreibers.** Empfohlen: Broker im LAN halten; für Fernzugriff Tunnel/VPN oder Broker-Bridging mit TLS nutzen; Port 1883 und die WebUI (8099) nicht direkt ins Internet stellen. Hinweis: bei AES-verschlüsselten Zählern bleibt die Nutzlast vom Zähler Ende-zu-Ende verschlüsselt, unabhängig vom Broker-Transport.
+
 ---
 
 ## 3. Schnellstart — Home Assistant

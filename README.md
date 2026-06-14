@@ -24,6 +24,8 @@ Add-on konsumuje surowe ramki wMBus w formacie HEX z MQTT i jest typowo używany
 
 > 🌉 **Całościowo: ESP (odbiornik radiowy) + ten add-on (dekoder) tworzą rozproszony _gateway wM-Bus → Home Assistant_.** Radio stoi tam, gdzie jest zasięg, a dekodowanie (deszyfracja, drivery, ~120 typów liczników) działa na HA. W odróżnieniu od **monolitycznych bramek wM-Bus** (radio + dekoder w jednym pudełku) ta architektura nie wymaga lokalnego dongla USB i skaluje się przez dostawianie tanich węzłów ESP. Każdą połowę można też używać samodzielnie: ESP karmi dowolny backend MQTT, a add-on dekoduje hex z dowolnego źródła (rtl-wmbus, inny gateway, narzędzie replay) — współpracują, ale żadna nie zależy od drugiej.
 
+> 🧱 **Granica odpowiedzialności:** projekt dostarcza dwóch klientów MQTT (ESP i add-on); jego zakres kończy się na temacie MQTT. Sam broker — uwierzytelnianie, ACL, TLS, ekspozycja i mostek broker-broker dla instalacji rozproszonych (A → internet → B) — należy do operatora. Trzymaj broker w LAN; do dostępu zdalnego użyj tunelu/VPN lub mostka brokera z TLS.
+
 ### Problem, który rozwiązuje ten add-on
 
 Oryginalny **wmbusmeters-ha-addon**:
@@ -295,6 +297,8 @@ The purpose of this add-on is to decode Wireless M-Bus (C1 / T1 / S1) telegrams 
 This add-on consumes raw wMBus hex frames from MQTT and is typically paired with the companion firmware [`esphome-wmbus-bridge-rawonly`](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly) running on an ESP32 with a **CC1101, SX1276 or SX1262** radio. The two projects work as a pipeline (ESP receives radio → MQTT raw hex → this add-on parses → HA), but each is **independent**: this add-on accepts hex from any source publishing to the configured `raw_topic`.
 
 > 🌉 **As a whole: the ESP (RF receiver) + this add-on (decoder) form a distributed _wM-Bus → Home Assistant gateway_.** The radio sits where the signal is, while decoding (decryption, drivers, ~120 meter types) runs on HA. Unlike **monolithic wM-Bus gateways** (radio + decoder in one box), this architecture needs no local USB dongle and scales by adding cheap ESP nodes. Each half also works standalone: the ESP feeds any MQTT backend, and the add-on decodes hex from any source (rtl-wmbus, another gateway, the replay tool) — they cooperate, but neither depends on the other.
+
+> 🧱 **Responsibility boundary:** the project ships two MQTT clients (ESP + add-on); its scope ends at the MQTT topic. The broker itself — authentication, ACLs, TLS, exposure and broker-to-broker bridging for distributed setups (A → internet → B) — is the operator's. Keep the broker on your LAN; for remote access use a tunnel/VPN or TLS broker bridging.
 
 ### The problem it solves
 
