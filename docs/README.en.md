@@ -55,6 +55,8 @@ flowchart LR
 > signal is, while decoding (decryption, drivers, ~120 meter types) runs on HA.
 > Unlike monolithic wM-Bus gateways (radio + decoder in one box) it needs no
 > local USB dongle and scales by adding cheap ESP nodes.
+>
+> **Each half also runs standalone and is interchangeable:** the ESP feeds any MQTT backend (Node-RED, a custom script, your own decoder), and the add-on decodes hex from any source on `raw_topic` (this ESP, rtl-wmbus, another gateway, the replay tool) — they cooperate, but neither depends on the other.
 
 ---
 

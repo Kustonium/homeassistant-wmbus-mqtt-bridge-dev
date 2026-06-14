@@ -58,6 +58,8 @@ flowchart LR
 > HA. W odróżnieniu od monolitycznych bramek wM-Bus (radio + dekoder w jednym
 > pudełku) nie wymaga lokalnego dongla USB i skaluje się przez dostawianie
 > tanich węzłów ESP.
+>
+> **Każdą połowę można też używać samodzielnie i są wymienne:** ESP karmi dowolny backend MQTT (Node-RED, własny skrypt, własny dekoder), a add-on dekoduje hex z dowolnego źródła na `raw_topic` (ten ESP, rtl-wmbus, inny gateway, narzędzie replay) — współpracują, ale żadna nie zależy od drugiej.
 
 ---
 

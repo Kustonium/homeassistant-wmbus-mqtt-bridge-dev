@@ -55,6 +55,8 @@ flowchart LR
 > signál, a dekódování (dešifrování, drivery, ~120 typů měřičů) běží na HA.
 > Na rozdíl od monolitických wM-Bus gateway (rádio + dekodér v jedné krabičce)
 > nepotřebuje lokální USB dongle a škáluje přidáváním levných ESP uzlů.
+>
+> **Každá polovina funguje i samostatně a jsou zaměnitelné:** ESP krmí libovolný MQTT backend (Node-RED, vlastní skript, vlastní dekodér) a add-on dekóduje hex z libovolného zdroje na `raw_topic` (tento ESP, rtl-wmbus, jiný gateway, replay nástroj) — spolupracují, ale ani jedna nezávisí na druhé.
 
 ---
 

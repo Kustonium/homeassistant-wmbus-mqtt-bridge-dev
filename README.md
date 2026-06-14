@@ -22,7 +22,7 @@ Celem projektu jest dekodowanie telegramów Wireless M-Bus (C1 / T1 / S1) w Home
 
 Add-on konsumuje surowe ramki wMBus w formacie HEX z MQTT i jest typowo używany razem z firmware [`esphome-wmbus-bridge-rawonly`](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly) działającym na ESP32 z układem radiowym **CC1101, SX1276 lub SX1262**. Oba projekty tworzą pipeline (ESP odbiera radio → MQTT raw hex → ten add-on dekoduje → HA), ale są **niezależne**: add-on przyjmuje hex z dowolnego źródła publikującego na skonfigurowany `raw_topic`.
 
-> 🌉 **Całościowo: ESP (odbiornik radiowy) + ten add-on (dekoder) tworzą rozproszony _gateway wM-Bus → Home Assistant_.** Radio stoi tam, gdzie jest zasięg, a dekodowanie (deszyfracja, drivery, ~120 typów liczników) działa na HA. W odróżnieniu od **monolitycznych bramek wM-Bus** (radio + dekoder w jednym pudełku) ta architektura nie wymaga lokalnego dongla USB i skaluje się przez dostawianie tanich węzłów ESP.
+> 🌉 **Całościowo: ESP (odbiornik radiowy) + ten add-on (dekoder) tworzą rozproszony _gateway wM-Bus → Home Assistant_.** Radio stoi tam, gdzie jest zasięg, a dekodowanie (deszyfracja, drivery, ~120 typów liczników) działa na HA. W odróżnieniu od **monolitycznych bramek wM-Bus** (radio + dekoder w jednym pudełku) ta architektura nie wymaga lokalnego dongla USB i skaluje się przez dostawianie tanich węzłów ESP. Każdą połowę można też używać samodzielnie: ESP karmi dowolny backend MQTT, a add-on dekoduje hex z dowolnego źródła (rtl-wmbus, inny gateway, narzędzie replay) — współpracują, ale żadna nie zależy od drugiej.
 
 ### Problem, który rozwiązuje ten add-on
 
@@ -294,7 +294,7 @@ The purpose of this add-on is to decode Wireless M-Bus (C1 / T1 / S1) telegrams 
 
 This add-on consumes raw wMBus hex frames from MQTT and is typically paired with the companion firmware [`esphome-wmbus-bridge-rawonly`](https://github.com/Kustonium/esphome-wmbus-bridge-rawonly) running on an ESP32 with a **CC1101, SX1276 or SX1262** radio. The two projects work as a pipeline (ESP receives radio → MQTT raw hex → this add-on parses → HA), but each is **independent**: this add-on accepts hex from any source publishing to the configured `raw_topic`.
 
-> 🌉 **As a whole: the ESP (RF receiver) + this add-on (decoder) form a distributed _wM-Bus → Home Assistant gateway_.** The radio sits where the signal is, while decoding (decryption, drivers, ~120 meter types) runs on HA. Unlike **monolithic wM-Bus gateways** (radio + decoder in one box), this architecture needs no local USB dongle and scales by adding cheap ESP nodes.
+> 🌉 **As a whole: the ESP (RF receiver) + this add-on (decoder) form a distributed _wM-Bus → Home Assistant gateway_.** The radio sits where the signal is, while decoding (decryption, drivers, ~120 meter types) runs on HA. Unlike **monolithic wM-Bus gateways** (radio + decoder in one box), this architecture needs no local USB dongle and scales by adding cheap ESP nodes. Each half also works standalone: the ESP feeds any MQTT backend, and the add-on decodes hex from any source (rtl-wmbus, another gateway, the replay tool) — they cooperate, but neither depends on the other.
 
 ### The problem it solves
 

@@ -57,6 +57,8 @@ flowchart LR
 > läuft auf HA. Anders als monolithische wM-Bus-Gateways (Funk + Decoder in
 > einer Box) braucht es keinen lokalen USB-Dongle und skaliert durch das
 > Hinzufügen günstiger ESP-Knoten.
+>
+> **Jede Hälfte läuft auch eigenständig und ist austauschbar:** der ESP speist ein beliebiges MQTT-Backend (Node-RED, ein eigenes Skript, ein eigener Decoder), und das Add-on dekodiert Hex aus beliebiger Quelle auf `raw_topic` (dieser ESP, rtl-wmbus, ein anderes Gateway, das Replay-Tool) — sie kooperieren, aber keine hängt von der anderen ab.
 
 ---
 
