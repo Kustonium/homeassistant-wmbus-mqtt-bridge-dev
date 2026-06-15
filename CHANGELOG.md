@@ -1,3 +1,11 @@
+## 1.5.37-dev.202
+
+### Added
+- compare meter driver decodes on demand (98d448a)
+
+### Fixed
+- keep compare modal from breaking WebGUI render (03f96c7)
+
 ## 1.5.37-dev.201
 
 ### Added
