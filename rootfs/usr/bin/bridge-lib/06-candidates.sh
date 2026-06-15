@@ -57,10 +57,21 @@ _preview_acquire_slot() {
 }
 
 preview_decode_raw_if_requested() {
-  local raw="${1:-}" id cfg lock_dir slot_dir last_file now last min_interval
+  # $2 (optional) = authoritative meter id from the candidate (wmbusmeters'
+  # reported id). meter_id_from_raw_hex parses the STANDARD wM-Bus A-field,
+  # which is wrong for manufacturer-specific layouts (e.g. Diehl/izar reports
+  # 20028316 while the raw A-field parses to 83160778) — there the derived id
+  # never matches the preview config keyed by the candidate id, so the one-shot
+  # bailed out and the preview was stuck at "pending" forever. When the caller
+  # knows the real id, pass it as the hint and skip the unreliable parse.
+  local raw="${1:-}" id_hint="${2:-}" id cfg lock_dir slot_dir last_file now last min_interval
   raw="$(printf '%s' "${raw}" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
   [[ "${raw}" =~ ^[0-9A-F]+$ ]] || return 0
-  id="$(meter_id_from_raw_hex "${raw}")"
+  if [[ "${id_hint}" =~ ^[0-9A-Fa-f]{8}$ ]]; then
+    id="$(normalize_meter_id "${id_hint}")"
+  else
+    id="$(meter_id_from_raw_hex "${raw}")"
+  fi
   [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]] || return 0
   cfg="$(candidate_autodecode_file "${id}")"
   [[ -f "${cfg}" ]] || return 0
@@ -201,7 +212,10 @@ ensure_candidate_autodecode() {
     _recent_row="$(status_find_recent_raw_for_id "${id}" || true)"
     if [[ -n "${_recent_row}" ]]; then
       IFS=$'\t' read -r _ _ _recent_raw <<< "${_recent_row}"
-      [[ -n "${_recent_raw}" ]] && preview_decode_raw_if_requested "${_recent_raw}"
+      # Pass the candidate id explicitly: the raw A-field parse is unreliable
+      # for manufacturer-specific layouts (Diehl/izar), and the preview config
+      # is keyed by this id.
+      [[ -n "${_recent_raw}" ]] && preview_decode_raw_if_requested "${_recent_raw}" "${id}"
     fi
   else
     rm -f "${tmp}" 2>/dev/null || true
