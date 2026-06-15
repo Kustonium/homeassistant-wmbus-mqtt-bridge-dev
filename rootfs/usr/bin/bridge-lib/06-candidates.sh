@@ -70,7 +70,28 @@ preview_decode_raw_if_requested() {
   if [[ "${id_hint}" =~ ^[0-9A-Fa-f]{8}$ ]]; then
     id="$(normalize_meter_id "${id_hint}")"
   else
-    id="$(meter_id_from_raw_hex "${raw}")"
+    # No hint (the per-telegram path): match this raw to an EXISTING candidate
+    # preview file by the little-endian id substring — the same heuristic
+    # status_find_recent_raw_for_id uses. meter_id_from_raw_hex assumes the
+    # standard wM-Bus A-field, which is wrong for manufacturer-specific layouts
+    # (Diehl/izar reports 20028316 while the A-field parses to 83160778), so the
+    # naive id never matched the preview config keyed by wmbusmeters' id and the
+    # one-shot bailed — leaving the candidate stuck at "decoding…". Scanning the
+    # preview files we actually wrote keys the decode to the real id without any
+    # per-vendor parsing. Fall back to the naive parse when nothing matches.
+    local _raw_lc _pf _cand _le
+    _raw_lc="$(printf '%s' "${raw}" | tr '[:upper:]' '[:lower:]')"
+    id=""
+    for _pf in "${PREVIEW_METER_DIR}"/meter-preview-*; do
+      [[ -e "${_pf}" ]] || continue
+      _cand="${_pf##*/meter-preview-}"
+      [[ "${_cand}" =~ ^[0-9A-Fa-f]{8}$ ]] || continue
+      _le="$(id_to_le_hex "${_cand}")"
+      [[ -n "${_le}" && "${_raw_lc}" == *"${_le}"* ]] || continue
+      id="$(normalize_meter_id "${_cand}")"
+      break
+    done
+    [[ -n "${id}" ]] || id="$(meter_id_from_raw_hex "${raw}")"
   fi
   [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]] || return 0
   cfg="$(candidate_autodecode_file "${id}")"
