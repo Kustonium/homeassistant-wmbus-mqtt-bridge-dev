@@ -1,3 +1,9 @@
+## 1.5.37-dev.204
+
+### Fixed
+- compare candidate drivers before adding meters (3224769)
+- compare selected driver against wmbusmeters auto hint (67e32d4)
+
 ## 1.5.37-dev.203
 
 ### Fixed
