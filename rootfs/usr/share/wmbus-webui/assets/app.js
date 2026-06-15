@@ -2755,7 +2755,7 @@
     const editKeyPartial = editKey.length > 0 && editKey.length !== 32;
     return `
       <div class="modal-backdrop">
-        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="edit-driver-title">
+        <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="edit-driver-title">
           <div class="modal-head">
             <h2 id="edit-driver-title">${escapeHtml(t("change_driver_title", "Change driver"))} — ${escapeHtml(em.id || "")}</h2>
           </div>
@@ -2785,7 +2785,7 @@
             })()}
             <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
               <button id="edit-driver-compare" class="btn" type="button" data-action="compare-driver" data-id="${escapeHtml(em.id || "")}"${editKeyPartial ? " disabled" : ""}>${escapeHtml(t("compare_btn", "Compare"))}</button>
-              <span style="font-size:11px;color:#9eafba;">${escapeHtml(t("compare_hint", "Decode this meter's last telegram with the selected driver and compare fields — verify the values; more fields does not mean correct."))}</span>
+              <span style="font-size:11px;color:#9eafba;">${escapeHtml(t("compare_hint", "Choose a driver above, enter the AES key if needed, then compare. Left column = saved/auto driver; right column = selected driver."))}</span>
             </div>
             ${renderCompareResult(em.compare)}
           </div>
@@ -2813,7 +2813,7 @@
     const sameDriver = Boolean(d.same_driver || String(cur.driver || "").toLowerCase() === String(cand.driver || "").toLowerCase());
     if (sameDriver) {
       return `<div id="edit-driver-compare-result">
-        <p style="font-size:12px;color:#9eafba;margin:8px 0 0;">${escapeHtml(t("compare_same_driver", "The selected driver is already the comparison driver. Choose a different driver to compare."))}</p>
+        <p style="font-size:12px;color:#9eafba;margin:8px 0 0;">${escapeHtml(t("compare_same_driver", "Both sides use the same driver. Choose a different driver in the Driver field, then click Compare."))}</p>
       </div>`;
     }
     const currentLabel = cur.source === "auto"
@@ -2828,7 +2828,7 @@
       return `<tr style="${bg}"><td style="padding:2px 8px;font-family:monospace;font-size:11px;">${escapeHtml(k)}</td><td style="padding:2px 8px;font-size:11px;">${cell(cf, k)}</td><td style="padding:2px 8px;font-size:11px;">${cell(df, k)}</td></tr>`;
     }).join("");
     return `<div id="edit-driver-compare-result">
-      <div style="margin-top:10px;border:1px solid #1d2f3c;border-radius:6px;overflow:auto;max-height:38vh;">
+      <div class="compare-table-wrap">
         <table style="width:100%;border-collapse:collapse;">
           <thead><tr style="position:sticky;top:0;background:#0b141b;">
             <th style="text-align:left;padding:4px 8px;font-size:11px;color:#9eafba;">${escapeHtml(t("compare_field", "Field"))}</th>
@@ -2906,7 +2906,7 @@
     })(this)`;
     return `
       <div class="modal-backdrop">
-        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="add-meter-title">
+        <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="add-meter-title">
           <div class="modal-head">
             <h2 id="add-meter-title">${escapeHtml(t("webui_add_meter", "Add meter"))}</h2>
           </div>
@@ -2943,7 +2943,7 @@
                 <div class="field">
                   <div style="display:flex;gap:8px;align-items:center;">
                     <button id="add-driver-compare" class="btn" type="button" data-action="compare-driver" data-id="${escapeHtml(modal.id || "")}"${modalKeyPartial ? " disabled" : ""}>${escapeHtml(t("compare_btn", "Compare"))}</button>
-                    <span style="font-size:11px;color:#9eafba;">${escapeHtml(t("compare_hint", "Decode this meter's last telegram with wmbusmeters' auto/saved driver and the selected driver — verify the values; more fields does not mean correct."))}</span>
+                    <span style="font-size:11px;color:#9eafba;">${escapeHtml(t("compare_hint", "Choose a driver above, enter the AES key if needed, then compare. Left column = saved/auto driver; right column = selected driver."))}</span>
                   </div>
                   ${renderCompareResult(modal.compare)}
                 </div>
