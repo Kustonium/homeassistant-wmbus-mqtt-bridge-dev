@@ -485,10 +485,12 @@ def compare_meter_drivers(meter_id: str, requested_driver: str, key_override: st
 
     key = ""
     current_driver = "auto"
+    configured = False
     options = read_json(OPTIONS_JSON)
     if isinstance(options, dict):
         for m in options.get("meters", []) or []:
             if isinstance(m, dict) and normalize_meter_id(m.get("meter_id")) == mid:
+                configured = True
                 k = str(m.get("key") or "").strip()
                 if re.match(r"^[0-9A-Fa-f]{32}$", k):
                     key = k
@@ -507,8 +509,10 @@ def compare_meter_drivers(meter_id: str, requested_driver: str, key_override: st
 
     auto_driver = _analyze_auto_driver(raw, key)
     baseline_driver = current_driver
-    baseline_source = "saved"
-    if (
+    baseline_source = "saved" if configured else "auto"
+    if not configured and auto_driver:
+        baseline_driver = auto_driver
+    elif (
         current_driver.lower() == requested_driver.lower()
         and auto_driver
         and auto_driver.lower() != requested_driver.lower()

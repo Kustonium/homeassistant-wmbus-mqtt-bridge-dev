@@ -2721,7 +2721,11 @@
 
   window.__driverPickerSet = function (hiddenId, value) {
     const v = String(value == null ? "" : value);
-    if (hiddenId === "meter-driver" && state.modal) state.modal.driver = v;
+    if (hiddenId === "meter-driver" && state.modal) {
+      state.modal.driver = v;
+      state.modal.compare = null;
+      clearEditCompareDom();
+    }
     if (hiddenId === "edit-meter-driver" && state.editModal) {
       state.editModal.driver = v;
       state.editModal.compare = null;
@@ -2734,6 +2738,13 @@
     if (state.editModal) {
       state.editModal.key = String(value == null ? "" : value);
       state.editModal.compare = null;
+      clearEditCompareDom();
+    }
+  };
+  window.__modalKeySet = function (value) {
+    if (state.modal) {
+      state.modal.key = String(value == null ? "" : value);
+      state.modal.compare = null;
       clearEditCompareDom();
     }
   };
@@ -2861,28 +2872,36 @@
 
   function renderModal() {
     const modal = state.modal || {};
+    const modalKey = String(modal.key || "");
+    const modalKeyPartial = modalKey.length > 0 && modalKey.length !== 32;
+    const modalKeyBorder = modalKey.length === 32 ? "#1e6b3a" : (modalKeyPartial ? "#6b4a1e" : "");
+    const modalKeyCount = modalKey.length === 32 ? "✓ 32" : (modalKey.length > 0 ? `${modalKey.length}/32` : "");
+    const modalKeyCountColor = modalKey.length === 32 ? "#4df08d" : "#f3c84b";
     // Inline AES key validation script — runs in the same window context.
     // Strips non-hex chars, validates 0 or 32 hex chars, colours input,
-    // shows char counter, enables/disables submit button (#4).
+    // shows char counter, enables/disables submit and compare buttons.
     const keyValidateJs = `(function(inp){
       var v = inp.value.replace(/[^0-9A-Fa-f]/g,'').slice(0,32);
       inp.value = v;
+      if(window.__modalKeySet) window.__modalKeySet(v);
       var cnt = document.getElementById('aes-key-count');
       var btn = document.getElementById('add-meter-submit');
+      var cmp = document.getElementById('add-driver-compare');
       if(v.length===0){
         inp.style.borderColor='';
-        cnt.textContent='';
-        btn.disabled=false;
+        if(cnt) cnt.textContent='';
+        if(btn) btn.disabled=false;
+        if(cmp) cmp.disabled=false;
       } else if(v.length===32){
         inp.style.borderColor='#1e6b3a';
-        cnt.textContent='✓ 32';
-        cnt.style.color='#4df08d';
-        btn.disabled=false;
+        if(cnt){cnt.textContent='✓ 32';cnt.style.color='#4df08d';}
+        if(btn) btn.disabled=false;
+        if(cmp) cmp.disabled=false;
       } else {
         inp.style.borderColor='#6b4a1e';
-        cnt.textContent=v.length+'/32';
-        cnt.style.color='#f3c84b';
-        btn.disabled=true;
+        if(cnt){cnt.textContent=v.length+'/32';cnt.style.color='#f3c84b';}
+        if(btn) btn.disabled=true;
+        if(cmp) cmp.disabled=true;
       }
     })(this)`;
     return `
@@ -2912,20 +2931,27 @@
                     <span style="font-size:10px;color:#607a88;font-weight:400;margin-left:6px;">${escapeHtml(t("key_hint_short", "32 hex chars, or leave empty"))}</span>
                   </label>
                   <div style="display:flex;gap:8px;align-items:center;">
-                    <input id="meter-key" name="key" autocomplete="off" value="" maxlength="32"
-                      style="font-family:monospace;flex:1;"
+                    <input id="meter-key" name="key" autocomplete="off" value="${escapeHtml(modalKey)}" maxlength="32"
+                      style="font-family:monospace;flex:1;${modalKeyBorder ? `border-color:${modalKeyBorder};` : ""}"
                       placeholder="${escapeHtml(t("key_input_placeholder", "e.g. 00112233445566778899AABBCCDDEEFF"))}"
                       oninput="${escapeHtml(keyValidateJs)}">
-                    <span id="aes-key-count" style="font-size:11px;font-weight:700;min-width:40px;text-align:right;"></span>
+                    <span id="aes-key-count" style="font-size:11px;font-weight:700;min-width:40px;text-align:right;color:${modalKeyCountColor};">${escapeHtml(modalKeyCount)}</span>
                   </div>
                   <div style="font-size:10px;color:#4a6070;margin-top:3px;">${escapeHtml(t("no_aes_key_note", 'key: "" = no key'))} · zero-key: <span class="mono">0000…0000</span></div>
                   ${modal.aesRequired ? `<div style="font-size:11px;color:#f3c84b;margin-top:6px;">🔐 ${escapeHtml(t("add_aes_warning", "This candidate is encrypted — without the 32-hex AES key it will NOT decode (this is not a bug). You can add it now and enter the key later via the Driver… button. Ask your building manager, the utility company or the meter installer for the key."))}</div>` : ""}
+                </div>
+                <div class="field">
+                  <div style="display:flex;gap:8px;align-items:center;">
+                    <button id="add-driver-compare" class="btn" type="button" data-action="compare-driver" data-id="${escapeHtml(modal.id || "")}"${modalKeyPartial ? " disabled" : ""}>${escapeHtml(t("compare_btn", "Compare"))}</button>
+                    <span style="font-size:11px;color:#9eafba;">${escapeHtml(t("compare_hint", "Decode this meter's last telegram with wmbusmeters' auto/saved driver and the selected driver — verify the values; more fields does not mean correct."))}</span>
+                  </div>
+                  ${renderCompareResult(modal.compare)}
                 </div>
               </div>
             </div>
             <div class="modal-actions">
               <button class="btn" type="button" data-action="close-modal">${escapeHtml(t("webui_cancel", "Cancel"))}</button>
-              <button id="add-meter-submit" class="btn primary" type="submit">${escapeHtml(t("webui_add", "Add"))}</button>
+              <button id="add-meter-submit" class="btn primary" type="submit"${modalKeyPartial ? " disabled" : ""}>${escapeHtml(t("webui_add", "Add"))}</button>
             </div>
           </form>
         </div>
@@ -3131,11 +3157,11 @@
 
     if (action === "compare-driver") {
       const id = target.dataset.id || "";
-      const em = state.editModal;
-      if (!id || !em) return;
-      const driver = em.driver || "auto";
-      const key = String(em.key || "").trim();
-      em.compare = {loading: true};
+      const cm = state.editModal || state.modal;
+      if (!id || !cm) return;
+      const driver = cm.driver || "auto";
+      const key = String(cm.key || "").trim();
+      cm.compare = {loading: true};
       render();
       // Read the payload directly (not via postApi) to map the error code to a
       // localised message; the backend returns {ok:false, error:<code>}.
@@ -3154,12 +3180,12 @@
             invalid_key: t("compare_invalid_key", "AES key must be empty or exactly 32 hex characters."),
             invalid_meter_id: t("compare_failed", "Decode failed."),
           };
-          em.compare = {error: map[data.error] || data.error || t("compare_failed", "Decode failed.")};
+          cm.compare = {error: map[data.error] || data.error || t("compare_failed", "Decode failed.")};
         } else {
-          em.compare = {data};
+          cm.compare = {data};
         }
       } catch (error) {
-        em.compare = {error: error.message};
+        cm.compare = {error: error.message};
       }
       render();
       return;
