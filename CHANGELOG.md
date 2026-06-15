@@ -1,3 +1,8 @@
+## 1.5.37-dev.197
+
+### Fixed
+- resolve preview id by LE-substring match on the per-telegram path (Diehl/izar) (dd3ffee)
+
 ## 1.5.37-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
