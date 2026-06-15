@@ -1,3 +1,8 @@
+## 1.5.37-dev.206
+
+### Fixed
+- clarify driver compare modal layout (b9fcfd1)
+
 ## 1.5.37-dev.205
 
 ### Fixed
