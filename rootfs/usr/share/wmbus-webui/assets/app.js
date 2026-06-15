@@ -1796,7 +1796,7 @@
                         : ""
                     }
                   </tr>
-                ${state.expandedMeterFields.has(id) ? meterFieldsRow(row, withActions ? 8 : 7) : ""}`;
+                ${(withActions && state.expandedMeterFields.has(id)) ? meterFieldsRow(row, 8) : ""}`;
               })
               .join("")}
           </tbody>
