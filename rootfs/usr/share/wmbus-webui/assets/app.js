@@ -2740,6 +2740,8 @@
 
   function renderEditDriverModal() {
     const em = state.editModal || {};
+    const editKey = String(em.key || "");
+    const editKeyPartial = editKey.length > 0 && editKey.length !== 32;
     return `
       <div class="modal-backdrop">
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="edit-driver-title">
@@ -2755,8 +2757,8 @@
               // counter, border colour, Save disabled at 1–31 chars. The
               // visual state is ALSO derived from state (em.key) at render
               // time so live SSE rebuilds repaint it correctly mid-typing.
-              const k = String(em.key || "");
-              const partial = k.length > 0 && k.length !== 32;
+              const k = editKey;
+              const partial = editKeyPartial;
               const border = k.length === 32 ? "#1e6b3a" : (partial ? "#6b4a1e" : "");
               const cnt = k.length === 32 ? "✓ 32" : (k.length > 0 ? `${k.length}/32` : "");
               const cntColor = k.length === 32 ? "#4df08d" : "#f3c84b";
@@ -2771,14 +2773,14 @@
             </div>`;
             })()}
             <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
-              <button id="edit-driver-compare" class="btn" type="button" data-action="compare-driver" data-id="${escapeHtml(em.id || "")}"${partial ? " disabled" : ""}>${escapeHtml(t("compare_btn", "Compare"))}</button>
+              <button id="edit-driver-compare" class="btn" type="button" data-action="compare-driver" data-id="${escapeHtml(em.id || "")}"${editKeyPartial ? " disabled" : ""}>${escapeHtml(t("compare_btn", "Compare"))}</button>
               <span style="font-size:11px;color:#9eafba;">${escapeHtml(t("compare_hint", "Decode this meter's last telegram with the selected driver and compare fields — verify the values; more fields does not mean correct."))}</span>
             </div>
             ${renderCompareResult(em.compare)}
           </div>
           <div class="modal-actions">
             <button class="btn" type="button" data-action="close-edit-modal">${escapeHtml(t("webui_cancel", "Cancel"))}</button>
-            <button id="edit-driver-save" class="btn primary" type="button" data-action="save-edit-driver" data-id="${escapeHtml(em.id || "")}"${(String(em.key || "").length > 0 && String(em.key || "").length !== 32) ? " disabled" : ""}>${escapeHtml(t("save_btn", "Save"))}</button>
+            <button id="edit-driver-save" class="btn primary" type="button" data-action="save-edit-driver" data-id="${escapeHtml(em.id || "")}"${editKeyPartial ? " disabled" : ""}>${escapeHtml(t("save_btn", "Save"))}</button>
           </div>
         </div>
       </div>`;

@@ -2531,9 +2531,6 @@ LOCALIZE_EXACT_KEYS = [
     "webui_runtime_docker", "webui_runtime_home_assistant",
     "webui_time", "webui_type", "webui_topic", "webui_summary",
     "key_hint_short", "esp_no_active_events",
-    "compare_btn", "compare_hint", "compare_running", "compare_field",
-    "compare_current", "compare_candidate", "compare_empty", "compare_warn",
-    "compare_no_raw", "compare_failed", "compare_invalid_key",
 ]
 
 # Current static text variants present in older dev UI.  This lets the i18n
@@ -2695,17 +2692,6 @@ SOURCE_TEXT: dict[str, list[str]] = {
     "webui_topic": ["Topic"],
     "webui_summary": ["Summary"],
     "key_hint_short": ["32 hex chars, or leave empty"],
-    "compare_btn": ["Compare"],
-    "compare_hint": ["Decode this meter's last telegram with the selected driver and compare fields — verify the values; more fields does not mean correct."],
-    "compare_running": ["Decoding…"],
-    "compare_field": ["Field"],
-    "compare_current": ["Current"],
-    "compare_candidate": ["Selected"],
-    "compare_empty": ["Neither driver decoded any field (encrypted without a key?)."],
-    "compare_warn": ["Green = extra field, amber = different value. More fields does NOT mean correct — verify against the meter's display."],
-    "compare_no_raw": ["No recent telegram stored for this meter — wait for the next reception, then retry."],
-    "compare_failed": ["Decode failed."],
-    "compare_invalid_key": ["AES key must be empty or exactly 32 hex characters."],
 }
 
 
