@@ -2714,15 +2714,28 @@
   // State-side sink for driverPickerHtml (see comment there) and the
   // change-driver modal's key field. Updates state WITHOUT re-rendering, so
   // typing keeps focus; the next live render rebuilds from the stored value.
+  function clearEditCompareDom() {
+    const el = document.getElementById("edit-driver-compare-result");
+    if (el) el.innerHTML = "";
+  }
+
   window.__driverPickerSet = function (hiddenId, value) {
     const v = String(value == null ? "" : value);
     if (hiddenId === "meter-driver" && state.modal) state.modal.driver = v;
-    if (hiddenId === "edit-meter-driver" && state.editModal) state.editModal.driver = v;
+    if (hiddenId === "edit-meter-driver" && state.editModal) {
+      state.editModal.driver = v;
+      state.editModal.compare = null;
+      clearEditCompareDom();
+    }
     const h = document.getElementById(hiddenId);
     if (h) h.value = v;
   };
   window.__editModalKeySet = function (value) {
-    if (state.editModal) state.editModal.key = String(value == null ? "" : value);
+    if (state.editModal) {
+      state.editModal.key = String(value == null ? "" : value);
+      state.editModal.compare = null;
+      clearEditCompareDom();
+    }
   };
 
   function renderEditDriverModal() {
@@ -2747,7 +2760,7 @@
               const border = k.length === 32 ? "#1e6b3a" : (partial ? "#6b4a1e" : "");
               const cnt = k.length === 32 ? "✓ 32" : (k.length > 0 ? `${k.length}/32` : "");
               const cntColor = k.length === 32 ? "#4df08d" : "#f3c84b";
-              const keyJs = `(function(inp){var v=inp.value.replace(/[^0-9A-Fa-f]/g,'').slice(0,32);inp.value=v;window.__editModalKeySet(v);var cnt=document.getElementById('edit-aes-key-count');var btn=document.getElementById('edit-driver-save');if(v.length===0){inp.style.borderColor='';if(cnt)cnt.textContent='';if(btn)btn.disabled=false;}else if(v.length===32){inp.style.borderColor='#1e6b3a';if(cnt){cnt.textContent='✓ 32';cnt.style.color='#4df08d';}if(btn)btn.disabled=false;}else{inp.style.borderColor='#6b4a1e';if(cnt){cnt.textContent=v.length+'/32';cnt.style.color='#f3c84b';}if(btn)btn.disabled=true;}})(this)`;
+              const keyJs = `(function(inp){var v=inp.value.replace(/[^0-9A-Fa-f]/g,'').slice(0,32);inp.value=v;window.__editModalKeySet(v);var cnt=document.getElementById('edit-aes-key-count');var btn=document.getElementById('edit-driver-save');var cmp=document.getElementById('edit-driver-compare');if(v.length===0){inp.style.borderColor='';if(cnt)cnt.textContent='';if(btn)btn.disabled=false;if(cmp)cmp.disabled=false;}else if(v.length===32){inp.style.borderColor='#1e6b3a';if(cnt){cnt.textContent='✓ 32';cnt.style.color='#4df08d';}if(btn)btn.disabled=false;if(cmp)cmp.disabled=false;}else{inp.style.borderColor='#6b4a1e';if(cnt){cnt.textContent=v.length+'/32';cnt.style.color='#f3c84b';}if(btn)btn.disabled=true;if(cmp)cmp.disabled=true;}})(this)`;
               return `
             <div style="display:flex;gap:8px;align-items:center;">
               <input id="edit-meter-key" autocomplete="off" maxlength="32" value="${escapeHtml(k)}"
@@ -2757,6 +2770,11 @@
               <span id="edit-aes-key-count" style="font-size:11px;font-weight:700;min-width:40px;text-align:right;color:${cntColor};">${escapeHtml(cnt)}</span>
             </div>`;
             })()}
+            <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+              <button id="edit-driver-compare" class="btn" type="button" data-action="compare-driver" data-id="${escapeHtml(em.id || "")}"${partial ? " disabled" : ""}>${escapeHtml(t("compare_btn", "Compare"))}</button>
+              <span style="font-size:11px;color:#9eafba;">${escapeHtml(t("compare_hint", "Decode this meter's last telegram with the selected driver and compare fields — verify the values; more fields does not mean correct."))}</span>
+            </div>
+            ${renderCompareResult(em.compare)}
           </div>
           <div class="modal-actions">
             <button class="btn" type="button" data-action="close-edit-modal">${escapeHtml(t("webui_cancel", "Cancel"))}</button>
@@ -2764,6 +2782,42 @@
           </div>
         </div>
       </div>`;
+  }
+
+  // On-demand driver comparison panel inside the "Change driver" modal.
+  // state.editModal.compare = {loading} | {error} | {data: <api response>}.
+  // Shows real decoded fields/values for the current vs selected driver so the
+  // user judges by values, not by a heuristic score.
+  function renderCompareResult(cmp) {
+    if (!cmp) return `<div id="edit-driver-compare-result"></div>`;
+    if (cmp.loading) return `<div id="edit-driver-compare-result"><p style="font-size:12px;color:#9eafba;margin:8px 0 0;">${escapeHtml(t("compare_running", "Decoding…"))}</p></div>`;
+    if (cmp.error) return `<div id="edit-driver-compare-result"><p style="font-size:12px;color:#f3c84b;margin:8px 0 0;">${escapeHtml(cmp.error)}</p></div>`;
+    const d = cmp.data || {};
+    const cur = d.current || {fields: {}};
+    const cand = d.candidate || {fields: {}};
+    const cf = cur.fields || {};
+    const df = cand.fields || {};
+    const keys = Array.from(new Set([...Object.keys(cf), ...Object.keys(df)])).sort();
+    const cell = (obj, k) => (k in obj) ? escapeHtml(String(obj[k])) : `<span style="color:#5b6b76;">—</span>`;
+    const rows = keys.map(k => {
+      const gain = (k in df) && !(k in cf);
+      const diff = (k in cf) && (k in df) && String(cf[k]) !== String(df[k]);
+      const bg = gain ? "background:#0e2a18;" : (diff ? "background:#2a230e;" : "");
+      return `<tr style="${bg}"><td style="padding:2px 8px;font-family:monospace;font-size:11px;">${escapeHtml(k)}</td><td style="padding:2px 8px;font-size:11px;">${cell(cf, k)}</td><td style="padding:2px 8px;font-size:11px;">${cell(df, k)}</td></tr>`;
+    }).join("");
+    return `<div id="edit-driver-compare-result">
+      <div style="margin-top:10px;border:1px solid #1d2f3c;border-radius:6px;overflow:auto;max-height:38vh;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead><tr style="position:sticky;top:0;background:#0b141b;">
+            <th style="text-align:left;padding:4px 8px;font-size:11px;color:#9eafba;">${escapeHtml(t("compare_field", "Field"))}</th>
+            <th style="text-align:left;padding:4px 8px;font-size:11px;color:#9eafba;">${escapeHtml(t("compare_current", "Current"))}: ${escapeHtml(cur.driver || "")}</th>
+            <th style="text-align:left;padding:4px 8px;font-size:11px;color:#9eafba;">${escapeHtml(t("compare_candidate", "Selected"))}: ${escapeHtml(cand.driver || "")}</th>
+          </tr></thead>
+          <tbody>${rows || `<tr><td colspan="3" style="padding:6px 8px;font-size:11px;color:#9eafba;">${escapeHtml(t("compare_empty", "Neither driver decoded any field (encrypted without a key?)."))}</td></tr>`}</tbody>
+        </table>
+      </div>
+      <p style="font-size:10px;color:#f3c84b;margin:6px 0 0;">⚠️ ${escapeHtml(t("compare_warn", "Green = extra field, amber = different value. More fields does NOT mean correct — verify against the meter's display."))}</p>
+    </div>`;
   }
 
   function renderReportModal() {
@@ -3060,6 +3114,42 @@
 
     if (action === "close-edit-modal") {
       state.editModal = null;
+      render();
+      return;
+    }
+
+    if (action === "compare-driver") {
+      const id = target.dataset.id || "";
+      const em = state.editModal;
+      if (!id || !em) return;
+      const driver = em.driver || "auto";
+      const key = String(em.key || "").trim();
+      em.compare = {loading: true};
+      render();
+      // Read the payload directly (not via postApi) to map the error code to a
+      // localised message; the backend returns {ok:false, error:<code>}.
+      try {
+        const resp = await fetch("api/compare-driver", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({meter_id: id, driver, key}),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || data.ok === false) {
+          const map = {
+            no_raw_telegram: t("compare_no_raw", "No recent telegram stored for this meter — wait for the next reception, then retry."),
+            decode_failed: t("compare_failed", "Decode failed."),
+            invalid_driver: t("compare_failed", "Decode failed."),
+            invalid_key: t("compare_invalid_key", "AES key must be empty or exactly 32 hex characters."),
+            invalid_meter_id: t("compare_failed", "Decode failed."),
+          };
+          em.compare = {error: map[data.error] || data.error || t("compare_failed", "Decode failed.")};
+        } else {
+          em.compare = {data};
+        }
+      } catch (error) {
+        em.compare = {error: error.message};
+      }
       render();
       return;
     }
