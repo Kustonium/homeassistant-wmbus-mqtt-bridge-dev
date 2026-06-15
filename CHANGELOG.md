@@ -1,3 +1,11 @@
+## 1.5.37-dev.200
+
+### Added
+- add factory reset that removes all meters and clears their HA entities (a2e713b)
+
+### Fixed
+- scope published-fields expander to action-enabled meter tables (d3fceee)
+
 ## 1.5.37-dev.199
 
 ### Fixed
