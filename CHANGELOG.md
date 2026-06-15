@@ -1,3 +1,9 @@
+## 1.5.37-dev.199
+
+### Fixed
+- scope published-fields expander to action-enabled meter tables (d3fceee)
+- keep built-in drivers and publish discovery before state (5fa0ce4)
+
 ## 1.5.37-dev.198
 
 ### Fixed
