@@ -2788,8 +2788,8 @@
 
   // On-demand driver comparison panel inside the "Change driver" modal.
   // state.editModal.compare = {loading} | {error} | {data: <api response>}.
-  // Shows real decoded fields/values for the current vs selected driver so the
-  // user judges by values, not by a heuristic score.
+  // Shows real decoded fields/values for the auto/saved vs selected driver so
+  // the user judges by values, not by a heuristic score.
   function renderCompareResult(cmp) {
     if (!cmp) return `<div id="edit-driver-compare-result"></div>`;
     if (cmp.loading) return `<div id="edit-driver-compare-result"><p style="font-size:12px;color:#9eafba;margin:8px 0 0;">${escapeHtml(t("compare_running", "Decoding…"))}</p></div>`;
@@ -2799,6 +2799,15 @@
     const cand = d.candidate || {fields: {}};
     const cf = cur.fields || {};
     const df = cand.fields || {};
+    const sameDriver = Boolean(d.same_driver || String(cur.driver || "").toLowerCase() === String(cand.driver || "").toLowerCase());
+    if (sameDriver) {
+      return `<div id="edit-driver-compare-result">
+        <p style="font-size:12px;color:#9eafba;margin:8px 0 0;">${escapeHtml(t("compare_same_driver", "The selected driver is already the comparison driver. Choose a different driver to compare."))}</p>
+      </div>`;
+    }
+    const currentLabel = cur.source === "auto"
+      ? t("compare_auto", "Auto")
+      : t("compare_current", "Saved");
     const keys = Array.from(new Set([...Object.keys(cf), ...Object.keys(df)])).sort();
     const cell = (obj, k) => (k in obj) ? escapeHtml(String(obj[k])) : `<span style="color:#5b6b76;">—</span>`;
     const rows = keys.map(k => {
@@ -2812,7 +2821,7 @@
         <table style="width:100%;border-collapse:collapse;">
           <thead><tr style="position:sticky;top:0;background:#0b141b;">
             <th style="text-align:left;padding:4px 8px;font-size:11px;color:#9eafba;">${escapeHtml(t("compare_field", "Field"))}</th>
-            <th style="text-align:left;padding:4px 8px;font-size:11px;color:#9eafba;">${escapeHtml(t("compare_current", "Current"))}: ${escapeHtml(cur.driver || "")}</th>
+            <th style="text-align:left;padding:4px 8px;font-size:11px;color:#9eafba;">${escapeHtml(currentLabel)}: ${escapeHtml(cur.driver || "")}</th>
             <th style="text-align:left;padding:4px 8px;font-size:11px;color:#9eafba;">${escapeHtml(t("compare_candidate", "Selected"))}: ${escapeHtml(cand.driver || "")}</th>
           </tr></thead>
           <tbody>${rows || `<tr><td colspan="3" style="padding:6px 8px;font-size:11px;color:#9eafba;">${escapeHtml(t("compare_empty", "Neither driver decoded any field (encrypted without a key?)."))}</td></tr>`}</tbody>

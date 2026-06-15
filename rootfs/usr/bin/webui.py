@@ -446,10 +446,35 @@ def _decode_with_driver(raw: str, driver: str, mid: str, key: str) -> dict | Non
     return {}
 
 
+def _analyze_auto_driver(raw: str, key: str) -> str:
+    """Return the driver name from wmbusmeters' "Auto driver" line, if any."""
+    raw = re.sub(r"\s+", "", raw or "")
+    if not re.fullmatch(r"[0-9A-Fa-f]+", raw or ""):
+        return ""
+    analyze_arg = f"--analyze={key}" if key else "--analyze"
+    try:
+        proc = subprocess.run(
+            [WMBUSMETERS_BIN, analyze_arg, raw],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return ""
+    output = (proc.stdout or "") + (proc.stderr or "")
+    match = re.search(r"(?im)^\s*Auto driver\s*:\s*([A-Za-z0-9_]+)\b", output)
+    if not match:
+        return ""
+    driver = match.group(1).strip()
+    if not driver or driver.lower() == "unknown":
+        return ""
+    return driver
+
+
 def compare_meter_drivers(meter_id: str, requested_driver: str, key_override: str | None = None) -> tuple[bool, dict]:
-    """Decode a meter's last frame with its current driver and with a requested
-    one, returning both field sets for side-by-side comparison. Pure read +
-    short-lived wmbusmeters calls (~ms each); no pipeline interaction."""
+    """Decode a meter's last frame with wmbusmeters' auto driver (when useful)
+    or the saved driver, and with the requested driver. Pure read + short-lived
+    wmbusmeters calls (~ms each); no pipeline interaction."""
     mid = normalize_meter_id(meter_id)
     if not VALID_ID_RE.match(mid):
         return False, {"ok": False, "error": "invalid_meter_id"}
@@ -480,7 +505,18 @@ def compare_meter_drivers(meter_id: str, requested_driver: str, key_override: st
             return False, {"ok": False, "error": "invalid_key"}
         key = key_override
 
-    cur = _decode_with_driver(raw, current_driver, mid, key)
+    auto_driver = _analyze_auto_driver(raw, key)
+    baseline_driver = current_driver
+    baseline_source = "saved"
+    if (
+        current_driver.lower() == requested_driver.lower()
+        and auto_driver
+        and auto_driver.lower() != requested_driver.lower()
+    ):
+        baseline_driver = auto_driver
+        baseline_source = "auto"
+
+    cur = _decode_with_driver(raw, baseline_driver, mid, key)
     cand = _decode_with_driver(raw, requested_driver, mid, key)
     if cur is None or cand is None:
         return False, {"ok": False, "error": "decode_failed"}
@@ -490,7 +526,10 @@ def compare_meter_drivers(meter_id: str, requested_driver: str, key_override: st
         "meter_id": mid,
         "raw_ts": raw_ts,
         "key_used": bool(key),
-        "current": {"driver": current_driver, "fields": cur},
+        "auto_driver": auto_driver,
+        "saved_driver": current_driver,
+        "same_driver": baseline_driver.lower() == requested_driver.lower(),
+        "current": {"driver": baseline_driver, "source": baseline_source, "fields": cur},
         "candidate": {"driver": requested_driver, "fields": cand},
     }
 
