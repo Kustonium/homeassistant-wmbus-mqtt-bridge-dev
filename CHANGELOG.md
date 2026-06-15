@@ -1,3 +1,9 @@
+## 1.5.37-dev.201
+
+### Added
+- compare meter driver decodes on demand (98d448a)
+- add factory reset that removes all meters and clears their HA entities (a2e713b)
+
 ## 1.5.37-dev.200
 
 ### Added
