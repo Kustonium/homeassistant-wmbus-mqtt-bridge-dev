@@ -1,3 +1,9 @@
+## 1.5.37-dev.205
+
+### Fixed
+- clarify driver compare modal layout (b9fcfd1)
+- compare candidate drivers before adding meters (3224769)
+
 ## 1.5.37-dev.204
 
 ### Fixed
