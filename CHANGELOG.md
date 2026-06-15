@@ -1,3 +1,9 @@
+## 1.5.37-dev.203
+
+### Fixed
+- compare selected driver against wmbusmeters auto hint (67e32d4)
+- keep compare modal from breaking WebGUI render (03f96c7)
+
 ## 1.5.37-dev.202
 
 ### Added
