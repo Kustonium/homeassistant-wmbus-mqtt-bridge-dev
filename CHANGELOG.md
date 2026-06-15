@@ -1,3 +1,9 @@
+## 1.5.37-dev.198
+
+### Fixed
+- keep built-in drivers and publish discovery before state (5fa0ce4)
+- resolve preview id by LE-substring match on the per-telegram path (Diehl/izar) (dd3ffee)
+
 ## 1.5.37-dev.197
 
 ### Fixed
