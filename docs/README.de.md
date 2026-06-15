@@ -305,6 +305,15 @@ Discovery-Configs für jeden konfigurierten Zähler auf dem Broker existieren �
 mit Payload-Vorschau und einem Button **Re-Discovery erzwingen**. Kein
 Log-Graben, kein `mosquitto_sub`.
 
+### „Ich möchte neu anfangen — alle Zähler entfernen"
+
+In der Ansicht EINSTELLUNGEN entfernt **Add-on zurücksetzen** ALLE
+konfigurierten Zähler, löscht ihre Home-Assistant-Entitäten (es werden leere
+retained Discovery-Configs veröffentlicht, sodass die Entitäten verschwinden)
+und setzt den Laufzeitzustand zurück (Kandidaten, Ignorierliste, Statistiken).
+Das Add-on kehrt in den Zustand nach der Installation zurück. Die Aktion ist
+unumkehrbar und fragt vorher nach Bestätigung.
+
 ### „Mein Zähler verschlüsselt seine Telegramme — was nun?"
 
 Die meisten Abrechnungszähler verschlüsseln ihre Payload (der Kandidat zeigt

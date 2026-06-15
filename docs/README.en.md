@@ -301,6 +301,14 @@ discovery configs exist on the broker for every configured meter — with a
 payload preview and a **Force re-discovery** button. No log digging or
 `mosquitto_sub` needed.
 
+### "I want to start over — remove all meters"
+
+In the SETTINGS view, **Reset add-on** removes ALL configured meters, clears
+their Home Assistant entities (it publishes empty retained discovery configs so
+the entities disappear) and wipes runtime state (candidates, the ignored list
+and statistics). The add-on returns to its post-install state. The action is
+irreversible and asks for confirmation first.
+
 ### "My meter encrypts its telegrams — what now?"
 
 Most utility meters encrypt their payload (the candidate shows an **AES req.**

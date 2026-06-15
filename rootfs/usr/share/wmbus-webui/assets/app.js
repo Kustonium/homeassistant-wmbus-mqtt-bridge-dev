@@ -2540,6 +2540,11 @@
         <button class="btn primary" data-action="run-discovery-doctor">${escapeHtml(t("doctor_run_btn", "Run checks"))}</button>
       </section>
       <section class="section">
+        <div class="section-head"><h2>⚠️ ${escapeHtml(t("reset_title", "Reset add-on"))}</h2></div>
+        <p style="font-size:12px;color:#9eafba;margin:0 0 10px;">${escapeHtml(t("reset_intro", "Removes ALL configured meters, clears their Home Assistant entities (retained discovery), and wipes runtime state (candidates, ignored list, statistics). The add-on returns to its post-install state. This cannot be undone."))}</p>
+        <button class="btn danger" data-action="factory-reset">${escapeHtml(t("reset_btn", "Remove all meters & reset"))}</button>
+      </section>
+      <section class="section">
         <div class="section-head"><h2>${escapeHtml(t("webui_options_snapshot", "Options snapshot"))}</h2></div>
         <div class="code">${escapeHtml(JSON.stringify(data.options || {}, null, 2))}</div>
       </section>
@@ -2993,6 +2998,21 @@
       if (state.expandedMeterFields.has(id)) state.expandedMeterFields.delete(id);
       else state.expandedMeterFields.add(id);
       render();
+      return;
+    }
+
+    if (action === "factory-reset") {
+      // Two-step confirm — this is destructive and irreversible.
+      if (!window.confirm(t("reset_confirm", "Remove ALL meters and reset the add-on to its post-install state? Entities, the ignored list and statistics are wiped. This cannot be undone."))) return;
+      try {
+        await postApi("factory-reset", {});
+      } catch (error) {
+        toast(error.message, true);
+        return;
+      }
+      // The bridge clears discovery + wipes state and soft-reloads the pipeline
+      // on its next tick; reuse the soft-reload overlay so the UI waits it out.
+      triggerSoftReload(t("reset_started", "Removing meters and resetting — entities and state are being cleared…"));
       return;
     }
 

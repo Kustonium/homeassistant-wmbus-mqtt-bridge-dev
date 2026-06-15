@@ -50,6 +50,11 @@ METER_KEY_PROBLEM_TSV = BASE / "status_meter_key_problem.tsv"
 # writes the JSON result.
 DISCOVERY_DOCTOR_REQUEST = BASE / ".discovery_doctor_request"
 STATUS_DISCOVERY_DOCTOR_JSON = BASE / "status_discovery_doctor.json"
+# Factory reset: this endpoint empties options.json (meters=[]) and writes the
+# removed ids here (one per line). bridge.sh's heartbeat ticker consumes the
+# flag, clears each meter's retained discovery, wipes runtime state and
+# soft-reloads — returning the add-on to its post-install state.
+FACTORY_RESET_REQUEST = BASE / ".factory_reset_request"
 WMBUSMETERS_BIN = "/usr/bin/wmbusmeters"
 OPTIONS_JSON = BASE / "options.json"
 # Per-minute rate dashboard files written by bridge.sh
@@ -872,6 +877,81 @@ def update_meter_in_options(meter_id: str, driver: str, key: str | None = None) 
     # Fallback: file-only write (plain Docker / no SUPERVISOR_TOKEN).
     write_json_atomic(OPTIONS_JSON, options)
     msg = f"Meter {meter_id} driver changed to {driver} (file only — no SUPERVISOR_TOKEN). Reloading pipeline to apply."
+    webui_add_event("warn", msg)
+    return True, msg
+
+
+def factory_reset() -> tuple[bool, str]:
+    """Remove ALL configured meters and return the add-on to its post-install state.
+
+    Persists meters=[] (Supervisor-first, same as remove_meter_from_options),
+    then writes the removed ids to FACTORY_RESET_REQUEST. bridge.sh's heartbeat
+    ticker consumes that flag: it clears each meter's retained MQTT Discovery
+    (so the entities disappear from Home Assistant), wipes runtime state
+    (status_*/search_*/seen + preview meter files) and soft-reloads the pipeline.
+    The flag is written only after options are persisted, so a failed persist
+    never triggers a teardown.
+    """
+    import urllib.request
+
+    options = read_json(OPTIONS_JSON)
+    if not isinstance(options, dict):
+        return False, "Cannot read options.json."
+
+    meters = options.get("meters", [])
+    if not isinstance(meters, list):
+        meters = []
+
+    ids = []
+    for m in meters:
+        if isinstance(m, dict) and m.get("meter_id"):
+            mid = normalize_meter_id(m.get("meter_id"))
+            if VALID_ID_RE.match(mid):
+                ids.append(mid)
+
+    options["meters"] = []
+
+    def _signal_bridge() -> None:
+        # Hand the removed ids to bridge.sh for discovery teardown + state wipe.
+        try:
+            FACTORY_RESET_REQUEST.write_text(
+                "".join(f"{i}\n" for i in ids), encoding="utf-8"
+            )
+        except OSError as exc:
+            webui_add_event("warn", f"Factory reset: cannot write request flag: {exc}")
+
+    token = os.environ.get("SUPERVISOR_TOKEN", "")
+    if token:
+        try:
+            payload = json.dumps({"options": options}, ensure_ascii=False).encode("utf-8")
+            req = urllib.request.Request(
+                "http://supervisor/addons/self/options",
+                data=payload,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status in (200, 201):
+                    write_json_atomic(OPTIONS_JSON, options)
+                    _signal_bridge()
+                    msg = (f"Factory reset: removed {len(ids)} meter(s); clearing entities "
+                           f"and runtime state, reloading pipeline.")
+                    webui_add_event("ok", msg)
+                    return True, msg
+                body = resp.read().decode("utf-8", errors="replace")
+                return False, f"Supervisor API HTTP {resp.status}: {body[:200]}"
+        except Exception as exc:
+            webui_add_event("error", f"Supervisor API factory reset failed: {exc}")
+            return False, f"Supervisor API failed: {exc}"
+
+    # Fallback: file-only write (plain Docker / no SUPERVISOR_TOKEN).
+    write_json_atomic(OPTIONS_JSON, options)
+    _signal_bridge()
+    msg = (f"Factory reset: removed {len(ids)} meter(s) (file only — no SUPERVISOR_TOKEN); "
+           f"clearing entities and runtime state, reloading pipeline.")
     webui_add_event("warn", msg)
     return True, msg
 
@@ -2040,7 +2120,7 @@ class Handler(BaseHTTPRequestHandler):
             '/api/app', '/api/events', '/api/status', '/api/add-meter', '/api/remove-meter',
             '/api/search-control', '/api/restart-bridge', '/api/reload-pipeline',
             '/api/preview-candidate', '/api/cancel-preview',
-            '/api/ignore', '/api/unignore',
+            '/api/ignore', '/api/unignore', '/api/factory-reset',
         )
         if any(path.endswith(suffix) for suffix in api_suffixes):
             return path
@@ -2072,6 +2152,10 @@ class Handler(BaseHTTPRequestHandler):
             # Empty/absent key keeps the currently configured key.
             key = (params.get('key') or [''])[0].strip()
             ok, msg = update_meter_in_options(meter_id, driver, key or None)
+            self._send_json(200 if ok else 400, {"ok": ok, "message": msg})
+            return
+        if path.endswith('/api/factory-reset'):
+            ok, msg = factory_reset()
             self._send_json(200 if ok else 400, {"ok": ok, "message": msg})
             return
         if path.endswith('/api/discovery-doctor'):

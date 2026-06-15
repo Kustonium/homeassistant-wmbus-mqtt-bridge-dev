@@ -303,6 +303,14 @@ brokerze dla każdego skonfigurowanego licznika — z podglądem payloadu i
 przyciskiem **Wymuś ponowne discovery**. Bez grzebania w logach i
 `mosquitto_sub`.
 
+### „Chcę zacząć od zera — usuń wszystkie liczniki"
+
+W widoku USTAWIENIA przycisk **Wyzeruj add-on** usuwa WSZYSTKIE skonfigurowane
+liczniki, kasuje ich encje w Home Assistant (publikuje puste retained configi
+discovery, więc encje znikają) i czyści stan runtime (kandydaci, lista
+ignorowanych, statystyki). Add-on wraca do stanu jak po instalacji. Operacja
+jest nieodwracalna i wymaga potwierdzenia.
+
 ### „Mój licznik szyfruje telegramy — co dalej?"
 
 Większość liczników rozliczeniowych szyfruje payload (kandydat ma odznakę

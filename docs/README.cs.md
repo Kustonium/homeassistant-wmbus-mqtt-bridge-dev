@@ -294,6 +294,14 @@ retained birth message HA) a zda na brokeru existují retained discovery
 configy pro každý nakonfigurovaný měřič — s náhledem payloadu a tlačítkem
 **Vynutit re-discovery**. Bez hrabání v logu a `mosquitto_sub`.
 
+### „Chci začít znovu — odebrat všechny měřiče"
+
+V zobrazení NASTAVENÍ tlačítko **Resetovat doplněk** odebere VŠECHNY
+nakonfigurované měřiče, vymaže jejich entity v Home Assistantu (publikuje
+prázdné retained discovery configy, takže entity zmizí) a vyčistí běhový stav
+(kandidáti, seznam ignorovaných, statistiky). Doplněk se vrátí do stavu po
+instalaci. Akce je nevratná a nejprve vyžaduje potvrzení.
+
 ### „Můj měřič šifruje telegramy — co teď?"
 
 Většina fakturačních měřičů šifruje payload (kandidát má odznak **AES req.**).
