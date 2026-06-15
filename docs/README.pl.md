@@ -166,6 +166,16 @@ Najedź na **ⓘ** przy nagłówku ODBIÓR — masz legendę. W skrócie:
 - Kandydaci bez AES dekodują się automatycznie — w kolumnie **Wartość** widać
   podgląd na żywo bez konfigurowania.
 - **Dodaj** zapisuje licznik do konfiguracji i przeładowuje pipeline.
+- **Porównaj** w modalu **Dodaj** lub **Driver…** dekoduje ostatni telegram dwoma
+  driverami bez zapisywania zmian. Wybierz driver w polu **Sterownik**, wpisz
+  klucz AES jeśli licznik jest szyfrowany i kliknij **Porównaj**. Lewa kolumna to
+  driver zapisany albo auto-detekcja `wmbusmeters`, prawa kolumna to driver
+  wybrany przez Ciebie. Zielone wiersze oznaczają dodatkowe pola, żółte — inną
+  wartość; więcej pól **nie** znaczy automatycznie poprawnie, więc porównaj
+  wartości z wyświetlaczem licznika.
+- **Zgłoszenie…** dla kandydata celowo nie używa klucza AES i nie pokazuje
+  prywatnych odczytów. Jeśli chcesz zobaczyć wartości przed dodaniem licznika,
+  użyj **Dodaj → Porównaj** i wpisz klucz AES w tym modalu.
 - **Usuń zaznaczone** — zaznacz checkboxy i usuń kilka naraz (przycisk nad tabelą).
 
 ---

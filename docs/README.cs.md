@@ -162,6 +162,15 @@ Najeď na **ⓘ** u záhlaví PŘÍJEM — máš legendu. Stručně:
 - Kandidáti bez AES se dekódují automaticky — sloupec **Hodnota** ukazuje živý náhled
   bez konfigurace.
 - **Přidat** uloží měřič a přenačte pipeline.
+- **Porovnat** v modalu **Přidat** nebo **Driver…** dekóduje poslední telegram dvěma
+  drivery bez uložení změn. Vyber driver v poli **Driver**, u šifrovaného měřiče
+  zadej AES klíč a klikni na **Porovnat**. Levý sloupec je uložený driver nebo
+  auto-detekce `wmbusmeters`, pravý sloupec je tebou vybraný driver. Zelené řádky
+  jsou další pole, žluté řádky jiné hodnoty; více polí **neznamená** automaticky
+  správně — ověř hodnoty na displeji měřiče.
+- **Hlášení…** pro kandidáta záměrně nepoužívá AES klíč a nezobrazuje soukromé
+  odečty. Pokud chceš vidět hodnoty před přidáním měřiče, použij **Přidat →
+  Porovnat** a zadej AES klíč v tomto modalu.
 - **Odebrat vybrané** — zaškrtni checkboxy a odeber více najednou (tlačítko nad tabulkou).
 
 ---

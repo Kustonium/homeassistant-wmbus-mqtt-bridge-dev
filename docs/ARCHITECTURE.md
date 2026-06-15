@@ -162,6 +162,14 @@ hold "this run only" data; the rest persist in `/data`.
 | `status_esp_meter_snapshot.json` / `status_esp_meter_window.json` | JSON map | per-ESP per-meter reception windows (diag, opt-in) |
 | `status_wmbusmeters_version.txt`, `status_official_meters_count.txt`, `status_rate_history.tsv`, `status_bridge_start.txt`, `status_discovery_published.flag` | misc | version, configured-count, rate sparkline, start time, discovery-published flag |
 
+The WebUI driver comparison endpoint is deliberately read-only. For a configured
+meter it resolves the latest RAW frame from `status_recent_raw.tsv`; for an
+unconfigured candidate it can use `status_candidate_raw.tsv`. It then runs short
+`wmbusmeters --format=json` forced-driver decodes (`stdin:hex`) with the saved or
+typed AES key and shows the decoded fields side by side. The result is advisory:
+`wmbusmeters` auto detection and "more fields" are hints, not proof that the
+driver is correct.
+
 `options.json` (the add-on config) is **owned by Supervisor**, not the bridge.
 Supervisor rewrites it from its DB on every start; the bridge only reads it (see
 §10 for why a file-only write does not survive a restart).

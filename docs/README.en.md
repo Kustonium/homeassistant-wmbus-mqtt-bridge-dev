@@ -163,6 +163,16 @@ Hover the **ⓘ** next to the RECEPTION header for a legend. In short:
 - Non-AES candidates auto-decode — the **Value** column shows a live preview without
   configuring them.
 - **Add** stores the meter and reloads the pipeline.
+- **Compare** in the **Add** or **Driver…** modal decodes the last telegram with two
+  drivers without saving changes. Choose a driver in the **Driver** field, enter
+  the AES key if the meter is encrypted, then click **Compare**. The left column is
+  the saved driver or `wmbusmeters` auto-detection; the right column is the driver
+  you selected. Green rows are extra fields, amber rows are different values; more
+  fields do **not** automatically mean the driver is correct, so verify the values
+  against the meter display.
+- **Report…** for a candidate intentionally does not use the AES key and does not
+  show private readings. To see values before adding a meter, use **Add → Compare**
+  and enter the AES key in that modal.
 - **Remove selected** — tick the checkboxes and remove several at once (button above
   the table).
 

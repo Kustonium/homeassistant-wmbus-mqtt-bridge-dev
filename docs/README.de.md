@@ -166,6 +166,16 @@ Fahre mit der Maus über das **ⓘ** neben der EMPFANG-Überschrift für eine Le
 - Kandidaten ohne AES werden automatisch dekodiert — die Spalte **Wert** zeigt eine
   Live-Vorschau ohne Konfiguration.
 - **Hinzufügen** speichert den Zähler und lädt die Pipeline neu.
+- **Vergleichen** im Modal **Hinzufügen** oder **Driver…** dekodiert das letzte
+  Telegramm mit zwei Treibern, ohne Änderungen zu speichern. Wähle einen Treiber
+  im Feld **Treiber**, gib bei verschlüsselten Zählern den AES-Schlüssel ein und
+  klicke **Vergleichen**. Links steht der gespeicherte Treiber oder die
+  Auto-Erkennung von `wmbusmeters`, rechts der ausgewählte Treiber. Grüne Zeilen
+  sind zusätzliche Felder, gelbe Zeilen andere Werte; mehr Felder bedeuten **nicht**
+  automatisch richtig — prüfe die Werte am Zählerdisplay.
+- **Melden…** für einen Kandidaten verwendet absichtlich keinen AES-Schlüssel und
+  zeigt keine privaten Zählerstände. Werte vor dem Hinzufügen siehst du über
+  **Hinzufügen → Vergleichen** mit AES-Schlüssel in diesem Modal.
 - **Ausgewählte entfernen** — Checkboxen markieren und mehrere auf einmal entfernen
   (Button über der Tabelle).
 
