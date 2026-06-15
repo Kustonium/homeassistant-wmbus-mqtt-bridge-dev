@@ -87,6 +87,22 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
+  static-tests:
+    name: Static regression tests
+    needs: gate
+    if: needs.gate.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Run static regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tests/test_driver_catalog_contract.sh
+          bash tests/test_discovery_publish_order.sh
+
   # ---------------------------------------------------------------------------
   # Build — build + push BOTH arch images tagged :dev and :dev.<run_number>.
   # Crucially this job does NOT commit the version. The version is only written
@@ -96,7 +112,7 @@ jobs:
   # ---------------------------------------------------------------------------
   build:
     name: Build wmbus_mqtt_bridge_dev (${{ matrix.arch }})
-    needs: gate
+    needs: [gate, static-tests]
     if: needs.gate.outputs.skip != 'true'
     runs-on: ${{ matrix.runs_on }}
 

@@ -38,17 +38,26 @@ RUN git clone https://github.com/wmbusmeters/wmbusmeters.git . \
 
 # Driver catalog for the WebUI "Add meter" driver suggestions. Generated at
 # build time from the pinned wmbusmeters sources (drivers/src/*.xmq) plus the
-# built-in C++ drivers reported by --listmeters, so a WMBUSMETERS_COMMIT bump
-# refreshes the list automatically. NB: at this pin --listmeters prints only
-# the built-in C++ drivers (the xmq drivers were added to its output upstream
-# after the pin), hence the explicit xmq scan.
-RUN { /out/wmbusmeters --listmeters 2>/dev/null | awk '{print $1"\t"$2}'; \
+# built-in C++ drivers reported by --listdrivers (or the older --listmeters).
+# Keep the compatibility fallback: upstream renamed the option and a silent
+# empty list would hide built-in drivers such as izar from the WebUI.
+RUN set -eu; \
+    if /out/wmbusmeters --listdrivers > /tmp/wmbus-driver-list 2>/dev/null; then \
+      :; \
+    elif /out/wmbusmeters --listmeters > /tmp/wmbus-driver-list 2>/dev/null; then \
+      :; \
+    else \
+      echo "wmbusmeters exposes neither --listdrivers nor --listmeters" >&2; \
+      exit 1; \
+    fi; \
+    { awk '{print $1"\t"$2}' /tmp/wmbus-driver-list; \
       for f in drivers/src/*.xmq; do \
         awk -F= '/^[[:space:]]*name[[:space:]]*=/{gsub(/[[:space:]]/,"",$2);n=$2} /^[[:space:]]*meter_type[[:space:]]*=/{gsub(/[[:space:]]/,"",$2);t=$2; print n"\t"t; exit}' "$f"; \
       done; \
     } | sort -u \
       | awk -F'\t' 'BEGIN{printf "["; s=""} $1!=""{printf "%s{\"driver\":\"%s\",\"type\":\"%s\"}",s,$1,$2; s=","} END{print "]"}' \
-      > /out/drivers.json
+      > /out/drivers.json; \
+    grep -q '"driver":"izar"' /out/drivers.json || { echo "built-in driver izar missing from drivers.json" >&2; exit 1; }
 
 # --- runtime: HA add-on ---
 FROM ${BUILD_FROM} AS addon

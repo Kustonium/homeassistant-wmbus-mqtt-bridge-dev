@@ -252,6 +252,9 @@ Concretely:
 - Decoded meters are published as HA MQTT Discovery entities (prefix configurable,
   retained). `discovery_published` is file-flagged (`status_discovery_published.flag`)
   so the frequent raw-counter subshell can't clobber it.
+- Discovery is emitted before the matching state payload. With the default
+  `state_retain=false`, this keeps the retained config on the broker before the
+  non-retained state payload for the same telegram is sent.
 - **Per-field availability** (`09-discovery.sh`, `emit_discovery_from_json`): every
   entity's config carries an availability template on its own state topic —
   `{{ 'online' if value_json.get('<key>') is not none else 'offline' }}`. A field

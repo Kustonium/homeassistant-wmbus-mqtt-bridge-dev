@@ -583,8 +583,8 @@ run_once() {
             if [[ "${REQUIRE_TIMESTAMP}" == "true" && -z "${ts}" ]]; then
               warn "Skip publish: missing timestamp for id=${id}"
             else
-              mqtt_pub "${STATE_PREFIX}/${id}/state" "${line}" "${STATE_RETAIN}" || true
               emit_discovery_from_json "${line}"
+              mqtt_pub "${STATE_PREFIX}/${id}/state" "${line}" "${STATE_RETAIN}" || true
               status_mark_discovery_published
               write_status_json
             fi
@@ -651,8 +651,8 @@ else
             if [[ "${REQUIRE_TIMESTAMP}" == "true" && -z "${ts}" ]]; then
               warn "Skip publish: missing timestamp for id=${id}"
             else
-              mqtt_pub "${STATE_PREFIX}/${id}/state" "${line}" "${STATE_RETAIN}" || true
               emit_discovery_from_json "${line}"
+              mqtt_pub "${STATE_PREFIX}/${id}/state" "${line}" "${STATE_RETAIN}" || true
               status_mark_discovery_published
               write_status_json
             fi
