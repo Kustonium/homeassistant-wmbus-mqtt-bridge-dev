@@ -276,6 +276,16 @@ Concretely:
   value is part of the discovery cache key, so a changed interval republishes the
   config. The in-memory cache is empty on restart, so existing installs pick up
   config changes automatically.
+- **Status diagnostic entities** (`09-discovery.sh`, `emit_discovery_from_json`): the
+  string `status` field never matches the numeric field filter, so it is surfaced
+  explicitly when present — a `sensor` (`entity_category: diagnostic`) with the raw
+  text and a `binary_sensor` (`device_class: problem`, `entity_category: diagnostic`)
+  whose template is `{{ 'ON' if value_json.get('status') not in [none, 'OK', ''] else
+  'OFF' }}`. Passthrough only: the text is verbatim from wmbusmeters (e.g. `elf2`
+  decodes the full ErrorFlags bitfield, `elf` only the TPL status); the sole literal
+  is the `OK` baseline. Both reuse the per-field availability template and the shared
+  `expire_after`, are rate-limited via `DISCOVERY_SENT_FIELD`, and are cleared
+  (including the `binary_sensor/` topic) by `clear_meter_discovery` on meter removal.
 - **MQTT→HA healthcheck**: the add-on detects publishing to a broker HA does not
   consume. HA presence is reported honestly — confirmed on the native broker
   (`core-mosquitto` / `mqtt_mode=ha`) or via a seen `online` birth message; the

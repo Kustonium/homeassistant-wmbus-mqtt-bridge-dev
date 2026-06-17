@@ -1,6 +1,6 @@
 # Home Assistant Add-on: wMBus MQTT Bridge
 
-**Dokumentacja do wersji / Documentation for version:** 1.5.35.
+**Dokumentacja do wersji / Documentation for version:** 1.5.38.
 
 **Szybka nawigacja / Quick navigation:**
 [🇵🇱 PL (poniżej)](#-opis-pl) · [🇬🇧 EN (below)](#-description-en)
@@ -55,6 +55,7 @@ ESP32 / Gateway / Bridge
 - **Wejście STDIN dla wmbusmeters** — telegramy przekazywane przez `stdin:hex`, czego oryginalny add-on nie obsługuje.
 - **Pełne dekodowanie przez wmbusmeters** — projekt nie zastępuje wmbusmeters, lecz wykorzystuje go w całości.
 - **MQTT + Home Assistant Discovery** — dane publikowane w MQTT i automatycznie rejestrowane w HA.
+- **Encje diagnostyczne statusu** — gdy licznik raportuje pole `status`, powstaje sensor z tekstem statusu oraz `binary_sensor` (`device_class: problem`) włączający się przy każdym stanie innym niż `OK` (np. `elf2` daje pełne flagi błędów, `elf` tylko status TPL).
 - **Tryb LISTEN (nasłuch)** — gdy lista `meters` jest pusta, add-on wypisuje w logach wszystkie słyszane liczniki wraz z sugerowanym driverem.
 - **Tryb SEARCH** — gdy nasłuch słyszy wiele cudzych liczników, dopasowuje właściwy po odczycie m³ z fizycznego licznika.
 - **Interaktywny panel WebUI** — zarządzanie przez przeglądarkę (panel boczny w HA / port `8099` w Dockerze): lista wykrytych kandydatów, dodawanie licznika przez modal, podgląd na żywo wartości słuchanych liczników bez dodawania ich na stałe, tryb SEARCH, logi ESP. Interfejs w 5 językach: 🇬🇧 EN · 🇵🇱 PL · 🇩🇪 DE · 🇨🇿 CS · 🇸🇰 SK.
@@ -324,6 +325,7 @@ ESP32 / Gateway / Bridge
 - STDIN support for wmbusmeters (`stdin:hex`)
 - Full decoding handled by upstream wmbusmeters
 - MQTT output with Home Assistant Discovery
+- Status diagnostic entities: when a meter reports a `status` field, a text sensor plus a `binary_sensor` (`device_class: problem`) that turns on for any non-`OK` state (e.g. `elf2` exposes the full error flags, `elf` only the TPL status)
 - LISTEN mode: when `meters` list is empty, logs all detected meter IDs and suggested drivers
 - SEARCH mode: matches the right meter by its m³ reading when LISTEN hears many neighbours' meters
 - Interactive WebUI: browser management panel (HA side panel / port `8099` in Docker) — detected candidates, modal-based meter add, live preview of listened meters' values without adding them permanently, SEARCH mode, ESP logs. Available in 5 languages: 🇬🇧 EN · 🇵🇱 PL · 🇩🇪 DE · 🇨🇿 CS · 🇸🇰 SK.

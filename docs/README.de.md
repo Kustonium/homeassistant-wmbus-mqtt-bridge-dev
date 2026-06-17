@@ -264,6 +264,16 @@ Telegramm, das das Feld enthält. Unabhängig davon markiert ein automatisch
 abgestimmtes `expire_after` (ca. 2× das beobachtete Sendeintervall des Zählers,
 mindestens 1 h) Entitäten als `unavailable`, wenn der Zähler verstummt.
 
+Über die numerischen Mess-Sensoren hinaus erhält jeder Zähler, der ein Feld
+`status` meldet, zwei **Diagnose**-Entitäten (im Abschnitt *Diagnose* des
+Geräts): einen `sensor` mit dem rohen Statustext und einen `binary_sensor`
+(`device_class: problem`), der *an* ist, sobald der Status etwas anderes als
+`OK` ist. Der Text wird unverändert von wmbusmeters übernommen, die konkreten
+Flags hängen also vom Treiber ab — z. B. dekodiert `elf2` das vollständige
+Fehler-Bitfeld des Wärmezählers (`DIFFERENTIAL_TEMPERATURE_TOO_LOW`,
+`TEMPORARY_ERROR`, …), während der ältere Treiber `elf` nur den allgemeinen
+TPL-Status meldet. Für die umfangreichere Diagnose `elf2` wählen.
+
 ### SEARCH-Modus
 
 | Feld | Typ | Default | Beschreibung |

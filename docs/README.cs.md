@@ -253,6 +253,15 @@ automaticky se obnoví s dalším telegramem, který pole obsahuje. Nezávisle n
 tom automaticky laděné `expire_after` (cca 2× pozorovaný interval vysílání
 měřiče, minimálně 1 h) označí entity jako `unavailable`, když měřič ztichne.
 
+Kromě číselných měřicích senzorů každý měřič, který hlásí pole `status`, získá
+také dvě **diagnostické** entity (v sekci *Diagnostika* zařízení): `sensor` se
+surovým textem stavu a `binary_sensor` (`device_class: problem`), který se
+zapne pokaždé, když je stav jiný než `OK`. Text se přebírá doslovně z
+wmbusmeters, takže konkrétní příznaky závisí na ovladači — např. `elf2` dekóduje
+celé bitové pole chyb měřiče tepla (`DIFFERENTIAL_TEMPERATURE_TOO_LOW`,
+`TEMPORARY_ERROR`, …), zatímco starší ovladač `elf` hlásí jen obecný TPL stav.
+Pro bohatší diagnostiku zvolte `elf2`.
+
 ### Režim SEARCH
 
 | Pole | Typ | Výchozí | Popis |

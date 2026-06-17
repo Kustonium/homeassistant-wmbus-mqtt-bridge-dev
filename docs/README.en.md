@@ -260,6 +260,16 @@ field. Independently, an auto-tuned `expire_after` (about 2× the meter's
 observed transmit interval, minimum 1 h) marks entities `unavailable` when the
 meter goes silent.
 
+Beyond the numeric measurement sensors, each meter that reports a `status`
+field also gets two **diagnostic** entities (in the device's *Diagnostics*
+section): a `sensor` with the raw status text and a `binary_sensor`
+(`device_class: problem`) that turns *on* whenever the status is anything other
+than `OK`. The text is passed through verbatim from wmbusmeters, so the exact
+flags depend on the driver — e.g. `elf2` decodes the full heat-meter error
+bitfield (`DIFFERENTIAL_TEMPERATURE_TOO_LOW`, `TEMPORARY_ERROR`, …) while the
+older `elf` driver reports only the generic TPL status. Choose `elf2` for the
+richer diagnostics.
+
 ### SEARCH mode
 
 | Field | Type | Default | Description |

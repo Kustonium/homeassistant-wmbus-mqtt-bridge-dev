@@ -262,6 +262,15 @@ zawierającym to pole. Niezależnie od tego auto-strojony `expire_after`
 (ok. 2× zaobserwowany interwał nadawania licznika, minimum 1 h) oznacza encje
 jako `unavailable`, gdy licznik zamilknie.
 
+Poza liczbowymi sensorami pomiarowymi każdy licznik raportujący pole `status`
+dostaje też dwie encje **diagnostyczne** (w sekcji *Diagnostyka* urządzenia):
+`sensor` z surowym tekstem statusu oraz `binary_sensor` (`device_class:
+problem`), który włącza się, gdy status jest inny niż `OK`. Tekst jest
+przekazywany 1:1 z wmbusmeters, więc konkretne flagi zależą od drivera — np.
+`elf2` dekoduje pełne pole błędów ciepłomierza
+(`DIFFERENTIAL_TEMPERATURE_TOO_LOW`, `TEMPORARY_ERROR`, …), podczas gdy starszy
+`elf` raportuje tylko ogólny status TPL. Dla pełnej diagnostyki wybierz `elf2`.
+
 ### Tryb SEARCH
 
 | Pole | Typ | Domyślnie | Opis |
