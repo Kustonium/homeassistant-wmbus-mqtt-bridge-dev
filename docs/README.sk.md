@@ -279,6 +279,8 @@ stav. Pre bohatšiu diagnostiku zvoľte `elf2`.
 | `loglevel` | enum | `normal` | `normal` / `verbose` / `debug` |
 | `debug_every_n` | int | `0` | Extra diagnostika každý N-tý telegram |
 
+> 💡 Všetky vyššie uvedené možnosti sa dajú upraviť aj priamo vo WebUI v **Nastavenia → Konfigurácia** (s popisom pri každej); kľúčové možnosti sa prejavia po reštarte doplnku.
+
 ### Merače — `meters[]`
 
 | Pole | Typ | Povinné | Popis |

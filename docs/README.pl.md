@@ -330,6 +330,15 @@ discovery, więc encje znikają) i czyści stan runtime (kandydaci, lista
 ignorowanych, statystyki). Add-on wraca do stanu jak po instalacji. Operacja
 jest nieodwracalna i wymaga potwierdzenia.
 
+### „Chcę zmieniać opcje bez wychodzenia z WebUI"
+
+Widok USTAWIENIA ma edytowalny formularz **Konfiguracja** z tymi samymi opcjami
+co zakładka Konfiguracja w Home Assistant, z opisem „po co są" przy każdej.
+Formularz jest generowany ze schematu add-onu, więc zawsze zgadza się z HA. Zapis
+trafia do opcji przez Supervisor API; hasło MQTT jest tylko do zapisu (zostaw
+puste, by zachować). Opcje rdzenne wchodzą w życie po restarcie add-onu (górny
+pasek).
+
 ### „Mój licznik szyfruje telegramy — co dalej?"
 
 Większość liczników rozliczeniowych szyfruje payload (kandydat ma odznakę

@@ -329,6 +329,14 @@ the entities disappear) and wipes runtime state (candidates, the ignored list
 and statistics). The add-on returns to its post-install state. The action is
 irreversible and asks for confirmation first.
 
+### "I want to change options without leaving the WebUI"
+
+The SETTINGS view has an editable **Configuration** form with the same options as
+the Home Assistant Configuration tab, each with an explanation of what it does.
+It is generated from the add-on schema, so it always matches HA. Save writes the
+options via the Supervisor API; the MQTT password is write-only (leave blank to
+keep it). Core options take effect after an add-on restart (top bar).
+
 ### "My meter encrypts its telegrams — what now?"
 
 Most utility meters encrypt their payload (the candidate shows an **AES req.**

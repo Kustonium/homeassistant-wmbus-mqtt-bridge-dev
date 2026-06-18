@@ -291,6 +291,8 @@ TPL-Status meldet. Für die umfangreichere Diagnose `elf2` wählen.
 | `loglevel` | enum | `normal` | `normal` / `verbose` / `debug` |
 | `debug_every_n` | int | `0` | Zusätzliche Diagnose alle N Telegramme |
 
+> 💡 Alle obigen Optionen sind auch direkt in der WebUI unter **Einstellungen → Konfiguration** editierbar (mit einer Erklärung je Option); Kernoptionen wirken nach einem Add-on-Neustart.
+
 ### Zähler — `meters[]`
 
 | Feld | Typ | Pflicht | Beschreibung |

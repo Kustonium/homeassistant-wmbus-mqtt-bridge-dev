@@ -88,7 +88,7 @@ Widoki:
 - **Odbierane / Szukaj** — kandydaci z trybu LISTEN (ID, driver, medium, szyfrowanie, odbiór). Każdy bez wymaganego klucza AES ma przycisk **Dodaj licznik** i jest **dekodowany automatycznie** przez równoległą instancję LISTEN — bieżąca wartość pojawia się w kolumnie **Wartość** po następnym zdekodowanym telegramie, bez dodawania licznika i bez klikania podglądu. Kandydaci wymagający AES nie pokazują wartości, dopóki nie podasz klucza. Stąd uruchamia się również tryb SEARCH.
 - **Logi** — skrócony strumień zdarzeń runtime (pełne logi w zakładce **Log** dodatku HA).
 - **Logi ESP** — diagnostyka z odbiorników ESP (zdarzenia, RSSI, boot, sugestie) oraz wykrycie wielu płytek na podstawie napływających telegramów `wmbus/+/telegram`.
-- **Ustawienia** — aktywna konfiguracja runtime i snapshot `options.json`; globalny restart dodatku jest w górnym pasku WebUI.
+- **Ustawienia** — aktywna konfiguracja runtime i snapshot `options.json`; globalny restart dodatku jest w górnym pasku WebUI. Wszystkie opcje add-onu można tu **edytować** (te same co w zakładce Konfiguracja HA), z opisem „po co są" przy każdej; opcje rdzenne wchodzą w życie po restarcie.
 - **O projekcie** — krótki opis architektury.
 
 **Porównanie driverów:** w modalu **Dodaj licznik** lub **Driver…** wybierz driver z listy, wpisz klucz AES jeśli licznik jest szyfrowany i kliknij **Porównaj**. Lewa kolumna pokazuje driver zapisany albo auto-detekcję `wmbusmeters`, prawa kolumna pokazuje driver wybrany w polu **Sterownik**. Zielone wiersze to pola dostępne tylko dla wybranego drivera, żółte to różne wartości; więcej pól nie gwarantuje poprawnego drivera — porównaj wartości z wyświetlaczem licznika.
@@ -355,7 +355,7 @@ Views:
 - **Received / Search** — LISTEN-mode candidates (ID, driver, media, encryption, reception). Each one without a required AES key has an **Add meter** button and is **decoded automatically** by the parallel LISTEN instance — its current value appears in the **Value** column after the next decoded telegram, with no meter added and no preview click. AES-required candidates show no value until you provide a key. SEARCH mode is also started here.
 - **Logs** — a short runtime event stream (full logs are in the add-on **Log** tab).
 - **ESP Logs** — diagnostics from ESP receivers (events, RSSI, boot, suggestions) and multi-board detection based on incoming `wmbus/+/telegram` telegrams.
-- **Settings** — active runtime configuration and `options.json` snapshot; the global add-on restart button is in the WebUI top bar.
+- **Settings** — active runtime configuration and `options.json` snapshot; the global add-on restart button is in the WebUI top bar. All add-on options can be **edited** here (the same options as the HA Configuration tab), each with an explanation of what it does; core options take effect after a restart.
 - **About** — a short architecture description.
 
 **Driver comparison:** in the **Add meter** or **Driver…** modal, choose a driver, enter the AES key if the meter is encrypted, then click **Compare**. The left column shows the saved driver or `wmbusmeters` auto-detection; the right column shows the driver selected in the **Driver** field. Green rows are fields available only with the selected driver, amber rows are different values; more fields do not prove the driver is correct — compare the values with the meter display.

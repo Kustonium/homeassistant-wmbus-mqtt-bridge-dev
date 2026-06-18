@@ -170,6 +170,16 @@ typed AES key and shows the decoded fields side by side. The result is advisory:
 `wmbusmeters` auto detection and "more fields" are hints, not proof that the
 driver is correct.
 
+The Settings view also exposes an **editable options form**. Its fields are not
+hand-coded: `config_options_spec()` parses the `schema:`/`options:` blocks from
+the baked `config.yaml`, so the form can never drift from HA's own config schema
+(add an option to `config.yaml` and it appears automatically). `POST
+/api/save-config` validates each value against its schema type and persists via
+the Supervisor API (`save_config_options`), exactly like the meter edits. Secret
+fields (`external_mqtt_password`) are write-only: the value is never sent to the
+browser and a blank input keeps the current one. As with the HA config tab, core
+options take effect only after an add-on restart.
+
 `options.json` (the add-on config) is **owned by Supervisor**, not the bridge.
 Supervisor rewrites it from its DB on every start; the bridge only reads it (see
 §10 for why a file-only write does not survive a restart).
