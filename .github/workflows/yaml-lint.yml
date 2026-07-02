@@ -45,6 +45,7 @@ jobs:
             .github/workflows/yaml-lint.yml \
             .github/workflows/build.yaml \
             .github/workflows/changelog-draft.yml \
+            .github/workflows/wmbusmeters-pin-bump.yml \
             .github/dependabot.yml \
             config.yaml \
             repository.yaml

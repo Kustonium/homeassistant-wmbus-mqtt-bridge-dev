@@ -373,6 +373,13 @@ repo) makes stable a copy of dev **minus the dev identity**:
 - **Bumping the pin is a deliberate act**: change `WMBUSMETERS_COMMIT`, push, and
   let the `decode-smoke` CI job validate the new decoder against the golden
   fixtures before any version is published.
+- **Monthly bump automation** (`.github/workflows/wmbusmeters-pin-bump.yml`): on
+  the 1st of each month the workflow compares the pin against upstream's latest
+  **release tag** (`X.Y.Z` — deliberately not master HEAD) and opens a bump PR
+  when it moved. Merging stays a human decision; validation happens on the push
+  to main after merge, via the same `decode-smoke` + `standalone-boot` gates as
+  a manual bump. No PR is opened when the pin is current or the bump branch for
+  that tag already exists.
 - **`decode-smoke` (`.github/workflows/build.yaml`)**: after the arch images are
   built, the job runs `tests/test_decode_smoke.sh` **inside the freshly built
   amd64 image**. The `bump` job depends on it — a failed smoke-test means
