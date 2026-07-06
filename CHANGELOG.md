@@ -1,3 +1,8 @@
+## 1.5.41-dev.217
+
+### Fixed
+- candidates silently dropped after factory reset (missing status_candidates.tsv) (93a5f7c)
+
 ## 1.5.41-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
