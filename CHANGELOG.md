@@ -1,3 +1,11 @@
+## 1.5.40-dev.213
+
+### Added
+- surface run.sh broker-resolution failures as an actionable WebUI banner (e31ba43)
+
+### Changed
+- probe broker add-ons before the 60 s Supervisor-service wait in auto (28485c0)
+
 ## 1.5.40-dev.212
 
 ### Added
