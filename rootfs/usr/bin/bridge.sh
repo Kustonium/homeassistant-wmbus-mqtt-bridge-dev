@@ -379,6 +379,13 @@ start_esp_subscribers
       rm -f "${BASE}/status_"* "${BASE}/search_"* "${BASE}/seen_ids.txt" 2>/dev/null || true
       rm -f "${BASE}/preview/etc/wmbusmeters.d/meter-preview-"* \
             "${BASE}/listen/etc/wmbusmeters.d/meter-preview-"* 2>/dev/null || true
+      # Recreate the empty status files exactly like startup does — the wipe
+      # removed them under RUNNING writers, and not every writer tolerates a
+      # missing file (observed: _upsert_candidate_row's awk failed on the
+      # absent status_candidates.tsv and silently dropped every candidate
+      # until the next restart). All these vars are defined before this
+      # ticker subshell forks, so they are in scope here.
+      touch "${STATUS_METERS_FILE}" "${STATUS_CANDIDATES_FILE}" "${STATUS_EVENTS_FILE}" "${STATUS_SEEN_FILE}" "${STATUS_LAST_RAW_FILE}" "${STATUS_RECENT_RAW_FILE}" "${STATUS_CANDIDATE_ANALYSIS_FILE}" "${STATUS_CANDIDATE_RAW_FILE}" "${STATUS_METER_LAST_JSON_FILE}" "${STATUS_METER_KEY_PROBLEM_FILE}" "${STATUS_RATE_HISTORY_FILE}" "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" "${SEARCH_MATCHES_FILE}" "${SEARCH_STATUS_FILE}" "${STATUS_CANDIDATE_PREVIEW_STATE_FILE}" 2>/dev/null || true
       # The wipe also removed the heartbeat we stamped at the top of this loop;
       # re-stamp now so the WebUI never sees a liveness gap before the next tick.
       printf '%s\n' "$(epoch_now)" > "${STATUS_HEARTBEAT_FILE}" 2>/dev/null || true
