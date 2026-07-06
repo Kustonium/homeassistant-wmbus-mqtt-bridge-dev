@@ -1,0 +1,13 @@
+{
+  "_": "telegram",
+  "battery_y": 15.736986,
+  "id": "06015256",
+  "media": "water",
+  "meter": "aquastream",
+  "meter_datetime": "2026-07-06 15:12",
+  "status": "OK",
+  "target_date": "2026-06-30",
+  "target_m3": 65.383,
+  "total_m3": 70.556,
+  "total_tariff1_m3": 0
+}
