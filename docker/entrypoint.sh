@@ -56,6 +56,23 @@ MQTT_PASS="$(jq -r '.external_mqtt_password // .mqtt.password // ""' "${OPTIONS_
 
 export MQTT_HOST MQTT_PORT MQTT_USER MQTT_PASS
 
+# One bounded startup probe (mirrors run.sh's diagnose_configured_broker in
+# the HA add-on). bridge.sh's own wait_for_mqtt retry loop swallows the
+# mosquitto error output, so without this the log only ever says "MQTT not
+# ready" and the WebUI tile says offline — with no way to tell a wrong
+# address from rejected credentials. Non-fatal either way: bridge.sh keeps
+# retrying exactly as before.
+probe_args=( -h "${MQTT_HOST}" -p "${MQTT_PORT}" -t 'homeassistant/status' -E )
+[[ -n "${MQTT_USER}" && "${MQTT_USER}" != "null" ]] && probe_args+=( -u "${MQTT_USER}" )
+[[ -n "${MQTT_PASS}" && "${MQTT_PASS}" != "null" ]] && probe_args+=( -P "${MQTT_PASS}" )
+if probe_out="$(timeout 6 mosquitto_sub "${probe_args[@]}" 2>&1)"; then
+  echo "[wmbus-bridge] MQTT broker ${MQTT_HOST}:${MQTT_PORT} verified (connect + subscribe OK)."
+elif grep -qiE 'not authori[sz]ed|bad user ?name or password' <<<"${probe_out}"; then
+  echo "[wmbus-bridge][WARN] MQTT broker ${MQTT_HOST}:${MQTT_PORT} is up but REJECTED the credentials — check external_mqtt_username/external_mqtt_password in ${OPTIONS_JSON}."
+else
+  echo "[wmbus-bridge][WARN] MQTT broker ${MQTT_HOST}:${MQTT_PORT} did not respond to a probe — check the address/port and container network; the bridge will keep retrying."
+fi
+
 WEBUI_PORT="${WEBUI_PORT:-8099}"
 export WEBUI_PORT
 

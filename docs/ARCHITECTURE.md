@@ -79,7 +79,11 @@ The HA base image uses **s6** as init. Two long-running services are declared:
   `restart: unless-stopped`; without a policy the button degrades to a stop).
   Signalling bridge.sh directly would not work: its own TERM trap
   (`stop_listen_instance`) cleans up but does not exit, and SIGKILL to PID 1
-  from inside the namespace is ignored by the kernel.
+  from inside the namespace is ignored by the kernel. On boot the entrypoint
+  also runs the same one-shot broker probe as run.sh's
+  `diagnose_configured_broker` (verified / rejected credentials / no
+  response) — bridge.sh's `wait_for_mqtt` swallows mosquitto's error output,
+  so this is the only place the log states WHY a broker shows offline.
 - **`webui.py`** is intentionally **read-only over the pipeline state**: it reads
   the `status_*` files written by `bridge.sh` and serves a model to `app.js`. It
   only *writes* `options.json` via the Supervisor API for the add/remove/search
