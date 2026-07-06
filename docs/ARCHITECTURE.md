@@ -58,7 +58,13 @@ The HA base image uses **s6** as init. Two long-running services are declared:
   generic "no MQTT service". Explicitly configured brokers (`external` and
   auto-with-host) get the same probe as a non-fatal startup diagnostic
   (address vs credentials) — behaviour is unchanged, `bridge.sh` still
-  retries.
+  retries. Every FATAL exit first writes `/data/status_run_error.txt`
+  (`code<TAB>detail`; codes: `auth_required`, `no_broker`, `no_ha_service`,
+  `external_host_missing`), cleared on successful resolution — `webui.py`
+  exposes it as `run_error` (only while the bridge heartbeat is dead) and
+  `app.js` renders it as a red actionable banner instead of the generic
+  stale-data one, so a user who never opens the add-on log still learns
+  exactly which config field is missing.
 - **`docker/entrypoint.sh`** — used **only** in standalone Docker (non-HA); it
   starts the WebGUI and the bridge directly. In HA, s6 does this, so the
   entrypoint is not on the path. (This file must track dev — it previously

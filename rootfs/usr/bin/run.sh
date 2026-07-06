@@ -11,6 +11,23 @@ set -euo pipefail
 WMBUS_BASE="/data"
 export WMBUS_BASE
 
+# Machine-readable startup-failure marker for the WebUI. When run.sh FATALs,
+# bridge.sh never starts, so until now the add-on log was the only witness —
+# the WebUI showed dashes and a generic "stale" banner. The WebUI renders this
+# file as a specific, actionable banner. Format: code<TAB>detail. Cleared on
+# every successful broker resolution so a fixed config removes the banner.
+RUN_ERROR_FILE="${WMBUS_BASE}/status_run_error.txt"
+
+run_error() {
+  printf '%s\t%s\n' "$1" "${2:-}" > "${RUN_ERROR_FILE}.tmp" 2>/dev/null \
+    && mv "${RUN_ERROR_FILE}.tmp" "${RUN_ERROR_FILE}" 2>/dev/null \
+    || true
+}
+
+run_error_clear() {
+  rm -f "${RUN_ERROR_FILE}" "${RUN_ERROR_FILE}.tmp" 2>/dev/null || true
+}
+
 MQTT_MODE="$(bashio::config 'mqtt_mode')"
 [[ -z "${MQTT_MODE}" || "${MQTT_MODE}" == "null" ]] && MQTT_MODE="auto"
 
@@ -87,6 +104,7 @@ wait_for_ha_mqtt() {
 
 if [[ "${MQTT_MODE}" == "ha" ]]; then
   if ! wait_for_ha_mqtt; then
+    run_error "no_ha_service" ""
     bashio::log.fatal "mqtt_mode=ha, ale w Home Assistant nie wykryto usługi MQTT. Zainstaluj/uruchom Mosquitto Broker add-on albo przełącz na mqtt_mode=external."
     exit 1
   fi
@@ -96,6 +114,7 @@ if [[ "${MQTT_MODE}" == "ha" ]]; then
   MQTT_PASS="$(bashio::services mqtt "password")"
 elif [[ "${MQTT_MODE}" == "external" ]]; then
   if [[ -z "${EXT_MQTT_HOST}" || "${EXT_MQTT_HOST}" == "null" ]]; then
+    run_error "external_host_missing" ""
     bashio::log.fatal "mqtt_mode=external wymaga external_mqtt_host."
     exit 1
   fi
@@ -153,8 +172,10 @@ else
       done
       if [[ -z "${MQTT_HOST:-}" ]]; then
         if [[ -n "${DETECTED_NEEDS_AUTH}" ]]; then
+          run_error "auth_required" "${DETECTED_NEEDS_AUTH}:1883"
           bashio::log.fatal "Wykryto działający broker MQTT pod ${DETECTED_NEEDS_AUTH}:1883, ale odrzuca logowanie. Wpisz external_mqtt_username/external_mqtt_password (tryb auto ich użyje), albo ustaw mqtt_mode=external z external_mqtt_host=${DETECTED_NEEDS_AUTH} i danymi logowania."
         else
+          run_error "no_broker" ""
           bashio::log.fatal "Nie wykryto usługi MQTT w HA (Mosquitto), żadnego znanego brokera-add-onu (core-mosquitto, a0d7b954-emqx), a external_mqtt_host jest puste. Ustaw mqtt_mode=external oraz podaj external_mqtt_host, albo zainstaluj Mosquitto Broker add-on."
         fi
         exit 1
@@ -162,6 +183,10 @@ else
     fi
   fi
 fi
+
+# Broker resolved — clear any startup-failure marker from a previous attempt
+# so the WebUI banner disappears once the config is fixed.
+run_error_clear
 
 export MQTT_HOST MQTT_PORT MQTT_USER MQTT_PASS
 
