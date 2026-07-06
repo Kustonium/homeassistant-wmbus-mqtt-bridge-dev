@@ -18,7 +18,7 @@ mkdir -p "${BASE}"
 if [[ ! -f "${OPTIONS_JSON}" ]]; then
   cat > "${OPTIONS_JSON}" <<'EOFJSON'
 {
-  "raw_topic": "wmbus_bridge/+/telegram",
+  "raw_topic": "wmbus/+/telegram",
   "loglevel": "normal",
   "filter_hex_only": true,
   "debug_every_n": 0,
