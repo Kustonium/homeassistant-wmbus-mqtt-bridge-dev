@@ -1,3 +1,14 @@
+## 1.5.40-dev.214
+
+### Added
+- working WebUI restart button in Docker standalone (SIGTERM to PID 1) (b497cca)
+
+### Changed
+- probe broker add-ons before the 60 s Supervisor-service wait in auto (28485c0)
+
+### Fixed
+- align default raw_topic to wmbus/+/telegram in Docker standalone (4f2d5c8)
+
 ## 1.5.40-dev.213
 
 ### Added
