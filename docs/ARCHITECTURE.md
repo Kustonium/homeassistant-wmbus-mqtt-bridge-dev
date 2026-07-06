@@ -46,14 +46,18 @@ The HA base image uses **s6** as init. Two long-running services are declared:
 - **`run.sh`** — entrypoint: resolves MQTT mode (`auto`/`ha`/`external`), waits
   for the broker (bounded retry, not a FATAL loop), then `exec`s `bridge.sh`.
   `auto` resolution order: **1)** `external_mqtt_host` when set (wins even when
-  HA's Mosquitto is up — a typed address is intent); **2)** the Supervisor
-  `mqtt` service (registered only by the official Mosquitto add-on);
-  **3)** `probe_mqtt` scan of well-known broker add-on hostnames
-  (`core-mosquitto`, `a0d7b954-emqx`) — the Supervisor services API cannot see
+  HA's Mosquitto is up — a typed address is intent); **2)** an **instant**
+  Supervisor `mqtt` service check (registered only by the official Mosquitto
+  add-on); **3)** `scan_broker_addons` — a quick `probe_mqtt` scan of
+  well-known broker add-on hostnames (`core-mosquitto`, `a0d7b954-emqx`);
+  **4)** only when both found nothing: the full bounded `wait_for_ha_mqtt`
+  (~60 s — still needed to ride out a restarting Mosquitto), then one
+  re-scan. Scan-before-wait matters: the Supervisor services API cannot see
   brokers that do not register the `mqtt` service (e.g. community EMQX), so
-  the probe does one bounded `mosquitto_sub -E` CONNECT+SUBSCRIBE per
-  candidate, using `external_mqtt_username/password` when set, anonymously
-  otherwise. A CONNACK "not authorised" means the broker EXISTS: the FATAL
+  the old wait-first order burned a dead minute on every start of an
+  EMQX-only host (measured 65 s boot-to-bridge; now seconds). Each probe is
+  one bounded `mosquitto_sub -E` CONNECT+SUBSCRIBE, using
+  `external_mqtt_username/password` when set, anonymously otherwise. A CONNACK "not authorised" means the broker EXISTS: the FATAL
   then names the detected host and the missing credential fields instead of a
   generic "no MQTT service". Explicitly configured brokers (`external` and
   auto-with-host) get the same probe as a non-fatal startup diagnostic
