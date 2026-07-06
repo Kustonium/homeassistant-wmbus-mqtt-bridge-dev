@@ -1,3 +1,12 @@
+## 1.5.40-dev.215
+
+### Added
+- one-shot broker probe at Docker entrypoint startup (diagnose offline reason) (b53a5f5)
+- working WebUI restart button in Docker standalone (SIGTERM to PID 1) (b497cca)
+
+### Fixed
+- align default raw_topic to wmbus/+/telegram in Docker standalone (4f2d5c8)
+
 ## 1.5.40-dev.214
 
 ### Added
