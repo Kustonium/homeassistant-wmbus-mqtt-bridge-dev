@@ -1,3 +1,8 @@
+## 1.5.40-dev.210
+
+### Added
+- real broker detection in mqtt_mode=auto (probe known broker add-ons) (528b415)
+
 ## 1.5.40-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
