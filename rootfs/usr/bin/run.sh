@@ -19,9 +19,50 @@ EXT_MQTT_PORT="$(bashio::config 'external_mqtt_port')"
 EXT_MQTT_USER="$(bashio::config 'external_mqtt_username')"
 EXT_MQTT_PASS="$(bashio::config 'external_mqtt_password')"
 [[ -z "${EXT_MQTT_PORT}" || "${EXT_MQTT_PORT}" == "null" ]] && EXT_MQTT_PORT="1883"
+# bashio returns the literal string "null" for unset optional options;
+# bridge.sh already treats "null" credentials as empty, normalise here too so
+# the probe below and the candidate scan see real emptiness.
+[[ "${EXT_MQTT_USER}" == "null" ]] && EXT_MQTT_USER=""
+[[ "${EXT_MQTT_PASS}" == "null" ]] && EXT_MQTT_PASS=""
 
 use_ha_mqtt() {
   bashio::services.available "mqtt" >/dev/null 2>&1
+}
+
+# Probe a broker with one short, bounded CONNECT+SUBSCRIBE (mosquitto_sub -E
+# exits right after SUBACK). Return codes:
+#   0 — connected and authorised (broker usable with these credentials)
+#   2 — broker is up but rejected the credentials (CONNACK not authorised)
+#   1 — no broker there / unreachable / timeout
+# The 0-vs-2 distinction is what makes auto mode actual detection: a broker
+# that answers "not authorised" EXISTS, and the log can say precisely what is
+# missing instead of a generic FATAL.
+probe_mqtt() {
+  local host="$1" port="$2" user="${3:-}" pass="${4:-}" out
+  local args=( -h "${host}" -p "${port}" -t 'homeassistant/status' -E )
+  [[ -n "${user}" ]] && args+=( -u "${user}" )
+  [[ -n "${pass}" ]] && args+=( -P "${pass}" )
+  if out="$(timeout 6 mosquitto_sub "${args[@]}" 2>&1)"; then
+    return 0
+  fi
+  if grep -qiE 'not authori[sz]ed|bad user ?name or password' <<<"${out}"; then
+    return 2
+  fi
+  return 1
+}
+
+# Non-fatal startup diagnostic for an explicitly configured broker. Behaviour
+# is unchanged either way (bridge.sh keeps retrying a dead broker), but the
+# add-on log states immediately whether the address or the credentials are
+# the problem instead of leaving a silent wait.
+diagnose_configured_broker() {
+  local host="$1" port="$2" user="$3" pass="$4" rc=0
+  probe_mqtt "${host}" "${port}" "${user}" "${pass}" || rc=$?
+  case "${rc}" in
+    0) bashio::log.info    "MQTT broker ${host}:${port} verified (connect + subscribe OK)." ;;
+    2) bashio::log.warning "MQTT broker ${host}:${port} is up but REJECTED the credentials — check external_mqtt_username/external_mqtt_password." ;;
+    *) bashio::log.warning "MQTT broker ${host}:${port} did not respond to a probe — check the address/port; the bridge will keep retrying." ;;
+  esac
 }
 
 # Wait (bounded) for HA's MQTT service to become available. A stopped or
@@ -62,6 +103,7 @@ elif [[ "${MQTT_MODE}" == "external" ]]; then
   MQTT_PORT="${EXT_MQTT_PORT}"
   MQTT_USER="${EXT_MQTT_USER}"
   MQTT_PASS="${EXT_MQTT_PASS}"
+  diagnose_configured_broker "${MQTT_HOST}" "${MQTT_PORT}" "${MQTT_USER}" "${MQTT_PASS}"
 else
   # auto: honour an explicitly configured external_mqtt_host first. If the user
   # bothered to type a broker address, they almost certainly want to use that
@@ -75,6 +117,7 @@ else
     MQTT_PORT="${EXT_MQTT_PORT}"
     MQTT_USER="${EXT_MQTT_USER}"
     MQTT_PASS="${EXT_MQTT_PASS}"
+    diagnose_configured_broker "${MQTT_HOST}" "${MQTT_PORT}" "${MQTT_USER}" "${MQTT_PASS}"
   else
     wait_for_ha_mqtt || true
     if use_ha_mqtt; then
@@ -83,8 +126,39 @@ else
       MQTT_USER="$(bashio::services mqtt "username")"
       MQTT_PASS="$(bashio::services mqtt "password")"
     else
-      bashio::log.fatal "Nie wykryto usługi MQTT w HA (Mosquitto) i external_mqtt_host jest puste. Ustaw mqtt_mode=external oraz podaj external_mqtt_host, albo zainstaluj Mosquitto Broker add-on."
-      exit 1
+      # Detection fallback: the Supervisor services API only knows about
+      # brokers that REGISTER the mqtt service — in practice the official
+      # Mosquitto add-on. Other broker add-ons (e.g. community EMQX,
+      # a0d7b954_emqx) run on this very host but are invisible to
+      # bashio::services, which previously forced their users into
+      # mqtt_mode=external with a hand-typed IP. Probe the well-known add-on
+      # hostnames directly (Supervisor DNS resolves add-on hostnames) before
+      # giving up. Credentials: external_mqtt_username/password are used when
+      # set — so an auth-protected EMQX works in auto with just user+pass
+      # typed in, no host/IP — otherwise the probe is anonymous.
+      DETECTED_NEEDS_AUTH=""
+      for CAND in core-mosquitto a0d7b954-emqx; do
+        RC=0
+        probe_mqtt "${CAND}" 1883 "${EXT_MQTT_USER}" "${EXT_MQTT_PASS}" || RC=$?
+        if [[ "${RC}" -eq 0 ]]; then
+          bashio::log.info "mqtt_mode=auto: detected MQTT broker add-on at ${CAND}:1883 — using it."
+          MQTT_HOST="${CAND}"
+          MQTT_PORT="1883"
+          MQTT_USER="${EXT_MQTT_USER}"
+          MQTT_PASS="${EXT_MQTT_PASS}"
+          break
+        elif [[ "${RC}" -eq 2 ]]; then
+          DETECTED_NEEDS_AUTH="${CAND}"
+        fi
+      done
+      if [[ -z "${MQTT_HOST:-}" ]]; then
+        if [[ -n "${DETECTED_NEEDS_AUTH}" ]]; then
+          bashio::log.fatal "Wykryto działający broker MQTT pod ${DETECTED_NEEDS_AUTH}:1883, ale odrzuca logowanie. Wpisz external_mqtt_username/external_mqtt_password (tryb auto ich użyje), albo ustaw mqtt_mode=external z external_mqtt_host=${DETECTED_NEEDS_AUTH} i danymi logowania."
+        else
+          bashio::log.fatal "Nie wykryto usługi MQTT w HA (Mosquitto), żadnego znanego brokera-add-onu (core-mosquitto, a0d7b954-emqx), a external_mqtt_host jest puste. Ustaw mqtt_mode=external oraz podaj external_mqtt_host, albo zainstaluj Mosquitto Broker add-on."
+        fi
+        exit 1
+      fi
     fi
   fi
 fi

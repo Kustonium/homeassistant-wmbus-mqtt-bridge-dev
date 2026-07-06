@@ -45,6 +45,20 @@ The HA base image uses **s6** as init. Two long-running services are declared:
 
 - **`run.sh`** — entrypoint: resolves MQTT mode (`auto`/`ha`/`external`), waits
   for the broker (bounded retry, not a FATAL loop), then `exec`s `bridge.sh`.
+  `auto` resolution order: **1)** `external_mqtt_host` when set (wins even when
+  HA's Mosquitto is up — a typed address is intent); **2)** the Supervisor
+  `mqtt` service (registered only by the official Mosquitto add-on);
+  **3)** `probe_mqtt` scan of well-known broker add-on hostnames
+  (`core-mosquitto`, `a0d7b954-emqx`) — the Supervisor services API cannot see
+  brokers that do not register the `mqtt` service (e.g. community EMQX), so
+  the probe does one bounded `mosquitto_sub -E` CONNECT+SUBSCRIBE per
+  candidate, using `external_mqtt_username/password` when set, anonymously
+  otherwise. A CONNACK "not authorised" means the broker EXISTS: the FATAL
+  then names the detected host and the missing credential fields instead of a
+  generic "no MQTT service". Explicitly configured brokers (`external` and
+  auto-with-host) get the same probe as a non-fatal startup diagnostic
+  (address vs credentials) — behaviour is unchanged, `bridge.sh` still
+  retries.
 - **`docker/entrypoint.sh`** — used **only** in standalone Docker (non-HA); it
   starts the WebGUI and the bridge directly. In HA, s6 does this, so the
   entrypoint is not on the path. (This file must track dev — it previously

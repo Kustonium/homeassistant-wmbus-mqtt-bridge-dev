@@ -65,7 +65,7 @@ ESP32 / Gateway / Bridge
 Add-on domyślnie korzysta z wewnętrznego brokera MQTT Home Assistant (Mosquitto add-on), ale może pracować z brokerem zewnętrznym.
 
 **Tryby brokera (`mqtt_mode`):**
-- `auto` (domyślnie) — używa brokera HA jeśli dostępny, w przeciwnym razie zewnętrzny
+- `auto` (domyślnie) — kolejność wykrywania: **1)** `external_mqtt_host`, jeśli wpisany (wygrywa nawet, gdy broker HA też działa); **2)** broker HA z usługi Supervisora (Mosquitto add-on); **3)** sonda znanych brokerów-add-onów (`core-mosquitto`, EMQX `a0d7b954-emqx`) — z danymi `external_mqtt_username/password`, jeśli podane, inaczej anonimowo. Gdy sonda wykryje broker odrzucający logowanie, log mówi wprost, których pól brakuje.
 - `ha` — wymusza broker HA (Mosquitto add-on)
 - `external` — zawsze używa ustawień zewnętrznych (`external_mqtt_host`, itd.)
 
@@ -332,7 +332,7 @@ ESP32 / Gateway / Bridge
 
 ### Broker modes (`mqtt_mode`)
 
-- `auto` (default) — use HA broker if available, otherwise external
+- `auto` (default) — detection order: **1)** `external_mqtt_host` when set (wins even if the HA broker is also up); **2)** the HA broker from the Supervisor service (Mosquitto add-on); **3)** a probe of well-known broker add-ons (`core-mosquitto`, EMQX `a0d7b954-emqx`) — using `external_mqtt_username/password` when provided, anonymously otherwise. When the probe finds a broker that rejects the login, the log states exactly which fields are missing.
 - `ha` — force HA broker (Mosquitto add-on)
 - `external` — always use external settings (`external_mqtt_host`, etc.)
 
