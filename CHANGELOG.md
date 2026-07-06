@@ -1,3 +1,9 @@
+## 1.5.40-dev.212
+
+### Added
+- surface run.sh broker-resolution failures as an actionable WebUI banner (e31ba43)
+- real broker detection in mqtt_mode=auto (probe known broker add-ons) (528b415)
+
 ## 1.5.40-dev.210
 
 ### Added
