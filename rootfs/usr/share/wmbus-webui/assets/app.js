@@ -3471,14 +3471,10 @@
 
     if (action === "restart") {
       if (!window.confirm(t("webui_restart_confirm", "Restart the Home Assistant add-on?"))) return;
-      // Docker standalone has no Supervisor API, so /api/restart-bridge can only
-      // return a 400 — nothing actually restarts. Surface a clear instruction
-      // instead of entering the "restarting" overlay and falsely reporting success.
-      const meta = (state.data || {}).meta || {};
-      if (meta.runtime === "docker") {
-        toast(t("restart_docker_manual", "Cannot restart from the WebUI in Docker mode — run 'docker restart <container>' on the host."), true);
-        return;
-      }
+      // Docker standalone: /api/restart-bridge SIGTERMs PID 1 (the entrypoint
+      // traps it and exits), so the same restarting overlay + recovery poll
+      // applies — the container comes back under a restart policy. Without
+      // one the poll times out and reports failure, which is the truth.
       // Send restart request. A 502/network error is expected — the add-on goes down.
       // Treat any response (or connection drop) as "restarting", then poll until back.
       try {

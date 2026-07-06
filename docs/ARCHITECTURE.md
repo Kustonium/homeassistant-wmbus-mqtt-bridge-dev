@@ -72,7 +72,14 @@ The HA base image uses **s6** as init. Two long-running services are declared:
 - **`docker/entrypoint.sh`** — used **only** in standalone Docker (non-HA); it
   starts the WebGUI and the bridge directly. In HA, s6 does this, so the
   entrypoint is not on the path. (This file must track dev — it previously
-  drifted on stable; see §11.)
+  drifted on stable; see §11.) The entrypoint stays PID 1 (**no exec**) with a
+  TERM/INT trap that exits: the WebUI restart button in Docker mode SIGTERMs
+  PID 1 (delayed `os.kill` in `restart_addon_via_supervisor`), the container
+  exits and the Docker restart policy brings it back (compose example:
+  `restart: unless-stopped`; without a policy the button degrades to a stop).
+  Signalling bridge.sh directly would not work: its own TERM trap
+  (`stop_listen_instance`) cleans up but does not exit, and SIGKILL to PID 1
+  from inside the namespace is ignored by the kernel.
 - **`webui.py`** is intentionally **read-only over the pipeline state**: it reads
   the `status_*` files written by `bridge.sh` and serves a model to `app.js`. It
   only *writes* `options.json` via the Supervisor API for the add/remove/search

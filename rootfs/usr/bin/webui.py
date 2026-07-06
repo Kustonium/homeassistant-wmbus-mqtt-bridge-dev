@@ -1280,7 +1280,27 @@ def restart_addon_via_supervisor() -> tuple[bool, str]:
     import urllib.request
     token = os.environ.get("SUPERVISOR_TOKEN", "")
     if not token:
-        return False, "SUPERVISOR_TOKEN not available — add 'hassio_api: true' to config.yaml."
+        # Docker standalone: no Supervisor. PID 1 is docker-entrypoint.sh,
+        # which traps SIGTERM and exits — the container stops and comes back
+        # under a restart policy (docker/examples compose: unless-stopped).
+        # Without a restart policy this degrades to a container stop, which
+        # the README documents. The kill is delayed so this HTTP response
+        # still reaches the browser before the WebUI dies with the container.
+        import signal
+        import threading
+
+        def _kill_pid1() -> None:
+            try:
+                os.kill(1, signal.SIGTERM)
+            except OSError:
+                pass
+
+        msg = ("Container restart requested (SIGTERM to PID 1) — it comes back "
+               "only under a Docker restart policy (compose example: "
+               "restart: unless-stopped).")
+        webui_add_event("ok", msg)
+        threading.Timer(1.0, _kill_pid1).start()
+        return True, msg
     try:
         req = urllib.request.Request(
             "http://supervisor/addons/self/restart",

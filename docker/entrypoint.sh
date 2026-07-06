@@ -63,4 +63,22 @@ echo "[wmbus-bridge] Starting WebGUI on port ${WEBUI_PORT}..."
 /usr/bin/python3 /usr/bin/webui.py &
 
 echo "[wmbus-bridge] Starting core bridge..."
-exec /usr/bin/bridge.sh
+/usr/bin/bridge.sh &
+BRIDGE_PID=$!
+
+# PID 1 must stay THIS shell (no exec): the WebUI restart button in Docker
+# mode signals PID 1 with SIGTERM, and that only stops the container when
+# PID 1 installs a handler that exits — bridge.sh's own TERM trap
+# (stop_listen_instance) cleans up but does not exit, and SIGKILL to PID 1
+# from inside the namespace is ignored by the kernel. The container comes
+# back only under a restart policy (docker/examples compose:
+# restart: unless-stopped); without one, "restart" degrades to "stop".
+term_handler() {
+  echo "[wmbus-bridge] SIGTERM received — stopping container (the restart policy brings it back if configured)."
+  kill -TERM "${BRIDGE_PID}" 2>/dev/null || true
+  exit 143
+}
+trap term_handler TERM INT
+
+wait "${BRIDGE_PID}"
+exit $?
