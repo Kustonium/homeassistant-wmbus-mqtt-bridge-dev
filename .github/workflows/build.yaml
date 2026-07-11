@@ -189,6 +189,62 @@ jobs:
             .
 
   # ---------------------------------------------------------------------------
+  # Manifest — combine the amd64 + aarch64 images just pushed by `build` into
+  # a single multi-arch tag (no {arch} prefix), so standalone Docker users can
+  # `docker pull`/reference one image name regardless of host architecture.
+  # This is ADDITIONAL to the per-arch tags: the HA Supervisor add-on path
+  # keeps using config.yaml's `image: ".../{arch}-addon-..."` untouched — this
+  # job only feeds docker/examples/docker-compose.yml (standalone).
+  # ---------------------------------------------------------------------------
+  manifest:
+    name: Publish multi-arch manifest (standalone)
+    needs: [gate, build]
+    if: needs.gate.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Prepare build variables
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+
+          CFG="config.yaml"
+          RAW_VER="$(sed -nE 's/^version:[[:space:]]*"?([^"[:space:]]+)"?[[:space:]]*$/\1/p' "${CFG}" | head -n1)"
+          CORE_VER="$(echo "${RAW_VER}" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
+          VER="${CORE_VER}-dev.${{ github.run_number }}"
+          echo "ADDON_VERSION=${VER}" >> "$GITHUB_ENV"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: Kustonium
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Create and push multi-arch manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC_AMD64="ghcr.io/${OWNER_LC}/amd64-addon-wmbus_mqtt_bridge-dev:${ADDON_VERSION}"
+          SRC_ARM64="ghcr.io/${OWNER_LC}/aarch64-addon-wmbus_mqtt_bridge-dev:${ADDON_VERSION}"
+          DST="ghcr.io/${OWNER_LC}/wmbus_mqtt_bridge-dev"
+
+          docker buildx imagetools create \
+            -t "${DST}:dev" \
+            -t "${DST}:${ADDON_VERSION}" \
+            "${SRC_AMD64}" \
+            "${SRC_ARM64}"
+
+          echo "----- verifying pushed manifest -----"
+          docker buildx imagetools inspect "${DST}:${ADDON_VERSION}"
+
+  # ---------------------------------------------------------------------------
   # Decode smoke-test — pipe the golden HEX fixtures through the freshly
   # built amd64 image (wmbusmeters stdin:hex) and compare the JSON against
   # committed golden files (tests/fixtures/golden.tsv). Guards
@@ -327,15 +383,17 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Bump — runs ONLY after BOTH arch images were pushed successfully AND the
-  # decode smoke-test AND the standalone boot-test passed (needs: build +
-  # decode-smoke + standalone-boot). Writes the just-built version into
-  # config.yaml so Home Assistant never sees a version that has no image.
-  # If any arch build or either smoke-test failed, this job is skipped and
-  # config.yaml keeps pointing at the previous, still-available image.
+  # decode smoke-test AND the standalone boot-test AND the multi-arch manifest
+  # all passed (needs: build + decode-smoke + standalone-boot + manifest).
+  # Writes the just-built version into config.yaml so Home Assistant never
+  # sees a version that has no image. If any arch build, either smoke-test,
+  # or the manifest publish failed, this job is skipped and config.yaml keeps
+  # pointing at the previous, still-available image (and docker-compose.yml's
+  # `:dev` tag keeps pointing at the previous, still-valid manifest).
   # ---------------------------------------------------------------------------
   bump:
     name: Bump dev version in config.yaml
-    needs: [gate, build, decode-smoke, standalone-boot]
+    needs: [gate, build, decode-smoke, standalone-boot, manifest]
     if: needs.gate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
