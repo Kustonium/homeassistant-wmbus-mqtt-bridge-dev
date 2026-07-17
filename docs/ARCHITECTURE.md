@@ -480,22 +480,3 @@ repo) makes stable a copy of dev **minus the dev identity**:
   at the pinned commit, re-run the fixtures, commit the new `.golden.json`; or
   temporarily set `GOLDEN_REQUIRE=0` in the workflow — missing goldens are then
   printed by the job instead of failing it.
-
----
-
-## 13. Conventions
-
-- **Commits:** Conventional Commits (`fix:`/`feat:`/`docs:`/`chore:`/`refactor:`/`test:`),
-  no AI attribution footer. Public repo — write for external reviewers.
-- **CHANGELOG:** per-build `## X.Y.Z-dev.NN` sections during a dev cycle
-  (prepend-only, immutable); promote consolidates them into `## X.Y.Z`.
-- **Version source of truth:** `config.yaml` `version:` — never trust a remembered
-  version; the CI `bump` job derives `X.Y.Z-dev.<run_number>`.
-- **Validation before push (bash):** `bash -n` + `shellcheck` on the touched
-  scripts, `git diff --check`. Python: `ast.parse`/`py_compile`.
-
----
-
-*This file is a living internals reference. When the runtime behaviour changes
-(new state file, new ESP topic, reload semantics, promote scope), update the
-relevant section here rather than burying internals in the user README.*
