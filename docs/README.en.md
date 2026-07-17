@@ -412,11 +412,13 @@ at all, so:
 
 The honest cost: you need an always-on host and an MQTT broker — which a Home
 Assistant installation already has. The full rationale, including the
-failure-class table, is in [`ARCHITECTURE.md` §1.1](ARCHITECTURE.md).
+failure-class table, is in
+[`ARCHITECTURE.md`](ARCHITECTURE.md#why-decode-centrally).
 
-Architecture, process model, the `/data` runtime files, soft-reload, the ESP
-diagnostics contract, the dashboard model and the dev→stable release flow — all in
-**[`ARCHITECTURE.md`](ARCHITECTURE.md)** (a maintainer/contributor reference).
+The `wmbusmeters` integration boundary, telegram flow, process model, runtime
+files, soft reload, ESP contract, and dashboard state are described in
+**[`ARCHITECTURE.md`](ARCHITECTURE.md)**. Build, CI, decoder upgrades, and the
+dev-to-stable release flow are in **[`DEVELOPMENT.md`](DEVELOPMENT.md)**.
 
 ---
 

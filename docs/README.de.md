@@ -419,11 +419,12 @@ keinen Decoder, daher:
 Der ehrliche Preis: Es braucht einen dauerhaft laufenden Host und einen
 MQTT-Broker — was eine Home-Assistant-Installation ohnehin schon hat. Die
 vollständige Begründung samt Tabelle der Fehlerklassen steht in
-[`ARCHITECTURE.md` §1.1](ARCHITECTURE.md).
+[`ARCHITECTURE.md`](ARCHITECTURE.md#why-decode-centrally).
 
-Architektur, Prozessmodell, die `/data`-Runtime-Dateien, Soft-Reload, der ESP-
-Diagnosevertrag, das Dashboard-Modell und der dev→stable-Release-Ablauf — alles in
-**[`ARCHITECTURE.md`](ARCHITECTURE.md)** (eine Referenz für Maintainer/Mitwirkende).
+Die Integrationsgrenze zu `wmbusmeters`, der Telegrammfluss, das Prozessmodell,
+Runtime-Dateien, Soft-Reload, der ESP-Vertrag und der Dashboard-Status stehen in
+**[`ARCHITECTURE.md`](ARCHITECTURE.md)**. Build, CI, Decoder-Upgrades und der
+dev-to-stable-Release-Ablauf stehen in **[`DEVELOPMENT.md`](DEVELOPMENT.md)**.
 
 ---
 

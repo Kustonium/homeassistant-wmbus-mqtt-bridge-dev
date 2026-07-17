@@ -396,11 +396,12 @@ kompilovala. Tady ESP žádný dekodér nenese, takže:
 
 Poctivá cena: potřebujete stále běžící hostitel a MQTT broker — což instalace
 Home Assistant už stejně má. Úplné zdůvodnění včetně tabulky tříd selhání je v
-[`ARCHITECTURE.md` §1.1](ARCHITECTURE.md).
+[`ARCHITECTURE.md`](ARCHITECTURE.md#why-decode-centrally).
 
-Architektura, model procesů, runtime soubory v `/data`, soft-reload, kontrakt ESP
-diagnostiky, model dashboardu a tok vydání dev→stable — vše v
-**[`ARCHITECTURE.md`](ARCHITECTURE.md)** (reference pro maintainery/přispěvatele).
+Hranice integrace s `wmbusmeters`, tok telegramu, model procesů, runtime soubory,
+soft-reload, kontrakt ESP a stav dashboardu jsou v
+**[`ARCHITECTURE.md`](ARCHITECTURE.md)**. Build, CI, aktualizace dekodéru a tok
+vydání dev-to-stable jsou v **[`DEVELOPMENT.md`](DEVELOPMENT.md)**.
 
 ---
 

@@ -396,11 +396,12 @@ jedna komponenta ďalej kompilovala. Tu ESP žiadny dekodér nenesie, takže:
 
 Poctivá cena: potrebujete stále bežiaci hostiteľ a MQTT broker — čo inštalácia
 Home Assistant už aj tak má. Úplné zdôvodnenie vrátane tabuľky tried zlyhaní je v
-[`ARCHITECTURE.md` §1.1](ARCHITECTURE.md).
+[`ARCHITECTURE.md`](ARCHITECTURE.md#why-decode-centrally).
 
-Architektúra, model procesov, runtime súbory v `/data`, soft-reload, kontrakt ESP
-diagnostiky, model dashboardu a tok vydaní dev→stable — všetko v
-**[`ARCHITECTURE.md`](ARCHITECTURE.md)** (referencia pre maintainerov/prispievateľov).
+Hranica integrácie s `wmbusmeters`, tok telegramu, model procesov, runtime
+súbory, soft-reload, kontrakt ESP a stav dashboardu sú v
+**[`ARCHITECTURE.md`](ARCHITECTURE.md)**. Build, CI, aktualizácie dekodéra a tok
+vydaní dev-to-stable sú v **[`DEVELOPMENT.md`](DEVELOPMENT.md)**.
 
 ---
 

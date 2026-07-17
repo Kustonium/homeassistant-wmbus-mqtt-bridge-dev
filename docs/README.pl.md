@@ -418,12 +418,13 @@ kompilował. Tutaj ESP w ogóle nie wozi dekodera, więc:
 
 Uczciwy koszt: potrzebny jest stale działający host i broker MQTT — czyli to,
 co instalacja Home Assistant i tak już ma. Pełne uzasadnienie, z tabelą klas
-awarii, znajdziesz w [`ARCHITECTURE.md` §1.1](ARCHITECTURE.md).
+awarii, znajdziesz w
+[`ARCHITECTURE.md`](ARCHITECTURE.md#why-decode-centrally).
 
-Architektura, model procesów, pliki runtime w `/data`, soft-reload, kontrakt
-diagnostyki ESP, model dashboardu i przepływ wydań dev→stable — wszystko w
-**[`ARCHITECTURE.md`](ARCHITECTURE.md)** (po angielsku, dla maintainerów i
-współtwórców).
+Granica integracji z `wmbusmeters`, przepływ telegramu, model procesów, pliki
+runtime, soft-reload, kontrakt ESP i dane panelu są opisane w
+**[`ARCHITECTURE.md`](ARCHITECTURE.md)**. Budowanie, CI, aktualizacje dekodera i
+przepływ wydań dev-to-stable opisuje **[`DEVELOPMENT.md`](DEVELOPMENT.md)**.
 
 ---
 
