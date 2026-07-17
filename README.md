@@ -3,6 +3,7 @@
 [![Add repository to my Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKustonium%2Fhomeassistant-wmbus-mqtt-bridge)
 <a href="https://buymeacoffee.com/Kustonium"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="41"></a>
 
+<!-- DEV-ONLY-START: this block is stripped by promote.yaml when syncing to the stable repository -->
 > **DEV / tylko maintainer · maintainer only:** to repozytorium, add-on dev i
 > obrazy z tagiem `:dev` są kanałem testowym maintenera Kustonium, nie wydaniem
 > dla użytkowników końcowych. Użytkownicy instalują
@@ -10,6 +11,7 @@
 > This repository, the dev add-on, and `:dev` images are Kustonium's test
 > channel, not an end-user release. The current dev version is defined only by
 > [`config.yaml`](config.yaml).
+<!-- DEV-ONLY-END -->
 
 **Szybka nawigacja / Quick navigation:**
 [🇵🇱 PL (poniżej)](#-opis-pl) · [🇬🇧 EN (below)](#-description-en)
