@@ -398,6 +398,22 @@ should confirm the write to `options.json`. If needed, `docker restart <containe
 
 ## 11. How it works under the hood
 
+**Why decode on the server, not on the ESP?** Projects that embed the decoder
+in the ESP firmware keep hitting the same classes of problems: every new meter
+model means a firmware update, every ESPHome/toolchain release can break the
+embedded decoder's build, and the whole device fleet ends up pinned to an old
+ESPHome just to keep one component compiling. Here the ESP carries no decoder
+at all, so:
+
+- adding or changing a meter is a WebUI edit — **never a reflash**;
+- ESPHome updates cannot break decoding — there is no decoder on the chip to break;
+- AES keys stay on the server — the ESP never sees key material;
+- the firmware is identical for everyone and its footprint does not grow with meters.
+
+The honest cost: you need an always-on host and an MQTT broker — which a Home
+Assistant installation already has. The full rationale, including the
+failure-class table, is in [`ARCHITECTURE.md` §1.1](ARCHITECTURE.md).
+
 Architecture, process model, the `/data` runtime files, soft-reload, the ESP
 diagnostics contract, the dashboard model and the dev→stable release flow — all in
 **[`ARCHITECTURE.md`](ARCHITECTURE.md)** (a maintainer/contributor reference).

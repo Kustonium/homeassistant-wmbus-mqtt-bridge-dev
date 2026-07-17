@@ -381,6 +381,23 @@ potvrdiť zápis do `options.json`. V núdzi `docker restart <container>`.
 
 ## 11. Ako to funguje pod kapotou
 
+**Prečo sa dekóduje na serveri, a nie na ESP?** Projekty, ktoré vstavajú
+dekodér do firmvéru ESP, narážajú stále na tie isté triedy problémov: každý
+nový model merača znamená aktualizáciu firmvéru, každé vydanie
+ESPHome/toolchainu môže rozbiť build vstavaného dekodéra a celá flotila
+zariadení nakoniec ostane pripnutá na starej verzii ESPHome len preto, aby sa
+jedna komponenta ďalej kompilovala. Tu ESP žiadny dekodér nenesie, takže:
+
+- pridanie alebo zmena merača je úprava vo WebUI — **nikdy reflash**;
+- aktualizácie ESPHome nemôžu rozbiť dekódovanie — na čipe nie je dekodér,
+  ktorý by sa mohol rozbiť;
+- AES kľúče ostávajú na serveri — ESP nikdy nevidí kľúčový materiál;
+- firmvér je pre všetkých rovnaký a nerastie s počtom meračov.
+
+Poctivá cena: potrebujete stále bežiaci hostiteľ a MQTT broker — čo inštalácia
+Home Assistant už aj tak má. Úplné zdôvodnenie vrátane tabuľky tried zlyhaní je v
+[`ARCHITECTURE.md` §1.1](ARCHITECTURE.md).
+
 Architektúra, model procesov, runtime súbory v `/data`, soft-reload, kontrakt ESP
 diagnostiky, model dashboardu a tok vydaní dev→stable — všetko v
 **[`ARCHITECTURE.md`](ARCHITECTURE.md)** (referencia pre maintainerov/prispievateľov).

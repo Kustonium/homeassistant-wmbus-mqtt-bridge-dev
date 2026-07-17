@@ -402,6 +402,25 @@ Hinzufügen sollte das Log das Schreiben in `options.json` bestätigen. Notfalls
 
 ## 11. Wie es unter der Haube funktioniert
 
+**Warum wird auf dem Server dekodiert und nicht auf dem ESP?** Projekte, die
+den Decoder in die ESP-Firmware einbetten, stoßen immer wieder auf dieselben
+Problemklassen: Jedes neue Zählermodell erfordert ein Firmware-Update, jedes
+ESPHome-/Toolchain-Release kann den Build des eingebetteten Decoders brechen,
+und am Ende bleibt die gesamte Geräteflotte auf einer alten ESPHome-Version
+gepinnt, nur damit eine Komponente weiter kompiliert. Hier trägt der ESP gar
+keinen Decoder, daher:
+
+- einen Zähler hinzufügen oder ändern = eine WebUI-Änderung — **nie ein Reflash**;
+- ESPHome-Updates können das Dekodieren nicht brechen — auf dem Chip gibt es
+  keinen Decoder, der brechen könnte;
+- AES-Schlüssel bleiben auf dem Server — der ESP sieht nie Schlüsselmaterial;
+- die Firmware ist für alle identisch und wächst nicht mit der Zahl der Zähler.
+
+Der ehrliche Preis: Es braucht einen dauerhaft laufenden Host und einen
+MQTT-Broker — was eine Home-Assistant-Installation ohnehin schon hat. Die
+vollständige Begründung samt Tabelle der Fehlerklassen steht in
+[`ARCHITECTURE.md` §1.1](ARCHITECTURE.md).
+
 Architektur, Prozessmodell, die `/data`-Runtime-Dateien, Soft-Reload, der ESP-
 Diagnosevertrag, das Dashboard-Modell und der dev→stable-Release-Ablauf — alles in
 **[`ARCHITECTURE.md`](ARCHITECTURE.md)** (eine Referenz für Maintainer/Mitwirkende).

@@ -403,6 +403,23 @@ restart <container>`.
 
 ## 11. Jak to działa głębiej
 
+**Dlaczego dekodowanie na serwerze, a nie na ESP?** Projekty, które wbudowują
+dekoder w firmware ESP, wpadają wciąż w te same klasy problemów: każdy nowy
+model licznika wymaga aktualizacji firmware, każde wydanie ESPHome/toolchaina
+może zepsuć kompilację wbudowanego dekodera, a cała flota urządzeń kończy
+przypięta do starej wersji ESPHome tylko po to, żeby jeden komponent dalej się
+kompilował. Tutaj ESP w ogóle nie wozi dekodera, więc:
+
+- dodanie lub zmiana licznika to edycja w WebUI — **nigdy reflash**;
+- aktualizacje ESPHome nie mogą zepsuć dekodowania — na chipie nie ma dekodera,
+  który mógłby się zepsuć;
+- klucze AES zostają na serwerze — ESP nigdy nie widzi materiału kryptograficznego;
+- firmware jest identyczny dla każdego i nie rośnie wraz z liczbą liczników.
+
+Uczciwy koszt: potrzebny jest stale działający host i broker MQTT — czyli to,
+co instalacja Home Assistant i tak już ma. Pełne uzasadnienie, z tabelą klas
+awarii, znajdziesz w [`ARCHITECTURE.md` §1.1](ARCHITECTURE.md).
+
 Architektura, model procesów, pliki runtime w `/data`, soft-reload, kontrakt
 diagnostyki ESP, model dashboardu i przepływ wydań dev→stable — wszystko w
 **[`ARCHITECTURE.md`](ARCHITECTURE.md)** (po angielsku, dla maintainerów i
