@@ -32,6 +32,36 @@ frames into [`wmbusmeters`](https://github.com/wmbusmeters/wmbusmeters) over
                      └─────────┘
 ```
 
+### 1.1 Why decode on the server (design rationale)
+
+The defining decision of this project is the split above: the ESP is a **dumb
+radio bridge** (RF capture → hex → MQTT, nothing else), and all decoding,
+decryption and entity mapping happens centrally, next to Home Assistant. The
+alternative — embedding the decoder library and per-meter drivers in the ESP
+firmware itself — is a popular and legitimate design, but it carries recurring
+failure classes that this architecture removes **by construction** rather than
+by better maintenance:
+
+| Failure class (recurring across on-device-decoding projects) | Why it happens on-device | Where it lands here |
+|---|---|---|
+| **Driver churn** — every new meter model needs a driver added, ported and shipped in firmware | drivers live inside the firmware image | drivers live in upstream `wmbusmeters`; a container rebuild picks them up, no user reflashes anything |
+| **Toolchain breakage** — a framework/toolchain update stops a vendored decoder from compiling or linking (build-system source globbing, symbol/enum collisions with SDK headers) | tens of thousands of lines of vendored C++ are compiled by a toolchain the project does not control, on every user's machine, on every framework release | the ESP firmware contains no decoder to break; the decoder is compiled once, in this repo's CI, against a pinned `wmbusmeters` release (§12) |
+| **Fleet coupling** — users pin their entire ESPHome toolchain to an old version to keep one component compiling, freezing every other device they own | one component's build failure blocks the shared toolchain | the bridge component is deliberately small (RF + MQTT only), minimising build surface; meter changes never require a firmware change at all |
+| **MCU resource pressure** — RAM/flash/IRAM exhaustion as drivers, keys and decode buffers accumulate on-chip | the decoder grows with every supported meter | the ESP footprint is constant regardless of how many meters or drivers exist; identical firmware for every user |
+| **Silent reception** — "frames arrive, nothing appears" with no way to tell where they died | RF, decode and publishing share one opaque device | the pipeline is observable at each stage: ESP diagnostics (RX-path events, drop taxonomy), the candidates view (§3, §5), decode preview states, and MQTT itself |
+
+The trade-offs are equally explicit: this design **requires an always-on
+server** (the HA host) and a working MQTT broker — a standalone ESP that
+decodes locally has no such dependency. Raw (encrypted or plaintext) telegrams
+of every meter in radio range transit the broker. And decode latency adds one
+MQTT hop, which is negligible against multi-second meter transmit intervals.
+For the target deployment — Home Assistant already running 24/7 — those costs
+are ones the user has already paid.
+
+One consequence worth naming: AES keys live only in the add-on configuration
+on the server. The ESP never sees key material, so a lost/compromised receiver
+node discloses nothing, and key changes are a WebUI edit, not a reflash.
+
 ---
 
 ## 2. Process model (s6)
