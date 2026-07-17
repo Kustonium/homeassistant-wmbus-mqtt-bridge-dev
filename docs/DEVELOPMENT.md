@@ -11,34 +11,41 @@ Development and stable releases live in separate repositories:
 - **dev**: `homeassistant-wmbus-mqtt-bridge-dev` (this repository);
 - **stable**: `homeassistant-wmbus-mqtt-bridge`.
 
+The dev repository, dev add-on, and mutable `:dev` container tags are a
+maintainer-only test channel. End users install the stable repository; the dev
+channel is not an end-user release source.
+
 `config.yaml` is the add-on version source of truth. The dev build workflow
-derives `X.Y.Z-dev.<run_number>` from its current `X.Y.Z` core. A successful CI
-run writes that exact built version back to `config.yaml`; a remembered or
-manually inferred version is not authoritative.
+derives `X.Y.Z-dev.<run_number>` from its current `X.Y.Z` core. A successful
+image-build run writes that exact built version back to `config.yaml`; a
+remembered or manually inferred version is not authoritative.
 
 ## Dev build pipeline
 
-`.github/workflows/build.yaml` runs for image-affecting changes and can also be
-started manually. Documentation-only pushes are skipped by a path-aware gate.
-For a build, the jobs are intentionally ordered so Home Assistant never sees a
-version whose image failed validation:
+`.github/workflows/build.yaml` runs on pushes to `main` only when one of its
+declared image-affecting paths changes, and it can also be started manually.
+Documentation-only pushes do not start this workflow because `README.md` and
+`docs/**` are not in `on.push.paths`.
 
-1. **Static tests** verify the driver-catalog and Discovery publication
-   contracts.
-2. **Build** produces and pushes amd64 and aarch64 images tagged with the
-   current CI run version.
-3. **Manifest** publishes the additional architecture-neutral image used by
-   standalone Docker.
-4. **Decode smoke** runs the golden telegram fixtures inside the freshly built
-   amd64 image.
-5. **Standalone boot** starts that image next to Mosquitto using the documented
-   Docker entrypoint and verifies the minimum boot contract.
-6. **Bump** updates `config.yaml` only after both architecture builds, the
-   manifest, decode smoke, and standalone boot have all passed.
+For a triggered build, the dependency graph is:
 
-If any required job fails, `config.yaml` remains on the previous working
-version. Images from the failed run may exist under their run-specific tag, but
-they are not advertised as the new add-on version.
+1. **Gate** examines the push range and decides whether the run is image-affecting.
+2. **Static tests** run after the gate and verify the driver-catalog and
+   Discovery publication contracts.
+3. **Build** runs after static tests and builds both amd64 and aarch64 images.
+   Each architecture image is pushed with both the mutable `:dev` tag and the
+   run-specific `:X.Y.Z-dev.<run_number>` tag.
+4. **Manifest**, **Decode smoke**, and **Standalone boot** all start after the
+   architecture builds and run independently of one another. Manifest publishes
+   both the run-specific multi-arch tag and the mutable standalone `:dev` tag.
+5. **Bump** updates `config.yaml` only after build, manifest, decode smoke, and
+   standalone boot have all passed.
+
+If a required job fails, `config.yaml` remains on its previous version. The
+run-specific images can still exist, and the per-architecture or multi-arch
+mutable `:dev` tags may already have moved because publication happens before
+the smoke and boot jobs finish. Those tags belong to the maintainer-only test
+channel; they are not stable end-user releases.
 
 ## Upgrading wmbusmeters
 
@@ -101,51 +108,28 @@ This path is tested separately because Home Assistant uses s6 and does not run
 the Docker entrypoint. A working add-on boot therefore does not prove the
 standalone wrapper works.
 
-## Promoting dev to stable
+## Stable repository boundary
 
-Promotion is a manual workflow in the stable repository. It copies the tested
-implementation from dev while preserving stable repository identity and
-release infrastructure.
+This repository contains no automated dev-to-stable promotion workflow and does
+not define a file-sync contract for stable releases. The stable repository has
+its own build workflow and repository identity. Any transfer between the two
+repositories is external to the automation stored here and must not be described
+as an implemented promotion process.
 
-Synced from dev:
+## Current validation automation
 
-- `rootfs/`;
-- `Dockerfile`;
-- `docker/`;
-- `translations/`;
-- `wmbusmeters-mqtt-stdin`;
-- `README.md` and `docs/`;
-- `THIRD_PARTY_NOTICES.md`;
-- `config.yaml`, followed by restoration of stable identity fields.
+The repository currently runs these independent workflows:
 
-Kept stable-specific:
+- `shellcheck.yml` runs ShellCheck at warning severity on repository `*.sh`
+  files, excluding `.git`, `.claude`, and `wmbusmeters-mqtt-stdin`;
+- `yaml-lint.yml` runs `yamllint` on the listed workflow files,
+  `.github/dependabot.yml`, `config.yaml`, and `repository.yaml`;
+- `build.yaml` runs the two static contract tests before image builds, then the
+  golden decode smoke and standalone boot checks described above;
+- `changelog-draft.yml` regenerates the changelog skeleton on pushes to `main`;
+- `wmbusmeters-pin-bump.yml` performs the monthly upstream release check and
+  opens a pull request when the configured conditions are met.
 
-- `.github/` workflows;
-- `repository.yaml`;
-- `config.yaml` identity fields such as name, slug, image, panel title, and
-  description;
-- `LICENSE`.
-
-During promotion, the cycle's `## X.Y.Z-dev.NN` changelog sections are
-consolidated into one `## X.Y.Z` section, with duplicate entries and dev markers
-removed.
-
-The broad sync set is deliberate. Earlier narrow promotion copied runtime code
-but omitted files such as `config.yaml` and `docker/`, allowing driver schema and
-standalone behavior to drift between dev and stable.
-
-## Validation by change type
-
-Before publishing a change, run the checks that match the files touched:
-
-| Change | Minimum local validation |
-|---|---|
-| shell scripts | `bash -n`, ShellCheck, and focused runtime/static tests |
-| Python | `python -m py_compile` plus focused endpoint/model checks |
-| YAML | repository YAML lint workflow or equivalent local lint |
-| Docker/build | local image build when practical; CI remains the architecture matrix authority |
-| decoder pin or fixture | golden decode smoke and driver-catalog contract |
-| documentation | link review and `git diff --check` |
-
-CI is the publication gate, not a substitute for reviewing the actual decoded
-field and value changes caused by a decoder upgrade.
+There is no automated Markdown link checker or general Python test job in the
+current workflows. Decoder upgrades still require human review of intentional
+field and value changes in the golden fixtures.

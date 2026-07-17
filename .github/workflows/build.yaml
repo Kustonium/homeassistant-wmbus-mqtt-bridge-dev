@@ -388,8 +388,9 @@ jobs:
   # Writes the just-built version into config.yaml so Home Assistant never
   # sees a version that has no image. If any arch build, either smoke-test,
   # or the manifest publish failed, this job is skipped and config.yaml keeps
-  # pointing at the previous, still-available image (and docker-compose.yml's
-  # `:dev` tag keeps pointing at the previous, still-valid manifest).
+  # pointing at the previous, still-available version. Mutable `:dev` tags may
+  # already have moved because the build and manifest jobs publish them before
+  # the smoke and boot jobs finish; this is a maintainer-only test channel.
   # ---------------------------------------------------------------------------
   bump:
     name: Bump dev version in config.yaml

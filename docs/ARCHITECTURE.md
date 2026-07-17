@@ -57,7 +57,9 @@ Home Assistant:
 - continuous decoding for configured meters and continuous discovery of
   unconfigured meters;
 - MQTT state and Home Assistant Discovery publication;
-- a WebUI for LISTEN, ADD, SEARCH, driver comparison, diagnostics, and settings;
+- a WebUI for LISTEN, ADD, client-side value filtering, driver comparison,
+  diagnostics, and settings; the legacy SEARCH backend remains available but
+  hidden from normal navigation;
 - persistent operational state, reception statistics, error classification,
   soft reload, and restart handling;
 - optional diagnostics from one or more ESP receivers.
@@ -108,10 +110,13 @@ hide upstream drivers from the WebUI.
 
 ### 3.2 Runtime invocation
 
-Both long-running decoder paths have the same input contract:
+Both long-running decoder paths receive the same MQTT payload. With
+`filter_hex_only=true`, the bridge removes whitespace and an optional `0x`
+prefix, then accepts only non-empty, even-length hexadecimal data. With the
+filter disabled, the payload is passed through unchanged:
 
 ```text
-MQTT payload -> whitespace/0x cleanup -> HEX validation -> wmbusmeters stdin:hex
+MQTT payload -> optional cleanup/HEX validation -> wmbusmeters stdin:hex
 ```
 
 The bridge creates native `wmbusmeters.d/meter-*` files. A configured file
@@ -131,25 +136,27 @@ decodes more fields is not automatically the correct driver.
 
 The WebUI therefore offers **Compare drivers**, not automatic switching. It:
 
-1. finds the last RAW frame for the meter;
+1. looks for a keyed frame in `status_candidate_raw.tsv`, then falls back to a
+   matching recent frame in `status_recent_raw.tsv`;
 2. obtains the upstream `Auto driver` name when available;
 3. decodes the same frame with the saved/auto baseline and the user-selected
    driver;
 4. displays field names and real values side by side.
 
-Configured meters use `status_recent_raw.tsv`; candidates can use their keyed
-row in `status_candidate_raw.tsv`. The calls are short-lived
-`wmbusmeters --format=json stdin:hex` processes and do not alter the live
-pipeline. The result remains a human verification aid: plausible values must be
-checked against the physical meter or vendor documentation.
+The calls are short-lived `wmbusmeters --format=json stdin:hex` processes and do
+not alter the live pipeline. The result remains a human verification aid:
+plausible values must be checked against the physical meter or vendor
+documentation.
 
 ### 3.4 Where decoder problems belong
 
 When the same RAW telegram, driver, meter ID, and key produce a wrong or missing
 field in the pinned `wmbusmeters` binary, the decoder is the relevant boundary.
 The WebUI can generate an issue-report block containing the RAW frame and
-`--analyze` output. AES keys are never included in that report, although a
-decrypted analysis can naturally expose meter readings.
+`--analyze` output. When a configured meter with the same ID has a 32-character
+key, that key is supplied to the analyzer. AES keys are never included in the
+generated report, although decrypted analysis can naturally expose meter
+readings.
 
 Bridge-side issues are different: dropped MQTT frames, stale process state,
 incorrect config generation, missing Discovery messages, or UI presentation
@@ -157,15 +164,16 @@ belong in this repository.
 
 ## 4. Life of a telegram
 
-Every valid MQTT payload is delivered to two independent `wmbusmeters` paths.
+Every payload accepted by the configured input filter is delivered to two
+independent `wmbusmeters` paths.
 They solve different problems and intentionally see the same physical frame.
 
 ### 4.1 Configured meter path: DECODE
 
 1. `mosquitto_sub` subscribes to `raw_topic` (default
    `wmbus/+/telegram`) and emits payload only.
-2. The bridge accepts even-length hexadecimal payloads and feeds them to the
-   main `wmbusmeters` instance.
+2. The bridge applies the configured input filter and feeds accepted payloads
+   to the main `wmbusmeters` instance.
 3. That instance loads the user's generated meter files and emits JSON only for
    matching, decodable meters.
 4. The bridge records the last JSON and reception statistics.
@@ -247,7 +255,7 @@ depends on a Docker restart policy; without one it acts as a stop.
 | `00-logging.sh` | log and event helpers |
 | `01-utils.sh` | time, JSON, and general helpers |
 | `02-config.sh` | option parsing |
-| `03-tsv.sh` | locked atomic TSV updates |
+| `03-tsv.sh` | shared locked atomic keyed-TSV upsert helper |
 | `04-status.sh` | status, counters, and reception history |
 | `05-raw.sh` | RAW validation and meter-ID normalization |
 | `06-candidates.sh` | candidates and one-shot previews |
@@ -276,9 +284,10 @@ and changes over time.
 
 In standalone Docker there is no Supervisor, so the WebUI writes
 `/config/options.json` directly. The Settings form is generated from the baked
-`config.yaml` schema instead of maintaining a second hand-written option list.
-Secret fields are write-only in the browser; leaving one blank preserves the
-current value.
+`config.yaml` schema for scalar options instead of maintaining a second
+hand-written option list; meters are managed by the separate add/edit/remove
+flow. Secret fields are write-only in the browser; leaving one blank preserves
+the current value.
 
 ### 6.2 Soft reload
 
@@ -344,7 +353,8 @@ Absence of evidence is shown as unknown, not as a false success.
 
 `webui.py` serves a small JSON API and static SPA. It does not attach to shell
 process stdout. Instead, the bridge writes compact files under `/data` (or
-`/config` in Docker) and the WebUI reads a consistent snapshot from them.
+`/config` in Docker) and the WebUI reads the current file-backed state. There is
+no cross-file snapshot transaction.
 
 The split has two effects:
 
@@ -399,14 +409,14 @@ In exchange, the receiver firmware remains small and model-independent, meter
 changes require no reflash, and AES keys stay on the server. A compromised ESP
 does not reveal configured keys. MQTT credentials, AES keys, and Supervisor
 tokens must still be protected as host secrets; generated issue reports never
-include AES keys.
+include AES keys, but decrypted analysis can contain meter readings.
 
 ## 11. Development and release
 
-Build topology, CI gates, versioning, and dev-to-stable promotion are documented
-in [`DEVELOPMENT.md`](DEVELOPMENT.md). They are intentionally separate from the
-runtime architecture so a reader can understand the integration without first
-learning this repository's publication process.
+Build topology, CI gates, versioning, and the boundary between the dev and stable
+repositories are documented in [`DEVELOPMENT.md`](DEVELOPMENT.md). They are
+intentionally separate from the runtime architecture so a reader can understand
+the integration without first learning this repository's publication process.
 
 ## 12. wmbusmeters builds
 
@@ -454,9 +464,11 @@ for understanding the system.
 | `.reload_pipeline`, `.reload_listen*` | pipeline/LISTEN lifecycle requests |
 | `.discovery_doctor_request`, `.factory_reset_request` | asynchronous WebUI-to-bridge requests |
 
-TSV updates use locked temporary files and atomic rename. Several writers run in
-subshells, so counters and cross-process flags that must remain authoritative
-are file-backed rather than shell-variable-only.
+Keyed updates performed through `_tsv_upsert` use a lock, temporary file, and
+atomic rename. Other state files use their own append, tail, direct-write, or
+temporary-rename patterns; there is no global transaction across files. Several
+writers run in subshells, so counters and cross-process flags that must remain
+authoritative are file-backed rather than shell-variable-only.
 
 ## Appendix B: invariants worth preserving
 
