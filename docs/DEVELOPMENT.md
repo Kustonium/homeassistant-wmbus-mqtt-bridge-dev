@@ -8,7 +8,7 @@ documented in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 Development and stable releases live in separate repositories:
 
-- **dev**: `homeassistant-wmbus-mqtt-bridge-dev` (this repository);
+- **dev**: `homeassistant-wmbus-mqtt-bridge-dev` (development repository);
 - **stable**: `homeassistant-wmbus-mqtt-bridge`.
 
 The dev repository, dev add-on, and mutable `:dev` container tags are a
