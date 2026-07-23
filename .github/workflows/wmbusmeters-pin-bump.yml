@@ -138,8 +138,13 @@ jobs:
           git commit -F /tmp/commit-msg.txt
           git push origin "${BRANCH}"
 
+          # Assign the repo owner so the bump PR triggers a direct
+          # "participating" notification (email). PRs opened by the default
+          # GITHUB_TOKEN / github-actions[bot] do not reliably notify watchers,
+          # but an assignment does — it is a direct participation event.
           gh pr create \
             --base main \
             --head "${BRANCH}" \
+            --assignee Kustonium \
             --title "chore: bump pinned wmbusmeters to ${TAG} (${SHA:0:8})" \
             --body-file /tmp/pr-body.md
