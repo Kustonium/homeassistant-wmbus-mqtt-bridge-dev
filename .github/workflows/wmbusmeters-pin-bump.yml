@@ -1,10 +1,10 @@
 name: wmbusmeters-pin-bump
 
-# Monthly upstream-release check for the wmbusmeters build pin.
+# Weekly upstream-release check for the wmbusmeters build pin.
 #
 # The Dockerfile builds wmbusmeters from a fixed commit (ARG WMBUSMETERS_COMMIT,
-# see the comment there and docs/ARCHITECTURE.md §12). This workflow runs on the
-# 1st of every month, compares that pin against the latest upstream RELEASE TAG
+# see the comment there and docs/ARCHITECTURE.md §12). This workflow runs every
+# Monday, compares that pin against the latest upstream RELEASE TAG
 # (X.Y.Z — deliberately not master HEAD), and opens a bump PR when upstream has
 # published a new release.
 #
@@ -16,8 +16,8 @@ name: wmbusmeters-pin-bump
 
 on:
   schedule:
-    # 05:17 UTC on the 1st of every month (odd minute to avoid load spikes).
-    - cron: '17 5 1 * *'
+    # 05:17 UTC every Monday (odd minute to avoid load spikes).
+    - cron: '17 5 * * 1'
   workflow_dispatch:
 
 permissions:
@@ -108,7 +108,7 @@ jobs:
           cat > /tmp/commit-msg.txt <<EOF
           chore: bump pinned wmbusmeters to ${TAG} (${SHA:0:8})
 
-          Automated monthly pin check (wmbusmeters-pin-bump.yml): upstream
+          Automated weekly pin check (wmbusmeters-pin-bump.yml): upstream
           published release tag ${TAG}; WMBUSMETERS_COMMIT moves to the tagged
           commit ${SHA}. Only the ARG line changes — validation happens on the
           push to main after merge (decode-smoke golden fixtures +
@@ -116,7 +116,7 @@ jobs:
           EOF
 
           cat > /tmp/pr-body.md <<EOF
-          Automated monthly pin check: upstream published release tag \`${TAG}\`.
+          Automated weekly pin check: upstream published release tag \`${TAG}\`.
 
           \`WMBUSMETERS_COMMIT\` moves to the tagged commit \`${SHA}\`.
 
