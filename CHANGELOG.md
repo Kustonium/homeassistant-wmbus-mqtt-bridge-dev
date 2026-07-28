@@ -1,3 +1,8 @@
+## 1.5.43-dev.222
+
+### Fixed
+- time out preview rows stuck in "pending" state (9f76b46)
+
 ## 1.5.43-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
