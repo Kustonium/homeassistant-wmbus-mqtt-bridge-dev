@@ -1,3 +1,8 @@
+## 1.5.44-dev.224
+
+### Added
+- show the wM-Bus band (T1/C1/S1) a meter was received on (9d30fa6)
+
 ## 1.5.44-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
