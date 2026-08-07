@@ -2,6 +2,14 @@
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
+### Added
+- add-on icon (`icon.png`, 256x256). Home Assistant was drawing the generic puzzle
+  placeholder because the repository carried no icon file at all; Supervisor reads
+  `icon.png` from the directory that holds `config.yaml`. The source artwork is a
+  rounded square sitting on an opaque black JPEG background, which would have shown
+  up as a black tile on the light theme, so the corners are transparent in the PNG
+  and the tile now matches both themes. No behaviour change.
+
 ## 1.5.44-dev.224
 
 ### Added
