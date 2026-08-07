@@ -1,3 +1,8 @@
+## 1.5.45-dev.226
+
+### Added
+- ship an add-on icon instead of the generic placeholder (f0dbd8e)
+
 ## 1.5.45-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
