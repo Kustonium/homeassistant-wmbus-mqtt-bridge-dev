@@ -8,7 +8,7 @@
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
 ### Added
-- add-on logo (`logo.png`, 720x160). Home Assistant draws `logo.png` at the top of
+- add-on logo (`logo.png`, 1497x160). Home Assistant draws `logo.png` at the top of
   the add-on page, above the name — with the file missing, the page showed the name
   alone while add-ons like InfluxDB show their wordmark. Supervisor reads it from the
   directory that holds `config.yaml`, the same place as `icon.png`. It is built from
@@ -17,12 +17,17 @@
   opaque on purpose: a transparent logo with white lettering disappears on the light
   Home Assistant theme.
 
-  The proportions follow how the page renders the file rather than the ~250x100 the
-  documentation suggests. The slot scales the image to about 50 px of height, so a
-  first attempt at 500x200 with the name on two lines drew a wordmark of roughly
-  13 px, unreadable next to the InfluxDB example. A wider, shallower canvas with the
-  name on one line, trimmed padding and a single graphic mark gives the same 50 px of
-  height a wordmark of about 28 px. No behaviour change.
+  The proportions follow the frontend rather than the ~250x100 the documentation
+  suggests. `supervisor-app-info.ts` renders the file with
+  `img.logo { max-width: 100%; max-height: 40px }`, so height is the binding limit
+  and the only thing that decides how large the name looks is the share of the file's
+  height taken by the lettering. For reference the InfluxDB add-on logo is 300x69
+  with content touching both edges, its wordmark filling 74% of the height — about
+  29 px on screen. Two earlier attempts here spent that height on padding and a
+  second text line and drew roughly 10 px. The type size is now fitted so the cap
+  height is 60% of the canvas, giving about 24 px on screen; the file is wide
+  (9.4:1) because the name is 17 characters against InfluxDB's 8. No behaviour
+  change.
 
 ## 1.5.45-dev.229
 
