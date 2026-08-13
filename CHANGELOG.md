@@ -8,15 +8,21 @@
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
 ### Added
-- add-on logo (`logo.png`, 500x200). Home Assistant draws `logo.png` at the top of
+- add-on logo (`logo.png`, 720x160). Home Assistant draws `logo.png` at the top of
   the add-on page, above the name — with the file missing, the page showed the name
   alone while add-ons like InfluxDB show their wordmark. Supervisor reads it from the
-  directory that holds `config.yaml`, the same place as `icon.png`; the documented
-  size is around 250x100, so the artwork is drawn at 2x for sharp downscaling. It is
-  built from the icon's own palette and motifs — navy panel, water-meter dial, wifi
-  arcs and the dotted MQTT link — rather than repeating the wordmark that the icon
-  already contains. The panel is opaque on purpose: a transparent logo with white
-  lettering disappears on the light Home Assistant theme. No behaviour change.
+  directory that holds `config.yaml`, the same place as `icon.png`. It is built from
+  the icon's own palette and motifs — navy panel, water-meter dial, wifi arcs —
+  rather than repeating the wordmark that the icon already contains. The panel is
+  opaque on purpose: a transparent logo with white lettering disappears on the light
+  Home Assistant theme.
+
+  The proportions follow how the page renders the file rather than the ~250x100 the
+  documentation suggests. The slot scales the image to about 50 px of height, so a
+  first attempt at 500x200 with the name on two lines drew a wordmark of roughly
+  13 px, unreadable next to the InfluxDB example. A wider, shallower canvas with the
+  name on one line, trimmed padding and a single graphic mark gives the same 50 px of
+  height a wordmark of about 28 px. No behaviour change.
 
 ## 1.5.45-dev.229
 
