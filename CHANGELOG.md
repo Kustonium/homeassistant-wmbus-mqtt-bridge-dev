@@ -1,3 +1,8 @@
+## 1.5.46-dev.230
+
+### Added
+- add the add-on logo shown above the name (b040350)
+
 ## 1.5.46-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
