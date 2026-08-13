@@ -1,3 +1,8 @@
+## 1.5.45-dev.229
+
+### Fixed
+- treat hca and reactive/apparent energy as consumption units (a2c511c)
+
 ## 1.5.45-dev.228
 
 ### Added
