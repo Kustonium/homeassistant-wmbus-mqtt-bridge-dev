@@ -308,6 +308,13 @@ więc aktualizacja nigdy nie wyłącza tego, co już masz. `entity_category` jes
 natomiast stosowana przy każdej aktualizacji konfiguracji, więc pola liczbowe
 bez klasy założone przez starszą wersję przenoszą się do sekcji *Diagnostyka*.
 
+Ta sama zasada działa w drugą stronę: encja utworzona jako wyłączona pozostanie
+wyłączona, dopóki nie włączysz jej na stronie urządzenia — nawet jeśli nowsza
+wersja dodatku publikowałaby ją już jako zwykły sensor. Skasowanie urządzenia
+nic tu nie da, bo Home Assistant przywraca usunięte encje razem ze stanem
+włączenia, gdy tylko ten sam licznik zostanie ponownie wykryty; trzyma ten wpis
+przez 30 dni. Włącz ją raz ręcznie, a zostanie włączona.
+
 ### Starszy tryb SEARCH
 
 | Pole | Typ | Domyślnie | Opis |

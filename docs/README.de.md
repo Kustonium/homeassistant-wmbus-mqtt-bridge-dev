@@ -314,6 +314,13 @@ Entität aus, ein Update deaktiviert also nie etwas Bestehendes.
 angewendet, sodass numerische Felder ohne Klasse aus einer älteren Version in
 den Abschnitt *Diagnose* wandern.
 
+Dieselbe Regel gilt umgekehrt: eine deaktiviert angelegte Entität bleibt
+deaktiviert, bis du sie auf der Geräteseite aktivierst — auch wenn eine neuere
+Add-on-Version sie inzwischen als normalen Sensor veröffentlichen würde. Das
+Löschen des Geräts hilft nicht, denn Home Assistant stellt entfernte Entitäten
+samt Aktivierungszustand wieder her, sobald derselbe Zähler erneut erkannt wird;
+dieser Eintrag bleibt 30 Tage erhalten. Einmal von Hand aktivieren genügt.
+
 ### Älterer SEARCH-Modus
 
 | Feld | Typ | Default | Beschreibung |

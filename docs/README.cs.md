@@ -300,6 +300,12 @@ aktualizace nikdy nevypne to, co už máš. `entity_category` se naproti tomu
 uplatní při každé aktualizaci konfigurace, takže číselná pole bez třídy
 založená starší verzí se přesunou do sekce *Diagnostika*.
 
+Totéž platí i obráceně: entita vytvořená jako vypnutá zůstane vypnutá, dokud ji
+na stránce zařízení nezapneš — i když by ji novější verze doplňku už
+publikovala jako běžný senzor. Smazání zařízení nepomůže, protože Home Assistant
+odstraněné entity včetně stavu zapnutí obnoví, jakmile je stejný měřič znovu
+detekován; tento záznam si drží 30 dní. Stačí ji jednou zapnout ručně.
+
 ### Starší režim SEARCH
 
 | Pole | Typ | Výchozí | Popis |

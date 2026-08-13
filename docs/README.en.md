@@ -308,6 +308,13 @@ an upgrade never disables what you already have. `entity_category` is re-applied
 on every config update, so unclassified numeric fields created by an older
 version do move into the device's *Diagnostics* section.
 
+The same rule works the other way round: an entity that was created disabled
+stays disabled until you enable it on the device page — even if a later add-on
+version would now publish it as a normal sensor. Deleting the device does not
+help, because Home Assistant restores removed entities (including their
+enabled/disabled state) as soon as the same meter is rediscovered; it keeps that
+record for 30 days. Enable it by hand once and it stays enabled.
+
 ### Legacy SEARCH mode
 
 | Field | Type | Default | Description |
