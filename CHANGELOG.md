@@ -7,6 +7,28 @@
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
+### Changed
+- Discovery now publishes **every** field the driver exposes, and splits entities by
+  what they measure instead of by JSON type. A numeric field that Home Assistant can
+  classify (`guess_device_class` returns a class) or that carries a consumption unit
+  stays a plain measurement sensor; everything else — numbers with no class (record
+  ages, error counters), text fields and fields the driver currently reports as
+  `null` — is published with `entity_category: diagnostic` and
+  `enabled_by_default: false`. The consumption-unit check (`is_consumption_unit`:
+  m³, GJ, MJ, kWh, Wh, l) exists because `guess_device_class` deliberately returns
+  an empty class for m³ on heat and cooling meters, and GJ/MJ have no Home Assistant
+  device class at all — without it a heat meter's consumption would have been filed
+  as a diagnostic. Motivated by a `hydrodigit` report: `fraud_date` and `leak_date`
+  arrive as JSON `null` until the event occurs, so the type filter dropped them
+  entirely; they now exist as diagnostic entities that stay `unavailable` until the
+  meter fills them in. Only container values (`object`, `array`) and the meter's
+  identity (`id`, `name`, `meter`, `media`, `timestamp`, `rssi`, `lqi`) are still
+  skipped. NB the two flags behave differently on upgrade, deliberately: Home
+  Assistant reads `enabled_by_default` only when it first adds an entity, so nothing
+  you already have gets disabled, while `entity_category` is re-applied on every
+  config update, so unclassified numeric fields created by an older version move
+  into the device's Diagnostics section.
+
 ### Added
 - Discovery entities for the decoder's text fields, published disabled. Until now
   `emit_discovery_from_json` created an entity only for JSON fields of type

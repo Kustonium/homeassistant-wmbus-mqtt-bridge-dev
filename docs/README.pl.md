@@ -285,14 +285,27 @@ problem`), który włącza się, gdy status jest inny niż `OK`. Tekst jest
 przekazywany 1:1 z `wmbusmeters`, więc jego dokładna treść zależy od wybranego
 drivera upstream.
 
-Każde pozostałe pole tekstowe zwrócone przez driver (`current_status`,
-`frame_status`, `meter_datetime`, `historic_datetime`, …) też dostaje encję
-diagnostyczną `sensor`, ale publikowaną jako **wyłączona**
-(`enabled_by_default: false`). Home Assistant rejestruje taką encję i pokazuje
-ją na stronie urządzenia jako wyłączoną; zaczyna zapisywać dane dopiero po jej
-włączeniu. Pól liczbowych to nie dotyczy — nadal powstają włączone. Home
-Assistant czyta `enabled_by_default` tylko przy pierwszym dodaniu encji, więc
-encje już raz włączone lub wyłączone zachowują swój stan.
+Poza tym most publikuje konfigurację Discovery dla **każdego** pola zwróconego
+przez driver i dzieli je według tego, co mierzą:
+
+- pole, które Home Assistant potrafi sklasyfikować (zgadujemy `device_class`)
+  albo które ma jednostkę zużycia — m³, GJ, MJ, kWh, Wh, l, w tym objętość na
+  liczniku ciepła, dla której HA nie ma klasy — zostaje zwykłym sensorem
+  pomiarowym, włączonym;
+- cała reszta zostaje encją **diagnostyczną** publikowaną jako **wyłączona**
+  (`enabled_by_default: false`): liczby bez klasy (wiek odczytu, liczniki
+  błędów), pola tekstowe (`current_status`, `meter_datetime`, …) oraz pola,
+  które driver zwraca w danej chwili jako `null` (`fraud_date`, zanim wystąpi
+  oszustwo). Home Assistant rejestruje taką encję i pokazuje ją na stronie
+  urządzenia jako wyłączoną; włączasz te, które są Ci potrzebne.
+
+Encji nie dostaje wyłącznie tożsamość licznika (`id`, `name`, `meter`, `media`,
+`timestamp`, `rssi`, `lqi`) — jest już w nazwie urządzenia i w atrybutach encji.
+
+Home Assistant czyta `enabled_by_default` tylko przy pierwszym dodaniu encji,
+więc aktualizacja nigdy nie wyłącza tego, co już masz. `entity_category` jest
+natomiast stosowana przy każdej aktualizacji konfiguracji, więc pola liczbowe
+bez klasy założone przez starszą wersję przenoszą się do sekcji *Diagnostyka*.
 
 ### Starszy tryb SEARCH
 

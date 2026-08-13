@@ -333,15 +333,30 @@ kept as attributes, while numeric fields receive Discovery sensors. The decoder
 string field `status`, when present, receives a diagnostic text sensor and a
 problem binary sensor.
 
-Every other string field (`current_status`, `frame_status`, `meter_datetime`,
-`historic_datetime`, driver-specific status words) also receives a Discovery
-sensor, published with `entity_category: diagnostic` and
-`enabled_by_default: false`. Drivers emit many of them, they are useless as
-long-term statistics, and Home Assistant already offers the per-entity enable
-switch — so the bridge registers them and leaves the choice to the user.
+Every remaining field the driver publishes receives a Discovery sensor as well,
+split by what it measures rather than by its JSON type:
+
+- numeric fields that Home Assistant can classify (`guess_device_class` returns
+  a class) or that carry a consumption unit — `m³`, `GJ`, `MJ`, `kWh`, `Wh`,
+  `l`, the `is_consumption_unit` set, which also covers heat-meter volume where
+  the bridge deliberately leaves `device_class` empty — stay plain measurement
+  sensors;
+- everything else is published with `entity_category: diagnostic` and
+  `enabled_by_default: false`: unclassified numbers (record ages, error
+  counters), string fields, and fields whose current value is `null`, which a
+  driver uses for events that have not happened yet (`fraud_date`).
+
+Only container values (`object`, `array`) and the metadata keys listed above are
+skipped entirely. Drivers emit many secondary fields, most are useless as
+long-term statistics, and Home Assistant already offers a per-entity enable
+switch — so the bridge registers everything and leaves the choice to the user.
+
+The two flags behave differently on upgrade, which is deliberate:
 `enabled_by_default` is evaluated only when Home Assistant first adds an entity
 to its registry, so republishing a config never disables an entity a user has
-already enabled, and never re-enables one they disabled.
+already enabled and never re-enables one they disabled; `entity_category` is
+re-applied on every config update, so fields created by an older version move
+into the device's Diagnostics section.
 
 Discovery behavior is designed around partial telegrams:
 

@@ -284,14 +284,28 @@ section): a `sensor` with the raw status text and a `binary_sensor`
 than `OK`. The text is passed through verbatim from `wmbusmeters`, so its exact
 content depends on the selected upstream driver.
 
-Every other text field the driver emits (`current_status`, `frame_status`,
-`meter_datetime`, `historic_datetime`, …) also gets a diagnostic `sensor`, but
-published as **disabled** (`enabled_by_default: false`). Home Assistant
-registers such an entity and shows it on the device page as switched off; it
-starts recording only after you enable it there. Numeric fields are unaffected —
-they are still created enabled. Home Assistant reads `enabled_by_default` only
-when it first adds an entity, so entities you have already enabled or disabled
-keep their state.
+Beyond that, the bridge publishes a Discovery config for **every** field the
+driver exposes and splits them by what they measure:
+
+- a field Home Assistant can classify (a `device_class` is guessed) or one
+  carrying a consumption unit — m³, GJ, MJ, kWh, Wh, l, including heat volume,
+  for which HA has no device class — becomes an ordinary measurement sensor,
+  enabled;
+- everything else becomes a **diagnostic** sensor published as **disabled**
+  (`enabled_by_default: false`): unclassified numbers such as record ages and
+  error counters, text fields (`current_status`, `meter_datetime`, …) and
+  fields the driver currently reports as `null` (a `fraud_date` before any
+  fraud). Home Assistant registers such an entity and lists it on the device
+  page switched off; you enable the ones you want.
+
+Only the meter's identity (`id`, `name`, `meter`, `media`, `timestamp`, `rssi`,
+`lqi`) never becomes an entity — it is already in the device name and in the
+entity attributes.
+
+Home Assistant reads `enabled_by_default` only when it first adds an entity, so
+an upgrade never disables what you already have. `entity_category` is re-applied
+on every config update, so unclassified numeric fields created by an older
+version do move into the device's *Diagnostics* section.
 
 ### Legacy SEARCH mode
 

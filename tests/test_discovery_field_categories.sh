@@ -1,0 +1,193 @@
+#!/usr/bin/env bash
+# Regression test: emit_discovery_from_json must publish a Discovery config for
+# every field the driver exposes, and split them by what they measure.
+#
+#   - numeric field with a device_class, or with a consumption unit
+#     (m³/GJ/MJ/kWh/Wh/l — heat volume has no HA device_class) -> plain sensor,
+#     enabled, keeps unit/device_class/state_class;
+#   - anything else (unclassified numbers, text, null) -> diagnostic sensor
+#     published with enabled_by_default:false;
+#   - "status" keeps its own dedicated sensor + problem binary_sensor;
+#   - metadata (id/name/meter/media/timestamp) never becomes an entity.
+#
+# Background: the field loop used to select only JSON values of type "number"
+# and to publish all of them as plain sensors, so a driver reporting its state
+# as current_status (apatorna1) or a not-yet-set fraud_date (hydrodigit)
+# produced no entity at all, while record ages and error counters landed among
+# the measurements.
+set -euo pipefail
+
+PASS=0
+FAIL=0
+
+pass() { echo "PASS: $*"; PASS=$(( PASS + 1 )); }
+fail() { echo "FAIL: $*" >&2; FAIL=$(( FAIL + 1 )); }
+
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+SCRIPT_DIR="${SCRIPT_PATH%/*}"
+[[ "${SCRIPT_DIR}" == "${SCRIPT_PATH}" ]] && SCRIPT_DIR="."
+SCRIPT_DIR="$(cd "${SCRIPT_DIR}" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+LIB_DIR="${ROOT_DIR}/rootfs/usr/bin/bridge-lib"
+
+command -v jq >/dev/null 2>&1 || {
+  echo "FAIL: missing jq" >&2
+  exit 1
+}
+
+WORK_DIR="$(mktemp -d)"
+trap 'rm -rf "${WORK_DIR}"' EXIT
+CAPTURE="${WORK_DIR}/published.tsv"
+: > "${CAPTURE}"
+
+# Environment the sourced bridge-lib files read. ShellCheck cannot follow the
+# dynamic source paths below, hence the explicit disable.
+# shellcheck disable=SC2034
+{
+  DISCOVERY_ENABLED="true"
+  DISCOVERY_PREFIX="homeassistant"
+  DISCOVERY_RETAIN="true"
+  STATE_PREFIX="wmbusmeters"
+  SEARCH_MODE="false"
+}
+
+warn() { :; }
+log() { :; }
+normalize_meter_id() { echo "$1" | tr '[:upper:]' '[:lower:]'; }
+# Fixed stats so expire_after is deterministic: seen/avg/short/long.
+status_seen_stats() { printf '%s\t%s\t%s\t%s\n' 12 900 3 10; }
+mqtt_pub() { printf '%s\t%s\n' "$1" "${2//$'\n'/ }" >> "${CAPTURE}"; return 0; }
+
+# shellcheck source=/dev/null
+source "${LIB_DIR}/01-utils.sh"
+# shellcheck source=/dev/null
+source "${LIB_DIR}/08-discovery-helpers.sh"
+# shellcheck source=/dev/null
+source "${LIB_DIR}/09-discovery.sh"
+
+METER_ID=""
+
+run_telegram() {
+  METER_ID="$1"
+  : > "${CAPTURE}"
+  # Reset the per-field publish caches declared by 09-discovery.sh so each
+  # telegram is evaluated from scratch.
+  # shellcheck disable=SC2034
+  {
+    DISCOVERY_SENT_FIELD=()
+    DISCOVERY_CLEANED_LEGACY=()
+  }
+  emit_discovery_from_json "$2"
+}
+
+payload_for() {
+  local field="$1"
+  awk -F'\t' -v topic="homeassistant/sensor/wmbus_${METER_ID}/${field}/config" \
+    '$1 == topic { print $2 }' "${CAPTURE}" | tail -n 1
+}
+
+# NB: jq's // treats a literal false as empty, so presence is tested explicitly.
+field_prop() {
+  jq -r --arg k "$2" 'if has($k) then (.[$k]|tostring) else "missing" end' <<<"$1" 2>/dev/null || echo parse_error
+}
+
+assert_diagnostic() {
+  local field="$1"
+  local payload enabled category
+  payload="$(payload_for "${field}")"
+  if [[ -z "${payload}" ]]; then
+    fail "${field}: no discovery config published"
+    return
+  fi
+  enabled="$(field_prop "${payload}" enabled_by_default)"
+  category="$(field_prop "${payload}" entity_category)"
+  if [[ "${enabled}" == "false" && "${category}" == "diagnostic" ]]; then
+    pass "${field}: diagnostic, disabled by default"
+  else
+    fail "${field}: enabled_by_default=${enabled} entity_category=${category} (expected false/diagnostic)"
+  fi
+}
+
+assert_measurement() {
+  local field="$1"
+  local expected_unit="$2"
+  local payload enabled category unit
+  payload="$(payload_for "${field}")"
+  if [[ -z "${payload}" ]]; then
+    fail "${field}: no discovery config published"
+    return
+  fi
+  enabled="$(field_prop "${payload}" enabled_by_default)"
+  category="$(field_prop "${payload}" entity_category)"
+  unit="$(field_prop "${payload}" unit_of_measurement)"
+  if [[ "${enabled}" == "missing" && "${category}" == "missing" && "${unit}" == "${expected_unit}" ]]; then
+    pass "${field}: measurement sensor, enabled, unit=${unit}"
+  else
+    fail "${field}: enabled_by_default=${enabled} entity_category=${category} unit=${unit} (expected missing/missing/${expected_unit})"
+  fi
+}
+
+assert_no_entity() {
+  local field="$1"
+  if grep -q -F "homeassistant/sensor/wmbus_${METER_ID}/${field}/config" "${CAPTURE}"; then
+    fail "${field}: must not get a discovery config"
+  else
+    pass "${field}: correctly skipped"
+  fi
+}
+
+# --- apatorna1: text status fields, historic readings, dedicated "status" ----
+run_telegram 04913581 '{"_":"telegram","current_status":"OK","frame_status":"SUMMER_TIME","historic_age_h":304,"historic_datetime":"2026-07-31 22:08","historic_m3":1785.804,"historic_status":"MINIMUM_FLOW","id":"04913581","media":"water","meter":"apatorna1","meter_datetime":"2026-08-13 14:08","name":"Cold_Water_3581","status":"OK","timestamp":"2026-08-13T13:22:13Z","total_m3":1798.2}'
+
+assert_measurement total_m3 "m³"
+assert_measurement historic_m3 "m³"
+for f in current_status frame_status historic_status historic_datetime meter_datetime historic_age_h; do
+  assert_diagnostic "${f}"
+done
+for f in id name meter media timestamp; do
+  assert_no_entity "${f}"
+done
+
+# The dedicated status block owns .../status/config; the generic loop must not
+# publish a second, conflicting config for the same topic.
+status_configs="$(awk -F'\t' '$1 == "homeassistant/sensor/wmbus_04913581/status/config"' "${CAPTURE}" | wc -l | tr -d ' ')"
+if [[ "${status_configs}" == "1" ]]; then
+  pass "status: exactly one config published (dedicated diagnostic sensor)"
+else
+  fail "status: expected 1 config, got ${status_configs}"
+fi
+
+if [[ "$(field_prop "$(payload_for status)" enabled_by_default)" == "missing" ]]; then
+  pass "status: dedicated sensor stays enabled by default"
+else
+  fail "status: dedicated sensor unexpectedly carries enabled_by_default"
+fi
+
+if grep -q -F 'homeassistant/binary_sensor/wmbus_04913581/status_problem/config' "${CAPTURE}"; then
+  pass "status_problem: binary_sensor still published"
+else
+  fail "status_problem: binary_sensor missing"
+fi
+
+# --- hydrodigit: null-valued fields, battery voltage, text field list --------
+run_telegram 03534159 '{"_":"telegram","backflow_m3":3724541.952,"contents":"BACKFLOW BATTERY_VOLTAGE FRAUD_DATE LEAK_DATE","fraud_date":null,"fraud_type":"NO_TYPE_INFO","id":"03534159","leak_date":null,"media":"water","meter":"hydrodigit","meter_datetime":"2026-08-13 15:03","name":"Cold_Water_4159","timestamp":"2026-08-13T13:54:52Z","total_m3":29.984,"voltage_v":3.7}'
+
+assert_measurement total_m3 "m³"
+assert_measurement backflow_m3 "m³"
+assert_measurement voltage_v "V"
+for f in contents fraud_type meter_datetime fraud_date leak_date; do
+  assert_diagnostic "${f}"
+done
+
+# --- heat meter: m³ and GJ carry no HA device_class but are consumption ------
+run_telegram 07331000 '{"_":"telegram","total_m3":412.5,"total_energy_consumption_gj":18.44,"flow_temperature_c":64.2,"max_flow_m3h":1.2,"records_counter":17,"id":"07331000","media":"heat","meter":"kamheat","name":"Heat_1000","timestamp":"2026-08-13T13:54:52Z"}'
+
+assert_measurement total_m3 "m³"
+assert_measurement total_energy_consumption_gj "GJ"
+assert_measurement flow_temperature_c "°C"
+assert_diagnostic max_flow_m3h
+assert_diagnostic records_counter
+
+echo
+echo "Results: ${PASS} passed, ${FAIL} failed"
+[[ "${FAIL}" -eq 0 ]]

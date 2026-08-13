@@ -275,14 +275,27 @@ dostane aj dve **diagnostické** entity (v sekcii *Diagnostika* zariadenia):
 ktorý sa zapne vždy, keď je stav iný než `OK`. Text sa preberá doslovne z
 wmbusmeters, takže jeho presný obsah závisí od vybraného ovládača upstreamu.
 
-Každé ďalšie textové pole, ktoré ovládač vracia (`current_status`,
-`frame_status`, `meter_datetime`, `historic_datetime`, …), dostane tiež
-diagnostický `sensor`, ale publikovaný ako **vypnutý**
-(`enabled_by_default: false`). Home Assistant takúto entitu zaregistruje a na
-stránke zariadenia ju zobrazí ako vypnutú; zaznamenávať začne až po jej
-zapnutí. Číselných polí sa to netýka — vznikajú naďalej zapnuté. Home Assistant
-číta `enabled_by_default` len pri prvom pridaní entity, takže entity, ktoré si
-už zapol alebo vypol, si svoj stav zachovajú.
+Okrem toho most publikuje konfiguráciu Discovery pre **každé** pole, ktoré
+ovládač vracia, a rozdeľuje ich podľa toho, čo merajú:
+
+- pole, ktoré Home Assistant vie zaradiť (odhadneme `device_class`), alebo
+  ktoré nesie jednotku spotreby — m³, GJ, MJ, kWh, Wh, l, vrátane objemu na
+  merači tepla, pre ktorý HA triedu nemá — sa stane bežným meracím senzorom,
+  zapnutým;
+- všetko ostatné sa stane **diagnostickou** entitou publikovanou ako **vypnutá**
+  (`enabled_by_default: false`): čísla bez triedy (vek záznamu, počítadlá chýb),
+  textové polia (`current_status`, `meter_datetime`, …) a polia, ktoré ovládač
+  práve hlási ako `null` (`fraud_date`, kým k podvodu nedošlo). Home Assistant
+  takúto entitu zaregistruje a na stránke zariadenia ju zobrazí ako vypnutú;
+  zapneš tie, ktoré potrebuješ.
+
+Entitu nedostane iba identita merača (`id`, `name`, `meter`, `media`,
+`timestamp`, `rssi`, `lqi`) — je už v názve zariadenia a v atribútoch entít.
+
+Home Assistant číta `enabled_by_default` len pri prvom pridaní entity, takže
+aktualizácia nikdy nevypne to, čo už máš. `entity_category` sa naopak uplatní
+pri každej aktualizácii konfigurácie, takže číselné polia bez triedy založené
+staršou verziou sa presunú do sekcie *Diagnostika*.
 
 ### Starší režim SEARCH
 
