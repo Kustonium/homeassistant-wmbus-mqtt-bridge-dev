@@ -1,3 +1,11 @@
+## 1.5.45-dev.228
+
+### Added
+- publish every driver field, split measurements from diagnostics (a8d357c)
+
+### Fixed
+- treat hca and reactive/apparent energy as consumption units (a2c511c)
+
 ## 1.5.45-dev.227
 
 ### Added
