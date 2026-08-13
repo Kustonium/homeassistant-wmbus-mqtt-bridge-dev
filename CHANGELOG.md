@@ -20,8 +20,6 @@
 
 ## 1.5.45-dev
 
-<!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
-
 ### Fixed
 - heat cost allocator readings were filed as disabled diagnostics. `hca` — the unit
   of an `fhkvdataiii`-style allocator, and the only value such a device bills on —
