@@ -288,6 +288,16 @@ Geräts): einen `sensor` mit dem rohen Statustext und einen `binary_sensor`
 `OK` ist. Der Text wird unverändert von `wmbusmeters` übernommen; sein genauer
 Inhalt hängt vom ausgewählten Upstream-Treiber ab.
 
+Jedes weitere Textfeld des Treibers (`current_status`, `frame_status`,
+`meter_datetime`, `historic_datetime`, …) erhält ebenfalls einen
+Diagnose-`sensor`, jedoch **deaktiviert** veröffentlicht
+(`enabled_by_default: false`). Home Assistant registriert eine solche Entität
+und zeigt sie auf der Geräteseite als ausgeschaltet an; aufgezeichnet wird erst,
+nachdem du sie dort aktivierst. Numerische Felder sind davon nicht betroffen —
+sie entstehen weiterhin aktiviert. Home Assistant wertet `enabled_by_default`
+nur beim erstmaligen Anlegen einer Entität aus, bereits aktivierte oder
+deaktivierte Entitäten behalten also ihren Zustand.
+
 ### Älterer SEARCH-Modus
 
 | Feld | Typ | Default | Beschreibung |

@@ -277,6 +277,15 @@ surovým textem stavu a `binary_sensor` (`device_class: problem`), který se
 zapne pokaždé, když je stav jiný než `OK`. Text se přebírá doslovně z
 wmbusmeters, takže jeho přesný obsah závisí na vybraném ovladači upstreamu.
 
+Každé další textové pole, které ovladač vrací (`current_status`,
+`frame_status`, `meter_datetime`, `historic_datetime`, …), dostane rovněž
+diagnostický `sensor`, ale publikovaný jako **vypnutý**
+(`enabled_by_default: false`). Home Assistant takovou entitu zaregistruje a na
+stránce zařízení ji ukáže jako vypnutou; zaznamenávat začne až po jejím
+zapnutí. Číselných polí se to netýká — vznikají dál zapnutá. Home Assistant
+čte `enabled_by_default` jen při prvním přidání entity, takže entity, které jsi
+už zapnul nebo vypnul, si svůj stav zachovají.
+
 ### Starší režim SEARCH
 
 | Pole | Typ | Výchozí | Popis |

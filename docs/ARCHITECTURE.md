@@ -323,7 +323,7 @@ configuration directories remain intact.
 |---|---|
 | Receiver input | `raw_topic`, default `wmbus/+/telegram` |
 | Decoded state | `<state_prefix>/<meter_id>/state` |
-| Numeric Discovery | `<discovery_prefix>/sensor/wmbus_<id>/<field>/config` |
+| Field Discovery | `<discovery_prefix>/sensor/wmbus_<id>/<field>/config` |
 | Status text | `<discovery_prefix>/sensor/wmbus_<id>/status/config` |
 | Status problem | `<discovery_prefix>/binary_sensor/wmbus_<id>/status_problem/config` |
 | Search results | `search_topic`, default `wmbus/search/candidates` |
@@ -332,6 +332,16 @@ The state payload is the decoded JSON from `wmbusmeters`. Metadata fields are
 kept as attributes, while numeric fields receive Discovery sensors. The decoder
 string field `status`, when present, receives a diagnostic text sensor and a
 problem binary sensor.
+
+Every other string field (`current_status`, `frame_status`, `meter_datetime`,
+`historic_datetime`, driver-specific status words) also receives a Discovery
+sensor, published with `entity_category: diagnostic` and
+`enabled_by_default: false`. Drivers emit many of them, they are useless as
+long-term statistics, and Home Assistant already offers the per-entity enable
+switch — so the bridge registers them and leaves the choice to the user.
+`enabled_by_default` is evaluated only when Home Assistant first adds an entity
+to its registry, so republishing a config never disables an entity a user has
+already enabled, and never re-enables one they disabled.
 
 Discovery behavior is designed around partial telegrams:
 

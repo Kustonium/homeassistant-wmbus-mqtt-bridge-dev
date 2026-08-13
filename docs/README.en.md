@@ -284,6 +284,15 @@ section): a `sensor` with the raw status text and a `binary_sensor`
 than `OK`. The text is passed through verbatim from `wmbusmeters`, so its exact
 content depends on the selected upstream driver.
 
+Every other text field the driver emits (`current_status`, `frame_status`,
+`meter_datetime`, `historic_datetime`, …) also gets a diagnostic `sensor`, but
+published as **disabled** (`enabled_by_default: false`). Home Assistant
+registers such an entity and shows it on the device page as switched off; it
+starts recording only after you enable it there. Numeric fields are unaffected —
+they are still created enabled. Home Assistant reads `enabled_by_default` only
+when it first adds an entity, so entities you have already enabled or disabled
+keep their state.
+
 ### Legacy SEARCH mode
 
 | Field | Type | Default | Description |

@@ -275,6 +275,15 @@ dostane aj dve **diagnostické** entity (v sekcii *Diagnostika* zariadenia):
 ktorý sa zapne vždy, keď je stav iný než `OK`. Text sa preberá doslovne z
 wmbusmeters, takže jeho presný obsah závisí od vybraného ovládača upstreamu.
 
+Každé ďalšie textové pole, ktoré ovládač vracia (`current_status`,
+`frame_status`, `meter_datetime`, `historic_datetime`, …), dostane tiež
+diagnostický `sensor`, ale publikovaný ako **vypnutý**
+(`enabled_by_default: false`). Home Assistant takúto entitu zaregistruje a na
+stránke zariadenia ju zobrazí ako vypnutú; zaznamenávať začne až po jej
+zapnutí. Číselných polí sa to netýka — vznikajú naďalej zapnuté. Home Assistant
+číta `enabled_by_default` len pri prvom pridaní entity, takže entity, ktoré si
+už zapol alebo vypol, si svoj stav zachovajú.
+
 ### Starší režim SEARCH
 
 | Pole | Typ | Predvolené | Popis |

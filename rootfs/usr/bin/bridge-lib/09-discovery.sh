@@ -64,18 +64,35 @@ emit_discovery_from_json() {
   # self-tunes.
   expire_after=$(( (expire_after / 60) * 60 ))
 
-  while IFS= read -r key; do
+  # Field loop. The feeder below emits "<json type><TAB><key>" so both numeric
+  # and text fields go through one payload builder. Numeric fields keep the
+  # historical behaviour (unit/device_class/state_class guessing, enabled).
+  # Text fields (status words, meter/historic datetimes) carry no unit and are
+  # published as disabled diagnostic entities: wmbusmeters emits a lot of them,
+  # they are useless as long-term statistics, and HA lets the user enable the
+  # ones they care about from the device page. NB enabled_by_default only
+  # applies when HA first adds the entity to its registry, so this never
+  # disables entities that already exist.
+  while IFS=$'\t' read -r ftype key; do
     [[ -n "${key}" ]] || continue
 
-    local obj cache_key key_lc unit device_class state_class cfg_topic unique_id sensor_name payload
+    local obj cache_key key_lc unit device_class state_class entity_category cfg_topic unique_id sensor_name payload
 
     obj="$(sanitize_obj_id "${key}")"
     [[ -n "${obj}" ]] || continue
 
     key_lc="$(echo "${key}" | tr '[:upper:]' '[:lower:]')"
-    unit="$(guess_unit "${key}")"
-    device_class="$(guess_device_class "${key_lc}" "${unit}" "${media}")"
-    state_class="$(guess_state_class "${key_lc}" "${device_class}")"
+    if [[ "${ftype}" == "string" ]]; then
+      unit=""
+      device_class=""
+      state_class=""
+      entity_category="diagnostic"
+    else
+      unit="$(guess_unit "${key}")"
+      device_class="$(guess_device_class "${key_lc}" "${unit}" "${media}")"
+      state_class="$(guess_state_class "${key_lc}" "${device_class}")"
+      entity_category=""
+    fi
 
     cfg_topic="${DISCOVERY_PREFIX}/sensor/${uniq}/${obj}/config"
     unique_id="${uniq}_${obj}"
@@ -96,6 +113,7 @@ emit_discovery_from_json() {
       --arg unit "${unit}" \
       --arg dc "${device_class}" \
       --arg sc "${state_class}" \
+      --arg ecat "${entity_category}" \
       --argjson expire "${expire_after}" \
       '(
         {
@@ -121,6 +139,7 @@ emit_discovery_from_json() {
         + (if ($unit|length)>0 then {unit_of_measurement:$unit} else {} end)
         + (if ($dc|length)>0 then {device_class:$dc} else {} end)
         + (if ($sc|length)>0 then {state_class:$sc} else {} end)
+        + (if ($ecat|length)>0 then {entity_category:$ecat, enabled_by_default:false} else {} end)
       )'
     )"
 
@@ -142,9 +161,10 @@ emit_discovery_from_json() {
         and ($k != "device_date_time")
         and ($k != "rssi")
         and ($k != "lqi")
+        and ($k != "status")
       )
-      | select((.value|type)=="number")
-      | .key
+      | select((.value|type)=="number" or (.value|type)=="string")
+      | "\(.value|type)\t\(.key)"
     ' <<<"${json_line}" 2>/dev/null || true
   )
 
@@ -304,8 +324,9 @@ clear_search_discovery_from_json() {
         and ($k != "device_date_time")
         and ($k != "rssi")
         and ($k != "lqi")
+        and ($k != "status")
       )
-      | select((.value|type)=="number")
+      | select((.value|type)=="number" or (.value|type)=="string")
       | .key
     ' <<<"${json_line}" 2>/dev/null || true
   )

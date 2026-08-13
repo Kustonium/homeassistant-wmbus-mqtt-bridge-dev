@@ -8,6 +8,23 @@
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
 ### Added
+- Discovery entities for the decoder's text fields, published disabled. Until now
+  `emit_discovery_from_json` created an entity only for JSON fields of type
+  `number`, plus the dedicated pair for a field named exactly `status`. A meter
+  whose driver reports its state under a different name (`apatorna1`:
+  `current_status`, `frame_status`, `historic_status`, plus `meter_datetime` and
+  `historic_datetime`) therefore showed those values on the WebUI METERS tab but
+  had no matching entity in Home Assistant — the data was reachable only through
+  the entity attributes fed by `json_attributes_topic`. Every remaining string
+  field now gets its own `sensor` config with `entity_category: diagnostic` and
+  `enabled_by_default: false`, so Home Assistant registers it and lists it on the
+  device page switched off; the user enables the ones they want. Numeric fields are
+  untouched (same unit/device_class/state_class guessing, still enabled), and
+  `status` keeps its existing text sensor plus `problem` binary sensor — it is now
+  excluded from the generic loop so the two paths cannot publish to the same config
+  topic. `enabled_by_default` is read by Home Assistant only when it first adds an
+  entity to its registry, so upgrading changes nothing for entities that already
+  exist.
 - add-on icon (`icon.png`, 256x256). Home Assistant was drawing the generic puzzle
   placeholder because the repository carried no icon file at all; Supervisor reads
   `icon.png` from the directory that holds `config.yaml`. The source artwork is a

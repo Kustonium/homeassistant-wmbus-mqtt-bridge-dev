@@ -285,6 +285,15 @@ problem`), który włącza się, gdy status jest inny niż `OK`. Tekst jest
 przekazywany 1:1 z `wmbusmeters`, więc jego dokładna treść zależy od wybranego
 drivera upstream.
 
+Każde pozostałe pole tekstowe zwrócone przez driver (`current_status`,
+`frame_status`, `meter_datetime`, `historic_datetime`, …) też dostaje encję
+diagnostyczną `sensor`, ale publikowaną jako **wyłączona**
+(`enabled_by_default: false`). Home Assistant rejestruje taką encję i pokazuje
+ją na stronie urządzenia jako wyłączoną; zaczyna zapisywać dane dopiero po jej
+włączeniu. Pól liczbowych to nie dotyczy — nadal powstają włączone. Home
+Assistant czyta `enabled_by_default` tylko przy pierwszym dodaniu encji, więc
+encje już raz włączone lub wyłączone zachowują swój stan.
+
 ### Starszy tryb SEARCH
 
 | Pole | Typ | Domyślnie | Opis |
