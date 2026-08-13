@@ -1,3 +1,10 @@
+## 1.5.45-dev.227
+
+### Added
+- publish every driver field, split measurements from diagnostics (a8d357c)
+- publish discovery entities for text fields, disabled by default (1a6fe07)
+- ship an add-on icon instead of the generic placeholder (f0dbd8e)
+
 ## 1.5.45-dev.226
 
 ### Added
