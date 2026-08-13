@@ -8,7 +8,7 @@
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
 ### Added
-- add-on logo (`logo.png`, 1497x160). Home Assistant draws `logo.png` at the top of
+- add-on logo (`logo.png`, 1482x160). Home Assistant draws `logo.png` at the top of
   the add-on page, above the name — with the file missing, the page showed the name
   alone while add-ons like InfluxDB show their wordmark. Supervisor reads it from the
   directory that holds `config.yaml`, the same place as `icon.png`. It is built from
