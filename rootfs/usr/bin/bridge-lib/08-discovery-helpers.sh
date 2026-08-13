@@ -96,14 +96,16 @@ guess_device_class() {
   esac
 }
 
-# Does this unit measure the medium the meter bills for (volume or energy)?
-# Used to decide whether a field is a primary measurement or a diagnostic:
-# device_class alone is not enough, because guess_device_class deliberately
-# returns an empty class for m³ on heat/cooling meters (HA has no heat-volume
-# class) and GJ/MJ carry no HA device_class at all. Both are consumption.
+# Does this unit measure the quantity the meter bills for (volume, energy,
+# allocation units)? Used to decide whether a field is a primary measurement or
+# a diagnostic: device_class alone is not enough, because Home Assistant has no
+# class for several billing quantities. guess_device_class deliberately returns
+# an empty class for m³ on heat/cooling meters, and GJ/MJ, hca (heat cost
+# allocator units — the whole reading of an fhkvdataiii-style device) and
+# kVARh/kVAh carry no HA device_class at all. All of them are consumption.
 is_consumption_unit() {
   case "$1" in
-    "m³"|"GJ"|"MJ"|"kWh"|"Wh"|"l") return 0;;
+    "m³"|"GJ"|"MJ"|"kWh"|"Wh"|"l"|"hca"|"kVARh"|"kVAh") return 0;;
     *) return 1;;
   esac
 }

@@ -281,8 +281,10 @@ Kromě toho most publikuje konfiguraci Discovery pro **každé** pole, které
 ovladač vrací, a rozděluje je podle toho, co měří:
 
 - pole, které Home Assistant umí zařadit (odhadneme `device_class`), nebo které
-  nese jednotku spotřeby — m³, GJ, MJ, kWh, Wh, l, včetně objemu na měřiči
-  tepla, pro který HA třídu nemá — se stane běžným měřicím senzorem, zapnutým;
+  nese jednotku spotřeby — m³, GJ, MJ, kWh, Wh, l, hca, kVARh, kVAh, tedy i
+  veličiny, pro které HA třídu nemá: objem na měřiči tepla, tepelná energie v
+  GJ/MJ, jednotky indikátoru topných nákladů a jalová i zdánlivá energie — se
+  stane běžným měřicím senzorem, zapnutým;
 - všechno ostatní se stane **diagnostickou** entitou publikovanou jako
   **vypnutá** (`enabled_by_default: false`): čísla bez třídy (stáří záznamu,
   čítače chyb), textová pole (`current_status`, `meter_datetime`, …) a pole,

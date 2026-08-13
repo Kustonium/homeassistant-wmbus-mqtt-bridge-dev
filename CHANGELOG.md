@@ -14,6 +14,19 @@
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
+### Fixed
+- heat cost allocator readings were filed as disabled diagnostics. `hca` — the unit
+  of an `fhkvdataiii`-style allocator, and the only value such a device bills on —
+  has no Home Assistant device class, so the measurement-versus-diagnostic split
+  introduced in this cycle sent `current_hca` and `previous_hca` to the Diagnostics
+  section with `enabled_by_default: false`, leaving the allocator with nothing but
+  its two temperatures as ordinary sensors. Found on a live test instance replaying
+  simulated telegrams. `is_consumption_unit` now also covers `hca`, plus `kVARh` and
+  `kVAh`, which are cumulative billing quantities with no HA device class either.
+  NB Home Assistant reads `enabled_by_default` only when it first adds an entity, so
+  an allocator entity already created as disabled has to be enabled by hand once;
+  the category change to a plain sensor applies on the next telegram.
+
 ### Changed
 - Discovery now publishes **every** field the driver exposes, and splits entities by
   what they measure instead of by JSON type. A numeric field that Home Assistant can

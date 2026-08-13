@@ -292,9 +292,10 @@ Darüber hinaus veröffentlicht die Bridge eine Discovery-Konfiguration für
 **jedes** Feld des Treibers und teilt sie danach auf, was sie messen:
 
 - ein Feld, das Home Assistant klassifizieren kann (`device_class` wird
-  geraten) oder das eine Verbrauchseinheit trägt — m³, GJ, MJ, kWh, Wh, l,
-  einschließlich Volumen am Wärmezähler, für das HA keine Geräteklasse hat —
-  wird ein normaler Mess-Sensor, aktiviert;
+  geraten) oder das eine Verbrauchseinheit trägt — m³, GJ, MJ, kWh, Wh, l, hca,
+  kVARh, kVAh, also auch die Größen, für die HA keine Klasse hat: Volumen am
+  Wärmezähler, Wärmeenergie in GJ/MJ, Einheiten des Heizkostenverteilers sowie
+  Blind- und Scheinenergie — wird ein normaler Mess-Sensor, aktiviert;
 - alles andere wird eine **Diagnose**-Entität, **deaktiviert** veröffentlicht
   (`enabled_by_default: false`): Zahlen ohne Klasse (Alter des Eintrags,
   Fehlerzähler), Textfelder (`current_status`, `meter_datetime`, …) sowie

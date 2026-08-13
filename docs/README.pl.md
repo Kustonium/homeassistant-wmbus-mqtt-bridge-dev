@@ -289,9 +289,10 @@ Poza tym most publikuje konfigurację Discovery dla **każdego** pola zwróconeg
 przez driver i dzieli je według tego, co mierzą:
 
 - pole, które Home Assistant potrafi sklasyfikować (zgadujemy `device_class`)
-  albo które ma jednostkę zużycia — m³, GJ, MJ, kWh, Wh, l, w tym objętość na
-  liczniku ciepła, dla której HA nie ma klasy — zostaje zwykłym sensorem
-  pomiarowym, włączonym;
+  albo które ma jednostkę zużycia — m³, GJ, MJ, kWh, Wh, l, hca, kVARh, kVAh,
+  czyli także wielkości, dla których HA nie ma klasy: objętość na liczniku
+  ciepła, energia cieplna w GJ/MJ, jednostki podzielnika kosztów oraz energia
+  bierna i pozorna — zostaje zwykłym sensorem pomiarowym, włączonym;
 - cała reszta zostaje encją **diagnostyczną** publikowaną jako **wyłączona**
   (`enabled_by_default: false`): liczby bez klasy (wiek odczytu, liczniki
   błędów), pola tekstowe (`current_status`, `meter_datetime`, …) oraz pola,

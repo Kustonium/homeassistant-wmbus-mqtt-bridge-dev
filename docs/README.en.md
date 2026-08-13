@@ -288,9 +288,10 @@ Beyond that, the bridge publishes a Discovery config for **every** field the
 driver exposes and splits them by what they measure:
 
 - a field Home Assistant can classify (a `device_class` is guessed) or one
-  carrying a consumption unit — m³, GJ, MJ, kWh, Wh, l, including heat volume,
-  for which HA has no device class — becomes an ordinary measurement sensor,
-  enabled;
+  carrying a consumption unit — m³, GJ, MJ, kWh, Wh, l, hca, kVARh, kVAh, that
+  is also the quantities HA has no class for: heat volume, heat energy in
+  GJ/MJ, heat cost allocator units and reactive/apparent energy — becomes an
+  ordinary measurement sensor, enabled;
 - everything else becomes a **diagnostic** sensor published as **disabled**
   (`enabled_by_default: false`): unclassified numbers such as record ages and
   error counters, text fields (`current_status`, `meter_datetime`, …) and

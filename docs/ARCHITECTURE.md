@@ -337,10 +337,12 @@ Every remaining field the driver publishes receives a Discovery sensor as well,
 split by what it measures rather than by its JSON type:
 
 - numeric fields that Home Assistant can classify (`guess_device_class` returns
-  a class) or that carry a consumption unit — `m³`, `GJ`, `MJ`, `kWh`, `Wh`,
-  `l`, the `is_consumption_unit` set, which also covers heat-meter volume where
-  the bridge deliberately leaves `device_class` empty — stay plain measurement
-  sensors;
+  a class) or that carry a consumption unit — the `is_consumption_unit` set:
+  `m³`, `GJ`, `MJ`, `kWh`, `Wh`, `l`, `hca`, `kVARh`, `kVAh`. It exists because
+  Home Assistant has no class for several billing quantities: heat-meter volume
+  (where the bridge deliberately leaves `device_class` empty), heat energy in
+  GJ/MJ, the allocation units of a heat cost allocator — `hca` is the entire
+  reading of an `fhkvdataiii`-style device — and reactive/apparent energy;
 - everything else is published with `entity_category: diagnostic` and
   `enabled_by_default: false`: unclassified numbers (record ages, error
   counters), string fields, and fields whose current value is `null`, which a

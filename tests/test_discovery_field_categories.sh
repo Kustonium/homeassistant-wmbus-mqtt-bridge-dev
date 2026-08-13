@@ -188,6 +188,25 @@ assert_measurement flow_temperature_c "°C"
 assert_diagnostic max_flow_m3h
 assert_diagnostic records_counter
 
+# --- heat cost allocator: hca is the billed reading and has no device_class --
+# Captured from a live fhkvdataiii telegram; before is_consumption_unit knew
+# "hca" the allocator published only its two temperatures as measurements and
+# filed its actual reading as a disabled diagnostic.
+run_telegram 32131245 '{"_":"telegram","current_date":"2026-02-15","current_hca":0,"id":"32131245","media":"heat cost allocator","meter":"fhkvdataiii","name":"TESTOWY_1245","previous_date":"2025-12-31","previous_hca":0,"temp_radiator_c":18.09,"temp_room_c":18.22,"timestamp":"2026-08-13T14:30:19Z"}'
+
+assert_measurement current_hca "hca"
+assert_measurement previous_hca "hca"
+assert_measurement temp_room_c "°C"
+assert_diagnostic current_date
+assert_diagnostic previous_date
+
+# --- electricity: reactive/apparent energy also carry no HA device_class -----
+run_telegram 88776655 '{"_":"telegram","total_energy_consumption_kwh":3861.107,"total_reactive_energy_consumption_kvarh":42.5,"current_power_consumption_kw":0.35,"id":"88776655","media":"electricity","meter":"amiplus","name":"Power_6655","timestamp":"2026-08-13T14:30:19Z"}'
+
+assert_measurement total_energy_consumption_kwh "kWh"
+assert_measurement total_reactive_energy_consumption_kvarh "kVARh"
+assert_measurement current_power_consumption_kw "kW"
+
 echo
 echo "Results: ${PASS} passed, ${FAIL} failed"
 [[ "${FAIL}" -eq 0 ]]
