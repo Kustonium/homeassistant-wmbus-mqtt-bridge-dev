@@ -15,23 +15,55 @@ RSSI_MAX_AGE_S=300
 inject_rssi_into_json() {
   local id="${1,,}" line="$2"
   [[ -s "${STATUS_RSSI_FILE}" ]] || { printf '%s' "${line}"; return 0; }
-  local row
-  row="$(awk -F'\t' -v id="${id}" '$1 == id {print; exit}' "${STATUS_RSSI_FILE}" 2>/dev/null || true)"
-  [[ -n "${row}" ]] || { printf '%s' "${line}"; return 0; }
-  local _rid dbm src ts now
-  IFS=$'\t' read -r _rid dbm src ts <<<"${row}"
-  [[ "${dbm}" =~ ^-[0-9]+$ && "${ts}" =~ ^[0-9]+$ ]] || { printf '%s' "${line}"; return 0; }
-  # Same range as the subscriber: a sentinel that slipped into the file (an
-  # older row, a hand-edited file) must not become a reading either.
-  (( dbm >= -125 && dbm <= -1 )) || { printf '%s' "${line}"; return 0; }
+  local _rid dbm src ts now src_key field result latest_dbm="" latest_src="" latest_ts=-1
   now="$(epoch_now)"
-  if (( now - ts > RSSI_MAX_AGE_S )); then
-    printf '%s' "${line}"
-    return 0
+  result="${line}"
+  while IFS=$'\t' read -r _rid dbm src ts; do
+    [[ "${dbm}" =~ ^-[0-9]+$ && "${ts}" =~ ^[0-9]+$ ]] || continue
+    # Same range as the subscriber: a sentinel that slipped into the file (an
+    # older row, a hand-edited file) must not become a reading either.
+    (( dbm >= -125 && dbm <= -1 )) || continue
+    (( now - ts <= RSSI_MAX_AGE_S )) || continue
+    # MQTT's `+` topic segment becomes a stable JSON/HA field suffix. Keep the
+    # board name recognizable while removing punctuation that cannot belong in
+    # a portable entity id (e.g. "xiao-seed" -> "xiao_seed").
+    src_key="$(printf '%s' "${src}" | tr '[:upper:]' '[:lower:]' \
+      | sed -e 's/[^a-z0-9_]/_/g' -e 's/__*/_/g' -e 's/^_*//' -e 's/_*$//')"
+    [[ -n "${src_key}" ]] || continue
+    field="rssi_${src_key}_dbm"
+    result="$(jq -c --arg k "${field}" --argjson r "${dbm}" '. + {($k): $r}' \
+      <<<"${result}" 2>/dev/null)" || { printf '%s' "${line}"; return 0; }
+    # Preserve the old generic fields for compatibility. The newest row wins;
+    # on equal one-second timestamps, the last-updated row is last in the file.
+    if (( ts >= latest_ts )); then
+      latest_ts="${ts}"
+      latest_dbm="${dbm}"
+      latest_src="${src}"
+    fi
+  done < <(awk -F'\t' -v id="${id}" '$1 == id {print}' "${STATUS_RSSI_FILE}" 2>/dev/null || true)
+
+  if [[ -n "${latest_dbm}" ]]; then
+    result="$(jq -c --argjson r "${latest_dbm}" --arg s "${latest_src}" \
+      '. + {rssi_dbm: $r, rssi_source: $s}' <<<"${result}" 2>/dev/null)" \
+      || { printf '%s' "${line}"; return 0; }
   fi
-  jq -c --argjson r "${dbm}" --arg s "${src}" \
-     '. + {rssi_dbm: $r, rssi_source: $s}' <<<"${line}" 2>/dev/null \
-    || printf '%s' "${line}"
+  printf '%s' "${result}"
+}
+
+# Atomic upsert keyed by meter id AND ESP device. Unlike the generic TSV helper,
+# this deliberately retains several rows with the same meter id so every board
+# can produce its own Home Assistant RSSI entity.
+_rssi_tsv_upsert() {
+  local file="$1" id="$2" src="$3" row="$4"
+  (
+    flock -x 9
+    local _tmp
+    _tmp="$(mktemp "${file}.tmp.XXXXXX")" || return 1
+    awk -F'\t' -v id="${id}" -v src="${src}" '$1 != id || $3 != src {print}' \
+      "${file}" 2>/dev/null > "${_tmp}" || true
+    printf '%s\n' "${row}" >> "${_tmp}"
+    mv "${_tmp}" "${file}" 2>/dev/null || { rm -f "${_tmp}"; true; }
+  ) 9>"${file}.lock"
 }
 
 start_esp_subscribers() {
@@ -151,7 +183,7 @@ STATUS_ESP_METERS_FILE="${BASE}/status_esp_meters.json"
       # again at join time.
       [[ "${_rssi_val}" =~ ^-[0-9]+$ ]] || continue
       (( _rssi_val >= -125 && _rssi_val <= -1 )) || continue
-      _tsv_upsert "${STATUS_RSSI_FILE}" "${_rssi_id}" \
+      _rssi_tsv_upsert "${STATUS_RSSI_FILE}" "${_rssi_id}" "${_rssi_dev}" \
         "$(printf '%s\t%s\t%s\t%s' "${_rssi_id}" "${_rssi_val}" "${_rssi_dev}" "$(epoch_now)")"
     done < <(
       ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" -t "wmbus/+/rssi/+" -F '%t\t%p' -W 90 2>/dev/null

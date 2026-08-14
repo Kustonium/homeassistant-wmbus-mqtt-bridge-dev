@@ -196,7 +196,8 @@ STATUS_RATE_1M_FILE="${BASE}/status_rate_1m.json"
 STATUS_RATE_HISTORY_FILE="${BASE}/status_rate_history.tsv"
 STATUS_BRIDGE_START_FILE="${BASE}/status_bridge_start.txt"
 # shellcheck disable=SC2034  # read by 13-esp.sh (sourced lib)
-# Last RSSI reported per meter id, one row "<id>\t<dbm>\t<source esp>\t<epoch>".
+# Last RSSI reported per meter id and ESP, one row per pair:
+# "<id>\t<dbm>\t<source esp>\t<epoch>".
 # Filled by an opt-in ESP publication (wmbus/<dev>/rssi/<meter_id>); absent
 # unless the firmware is configured to send it, which is the normal case.
 STATUS_RSSI_FILE="${BASE}/status_rssi.tsv"

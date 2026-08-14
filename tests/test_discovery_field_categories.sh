@@ -386,7 +386,40 @@ printf '%s\t%s\t%s\t%s\n' "21031894" "-78" "esphome-wmbus-lilygo" "$(epoch_now)"
 RSSI_JOINED="$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")"
 assert_json_field "fresh rssi" "${RSSI_JOINED}" rssi_dbm -78
 assert_json_field "fresh rssi" "${RSSI_JOINED}" rssi_source esphome-wmbus-lilygo
+assert_json_field "fresh rssi" "${RSSI_JOINED}" rssi_esphome_wmbus_lilygo_dbm -78
 assert_json_field "fresh rssi" "${RSSI_JOINED}" total_m3 10.5
+
+# Two ESPs hearing the same meter retain independent fields/entities. The
+# generic compatibility fields follow the newest (last, when timestamps tie)
+# source, matching the old last-writer-wins behavior.
+printf '%s\t%s\t%s\t%s\n' \
+  "21031894" "-78" "lilygo" "$(epoch_now)" \
+  "21031894" "-65" "xiao-seed" "$(epoch_now)" > "${STATUS_RSSI_FILE}"
+RSSI_MULTI="$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")"
+assert_json_field "multi ESP rssi" "${RSSI_MULTI}" rssi_lilygo_dbm -78
+assert_json_field "multi ESP rssi" "${RSSI_MULTI}" rssi_xiao_seed_dbm -65
+assert_json_field "multi ESP compatibility" "${RSSI_MULTI}" rssi_dbm -65
+assert_json_field "multi ESP compatibility" "${RSSI_MULTI}" rssi_source xiao-seed
+
+# The production cache upsert is keyed by meter + ESP: a new board must not
+# erase another board, while an update from the same board replaces only its
+# own row.
+rm -f "${STATUS_RSSI_FILE}"
+_rssi_tsv_upsert "${STATUS_RSSI_FILE}" "21031894" "lilygo" \
+  "$(printf '%s\t%s\t%s\t%s' "21031894" "-78" "lilygo" "$(epoch_now)")"
+_rssi_tsv_upsert "${STATUS_RSSI_FILE}" "21031894" "xiao-seed" \
+  "$(printf '%s\t%s\t%s\t%s' "21031894" "-65" "xiao-seed" "$(epoch_now)")"
+_rssi_tsv_upsert "${STATUS_RSSI_FILE}" "21031894" "lilygo" \
+  "$(printf '%s\t%s\t%s\t%s' "21031894" "-72" "lilygo" "$(epoch_now)")"
+RSSI_UPSERTED="$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")"
+assert_json_field "multi ESP cache upsert" "${RSSI_UPSERTED}" rssi_lilygo_dbm -72
+assert_json_field "multi ESP cache upsert" "${RSSI_UPSERTED}" rssi_xiao_seed_dbm -65
+RSSI_ROWS="$(awk -F'\t' '$1 == "21031894" {n++} END {print n+0}' "${STATUS_RSSI_FILE}")"
+if [[ "${RSSI_ROWS}" == "2" ]]; then
+  pass "multi ESP cache upsert: retained exactly two source rows"
+else
+  fail "multi ESP cache upsert: retained ${RSSI_ROWS} rows (expected 2)"
+fi
 
 # A row for a different meter must not leak onto this one.
 assert_json_field "other meter" "$(inject_rssi_into_json 03534159 "${TELEGRAM_RSSI}")" rssi_dbm missing
@@ -416,6 +449,9 @@ printf '%s\t%s\t%s\t%s\n' "21031894" "-78" "esphome-wmbus-lilygo" "$(epoch_now)"
 METER_EXCLUDE_FIELDS=()
 run_telegram 21031894 "$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")"
 assert_measurement rssi_dbm "dBm"
+run_telegram 21031894 "${RSSI_MULTI}"
+assert_measurement rssi_lilygo_dbm "dBm"
+assert_measurement rssi_xiao_seed_dbm "dBm"
 assert_no_entity rssi_source
 
 echo
