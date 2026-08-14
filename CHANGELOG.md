@@ -1,3 +1,16 @@
+## 1.5.46-dev.232
+
+### Added
+- edit exclude_fields from the WebUI meter modals (5f2c452)
+- use the add-on icon as the WebUI brand mark (5fba20d)
+- let a meter exclude fields from Home Assistant Discovery (5dd37b7)
+- add the add-on logo shown above the name (b040350)
+
+### Fixed
+- give the logo mark clearance inside the panel (df84b0e)
+- fit the logo wordmark to the height the frontend allows (e5cd306)
+- size the logo for how the add-on page renders it (d05dd2b)
+
 ## 1.5.46-dev.230
 
 ### Added
