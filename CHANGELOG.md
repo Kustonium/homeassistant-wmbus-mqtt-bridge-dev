@@ -1,3 +1,11 @@
+## 1.5.47-dev.240
+
+### Added
+- join opt-in per-meter RSSI onto the decoded telegram (08177ee)
+
+### Fixed
+- reject the firmware's "no data" sentinels as RSSI readings (3e28fa1)
+
 ## 1.5.47-dev.239
 
 ### Added
