@@ -1,3 +1,11 @@
+## 1.5.47-dev.241
+
+### Fixed
+- reject the firmware's "no data" sentinels as RSSI readings (3e28fa1)
+
+### Other (review)
+- Add per-ESP RSSI entities (e48dd3e)
+
 ## 1.5.47-dev.240
 
 ### Added
