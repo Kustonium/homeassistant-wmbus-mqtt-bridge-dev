@@ -1,3 +1,9 @@
+## 1.5.47-dev.242
+
+### Other (review)
+- Document per-ESP RSSI entities (298f8cf)
+- Add per-ESP RSSI entities (e48dd3e)
+
 ## 1.5.47-dev.241
 
 ### Fixed
