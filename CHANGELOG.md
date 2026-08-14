@@ -1,3 +1,11 @@
+## 1.5.46-dev.236
+
+### Added
+- expose the driver's field description as an entity attribute (d12b909)
+
+### Fixed
+- parse the field catalog without a GNU sed extension (8decf21)
+
 ## 1.5.46-dev.235
 
 ### Added
