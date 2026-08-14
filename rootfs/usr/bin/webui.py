@@ -762,6 +762,52 @@ def update_options_for_search(expected: str, tolerance: str, enabled: bool = Tru
 
 
 
+# Field catalog per driver, from `wmbusmeters --listfields=<driver>`. The output
+# is one field per line: the name right-aligned in a column, two spaces, then the
+# description written by the driver author. The decoder binary is pinned by the
+# Dockerfile, so a driver's catalog cannot change while the container runs and a
+# process-lifetime cache is enough.
+DRIVER_FIELDS_CACHE: dict[str, list[dict]] = {}
+
+
+def driver_fields(driver: str) -> tuple[bool, list[dict], str]:
+    """Return (ok, [{"name":…, "description":…}], error) for one driver."""
+    driver = (driver or "").strip()
+    if not re.match(r"^[A-Za-z0-9_]+$", driver):
+        return False, [], f"Invalid driver: {driver}"
+    if driver in DRIVER_FIELDS_CACHE:
+        return True, DRIVER_FIELDS_CACHE[driver], ""
+    try:
+        proc = subprocess.run(
+            [WMBUSMETERS_BIN, f"--listfields={driver}"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except FileNotFoundError:
+        return False, [], "wmbusmeters binary not available"
+    except subprocess.TimeoutExpired:
+        return False, [], "wmbusmeters --listfields timed out"
+    fields: list[dict] = []
+    for line in (proc.stdout or "").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # Name and description are separated by a run of spaces; a description
+        # may contain single spaces, so split on the first double space only.
+        parts = re.split(r"\s{2,}", stripped, maxsplit=1)
+        name = parts[0].strip()
+        if not name:
+            continue
+        fields.append({
+            "name": name,
+            "description": parts[1].strip() if len(parts) > 1 else "",
+        })
+    if not fields:
+        # An unknown driver prints nothing useful; do not cache that.
+        return False, [], (proc.stderr or "").strip() or f"No fields reported for driver {driver}"
+    DRIVER_FIELDS_CACHE[driver] = fields
+    return True, fields, ""
+
+
 # Glob patterns for exclude_fields. Field names are [a-z0-9_], the pattern
 # syntax adds * and ?, and the separators are commas/spaces. Anything else is
 # rejected rather than stored: the value ends up word-split in bridge.sh, and a
@@ -2612,7 +2658,7 @@ class Handler(BaseHTTPRequestHandler):
             '/api/search-control', '/api/restart-bridge', '/api/reload-pipeline',
             '/api/preview-candidate', '/api/cancel-preview',
             '/api/ignore', '/api/unignore', '/api/factory-reset',
-            '/api/compare-driver', '/api/save-config',
+            '/api/compare-driver', '/api/save-config', '/api/driver-fields',
         )
         if any(path.endswith(suffix) for suffix in api_suffixes):
             return path
@@ -2876,6 +2922,12 @@ class Handler(BaseHTTPRequestHandler):
             meter_id = (params.get('meter_id') or [''])[0].strip()
             ok, payload = candidate_issue_report(meter_id)
             self._send_json(200 if ok else 404, payload)
+            return
+        if path.endswith('/api/driver-fields'):
+            driver = (params.get('driver') or [''])[0].strip()
+            ok, fields, err = driver_fields(driver)
+            self._send_json(200 if ok else 400,
+                            {"ok": ok, "driver": driver, "fields": fields, "message": err})
             return
         if path.endswith('/healthz'):
             self._send(200, b'ok\n', 'text/plain; charset=utf-8')

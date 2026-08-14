@@ -21,6 +21,19 @@
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
 ### Added
+- the meter modals list every field the driver can report, with the description
+  wmbusmeters ships for it, and a checkbox per field. The catalog comes from
+  `wmbusmeters --listfields=<driver>` through a new `api/driver-fields` endpoint,
+  cached per driver for the life of the process because the decoder binary is
+  pinned. It covers fields the meter has not sent yet, which the entity list
+  cannot: entities exist only once a telegram carried the field.
+
+  Unchecking a field adds its name to `exclude_fields`; a field already covered by
+  a hand-written pattern is greyed out with its checkbox disabled, so the table
+  never rewrites a pattern someone typed. Templated names such as
+  `total_volume_subunit{subunit_counter}_m3` contribute the equivalent glob
+  (`total_volume_subunit*_m3`) — the braces are a placeholder for a repeated
+  field, not a literal name, and the backend validator rejects them.
 - the add-on icon is now the WebUI brand mark. The sidebar drew a green square with
   the letters `WB`, a placeholder from before the project had artwork. `icon.png` is
   copied into the WebUI assets by the `Dockerfile` rather than duplicated under
