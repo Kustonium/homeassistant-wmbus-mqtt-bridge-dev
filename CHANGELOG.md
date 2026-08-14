@@ -1,3 +1,9 @@
+## 1.5.46-dev.233
+
+### Added
+- pick fields to publish from the driver's own field catalog (44dc591)
+- edit exclude_fields from the WebUI meter modals (5f2c452)
+
 ## 1.5.46-dev.232
 
 ### Added
