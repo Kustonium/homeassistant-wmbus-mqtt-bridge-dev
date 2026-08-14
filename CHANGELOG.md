@@ -1,3 +1,11 @@
+## 1.5.46-dev.235
+
+### Added
+- expose the driver's field description as an entity attribute (d12b909)
+
+### Fixed
+- drop exclude_fields entries another entry already covers (bb3adef)
+
 ## 1.5.46-dev.234
 
 ### Added
