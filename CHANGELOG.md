@@ -8,6 +8,12 @@
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
 ### Added
+- the add-on icon is now the WebUI brand mark. The sidebar drew a green square with
+  the letters `WB`, a placeholder from before the project had artwork. `icon.png` is
+  copied into the WebUI assets by the `Dockerfile` rather than duplicated under
+  `rootfs/`, so the tile in the add-on store and the mark in the panel stay the same
+  file. If the asset cannot be loaded the `WB` square comes back, so an older
+  container shows a brand mark instead of a broken image.
 - per-meter `exclude_fields`: glob patterns for decoded fields that should get no
   Home Assistant entity, comma- or space-separated (e.g.
   `consumption_at_history_*, history_*_date`). Empty publishes every field, which is

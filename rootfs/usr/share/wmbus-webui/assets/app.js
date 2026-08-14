@@ -900,7 +900,8 @@
       <div class="app-shell">
         <aside class="sidebar">
           <div class="brand">
-            <div class="brand-mark">WB</div>
+            <img class="brand-mark" src="assets/icon.png" alt="" aria-hidden="true"
+                 onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'brand-mark brand-mark-text',textContent:'WB'}))">
             <div>
               <div class="brand-title">wMBus MQTT Bridge</div>
               <div class="brand-sub">v${escapeHtml(meta.version || "dev")} ${dev}</div>
