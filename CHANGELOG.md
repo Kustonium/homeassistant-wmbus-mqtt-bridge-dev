@@ -1,3 +1,8 @@
+## 1.5.47-dev.238
+
+### Added
+- toggle a field's entity from the METERS field panel (9f43e9a)
+
 ## 1.5.47-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
