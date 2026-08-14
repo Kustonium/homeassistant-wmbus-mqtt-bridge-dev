@@ -1,3 +1,11 @@
+## 1.5.46-dev.234
+
+### Added
+- pick fields to publish from the driver's own field catalog (44dc591)
+
+### Fixed
+- drop exclude_fields entries another entry already covers (bb3adef)
+
 ## 1.5.46-dev.233
 
 ### Added
