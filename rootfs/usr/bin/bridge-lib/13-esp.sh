@@ -1,6 +1,36 @@
 #!/usr/bin/env bash
 # ESP diagnostic and per-device background subscriber helpers.
 
+# A stored RSSI older than this is ignored rather than attached to a fresh
+# telegram. Normally the row is written moments before the frame it belongs to
+# arrives, so the window is generous; it exists for the case where the firmware
+# stops publishing RSSI while still forwarding telegrams, which would otherwise
+# pin one value to a meter forever.
+RSSI_MAX_AGE_S=300
+
+# Join the last reported RSSI onto a decoded telegram, by meter id. Prints the
+# line unchanged when there is nothing to add, so callers can use it inline.
+# rssi_source travels with the value because two ESPs can hear the same meter;
+# the number then alternates between boards and this is what explains it.
+inject_rssi_into_json() {
+  local id="${1,,}" line="$2"
+  [[ -s "${STATUS_RSSI_FILE}" ]] || { printf '%s' "${line}"; return 0; }
+  local row
+  row="$(awk -F'\t' -v id="${id}" '$1 == id {print; exit}' "${STATUS_RSSI_FILE}" 2>/dev/null || true)"
+  [[ -n "${row}" ]] || { printf '%s' "${line}"; return 0; }
+  local _rid dbm src ts now
+  IFS=$'\t' read -r _rid dbm src ts <<<"${row}"
+  [[ "${dbm}" =~ ^-?[0-9]+(\.[0-9]+)?$ && "${ts}" =~ ^[0-9]+$ ]] || { printf '%s' "${line}"; return 0; }
+  now="$(epoch_now)"
+  if (( now - ts > RSSI_MAX_AGE_S )); then
+    printf '%s' "${line}"
+    return 0
+  fi
+  jq -c --argjson r "${dbm}" --arg s "${src}" \
+     '. + {rssi_dbm: $r, rssi_source: $s}' <<<"${line}" 2>/dev/null \
+    || printf '%s' "${line}"
+}
+
 start_esp_subscribers() {
 # Track background subscriber PIDs so the soft-reload watcher in bridge.sh can
 # exclude them from its kill — these subscribers must survive pipeline restarts
@@ -89,6 +119,39 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 # the user can spot an ESP-vs-add-on mismatch. Empty target/highlight (the common
 # listen-only case) simply yields no badges.
 STATUS_ESP_METERS_FILE="${BASE}/status_esp_meters.json"
+
+# Background subscriber for per-meter RSSI (wmbus/<dev>/rssi/<meter_id>).
+# OPT-IN on the firmware side: the ESP publishes this topic only when its YAML
+# enables it, so on a default install nothing ever arrives here and the file
+# below simply never appears. The decoder cannot supply RSSI itself — the
+# telegram topic carries bare hex, so wmbusmeters has nothing to report — which
+# is why the value has to travel out of band and be joined back by meter id.
+# The id comes from the topic rather than the payload because the ESP already
+# parses it for its whitelist; no correlation against the frame is needed.
+(
+  while true; do
+    _rssi_t0="$(epoch_now)"
+    while IFS=$'\t' read -r _rssi_topic _rssi_val; do
+      [[ -n "${_rssi_val}" ]] || continue
+      # Topic tail after ".../rssi/" is the meter id.
+      _rssi_id="${_rssi_topic##*/rssi/}"
+      [[ "${_rssi_id}" =~ ^[0-9A-Fa-f]{8}$ ]] || continue
+      _rssi_id="$(normalize_meter_id "${_rssi_id}")"
+      # Device = topic segment between "wmbus/" and "/rssi/".
+      _rssi_dev="${_rssi_topic#wmbus/}"
+      _rssi_dev="${_rssi_dev%%/rssi/*}"
+      # Accept a bare number only; anything else is a misconfigured publisher.
+      [[ "${_rssi_val}" =~ ^-?[0-9]+(\.[0-9]+)?$ ]] || continue
+      _tsv_upsert "${STATUS_RSSI_FILE}" "${_rssi_id}" \
+        "$(printf '%s\t%s\t%s\t%s' "${_rssi_id}" "${_rssi_val}" "${_rssi_dev}" "$(epoch_now)")"
+    done < <(
+      ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" -t "wmbus/+/rssi/+" -F '%t\t%p' -W 90 2>/dev/null
+    )
+    _sub_reconnect_sleep "${_rssi_t0}"
+  done
+) &
+ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
+
 (
   while true; do
     _sub_t0="$(epoch_now)"

@@ -356,6 +356,59 @@ else
   fail "a published config is not valid JSON"
 fi
 
+# --- opt-in per-meter RSSI joined onto the telegram ---------------------------
+# inject_rssi_into_json lives at file scope in 13-esp.sh on purpose: defined
+# inside start_esp_subscribers() it would only exist after that function ran,
+# an invisible ordering dependency. Sourcing the library here proves it is
+# callable without starting any subscriber.
+# shellcheck source=/dev/null
+source "${LIB_DIR}/13-esp.sh"
+STATUS_RSSI_FILE="${WORK_DIR}/status_rssi.tsv"
+TELEGRAM_RSSI='{"_":"telegram","total_m3":10.5,"id":"21031894","media":"water","meter":"evo868","name":"M","timestamp":"2026-08-14T14:30:19Z"}'
+
+assert_json_field() {
+  local label="$1" json="$2" key="$3" expect="$4"
+  local got
+  got="$(jq -r --arg k "${key}" 'if has($k) then (.[$k]|tostring) else "missing" end' <<<"${json}" 2>/dev/null || echo parse_error)"
+  if [[ "${got}" == "${expect}" ]]; then
+    pass "${label}: ${key}=${got}"
+  else
+    fail "${label}: ${key}=${got} (expected ${expect})"
+  fi
+}
+
+# No file at all — the normal install, where the firmware never publishes RSSI.
+rm -f "${STATUS_RSSI_FILE}"
+assert_json_field "no rssi file" "$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")" rssi_dbm missing
+
+# Fresh row: value and its source are both joined in.
+printf '%s\t%s\t%s\t%s\n' "21031894" "-78" "esphome-wmbus-lilygo" "$(epoch_now)" > "${STATUS_RSSI_FILE}"
+RSSI_JOINED="$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")"
+assert_json_field "fresh rssi" "${RSSI_JOINED}" rssi_dbm -78
+assert_json_field "fresh rssi" "${RSSI_JOINED}" rssi_source esphome-wmbus-lilygo
+assert_json_field "fresh rssi" "${RSSI_JOINED}" total_m3 10.5
+
+# A row for a different meter must not leak onto this one.
+assert_json_field "other meter" "$(inject_rssi_into_json 03534159 "${TELEGRAM_RSSI}")" rssi_dbm missing
+
+# Stale row: the firmware stopped publishing while still forwarding telegrams.
+printf '%s\t%s\t%s\t%s\n' "21031894" "-78" "esphome-wmbus-lilygo" "$(( $(epoch_now) - RSSI_MAX_AGE_S - 1 ))" > "${STATUS_RSSI_FILE}"
+assert_json_field "stale rssi" "$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")" rssi_dbm missing
+
+# Garbage from a misconfigured publisher must never reach the payload.
+printf '%s\t%s\t%s\t%s\n' "21031894" "not-a-number" "dev" "$(epoch_now)" > "${STATUS_RSSI_FILE}"
+assert_json_field "malformed rssi" "$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")" rssi_dbm missing
+
+# End to end: the joined field goes through the ordinary Discovery path —
+# rssi_dbm gets an entity (dBm implies signal_strength), rssi_source does not,
+# because provenance belongs in the attributes rather than in its own sensor.
+printf '%s\t%s\t%s\t%s\n' "21031894" "-78" "esphome-wmbus-lilygo" "$(epoch_now)" > "${STATUS_RSSI_FILE}"
+# shellcheck disable=SC2034
+METER_EXCLUDE_FIELDS=()
+run_telegram 21031894 "$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")"
+assert_measurement rssi_dbm "dBm"
+assert_no_entity rssi_source
+
 echo
 echo "Results: ${PASS} passed, ${FAIL} failed"
 [[ "${FAIL}" -eq 0 ]]

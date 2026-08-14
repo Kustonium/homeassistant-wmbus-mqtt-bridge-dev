@@ -73,6 +73,26 @@
   description — through the parser and the glob lookup.
 
 ### Added
+- per-meter RSSI, when the receiver offers it. The decoder cannot produce it: the ESP
+  publishes bare hex on the telegram topic, so `wmbusmeters` reading `stdin:hex` has no
+  signal level to report — contrary to what I wrote on the forum, it was never in the
+  state JSON either. The bridge now subscribes to `wmbus/+/rssi/<meter_id>`, keeps the
+  last value per meter and joins it onto the decoded telegram as `rssi_dbm` before
+  Discovery and the state publish, so the ordinary field machinery turns it into a
+  sensor with no special case. The meter id comes from the topic because the firmware
+  already parses it for its whitelist; nothing is correlated against frame contents.
+
+  `rssi_source` (the ESP that reported it) rides along in the attributes but gets no
+  entity of its own — two receivers can hear the same meter, and the value alternating
+  between boards should be explainable rather than look like a fault. A value older
+  than `RSSI_MAX_AGE_S` (300 s) is ignored instead of being pinned to a meter forever,
+  which is what would happen if the firmware stopped publishing while still forwarding.
+
+  Nothing changes on an existing install: the publishing side is opt-in firmware
+  configuration that does not exist yet, so the topic is simply never there. Note the
+  number describes only frames that arrived and decoded — a meter at the edge of range
+  can report a better RSSI than a stable neighbour, because its weak frames never made
+  it. Reception statistics remain the honest signal for "is this meter still alive".
 - checkboxes in the METERS field panel. Expanding a meter's **Fields** already showed
   the last telegram's fields with their values; each row that can become an entity
   now has a checkbox next to it, so the field is switched off where its value is
