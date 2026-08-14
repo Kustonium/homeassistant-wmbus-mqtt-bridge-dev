@@ -68,6 +68,19 @@
   description — through the parser and the glob lookup.
 
 ### Added
+- checkboxes in the METERS field panel. Expanding a meter's **Fields** already showed
+  the last telegram's fields with their values; each row that can become an entity
+  now has a checkbox next to it, so the field is switched off where its value is
+  visible rather than in a dialog. Unchecking writes the field name into that
+  meter's `exclude_fields` and reloads the pipeline, the same path the modal uses.
+
+  Rows for the meter's identity (`id`, `name`, `meter`, `media`, `timestamp`,
+  `rssi`, `lqi`) show a dash instead of a checkbox: the bridge never turns them
+  into entities, and a control there would promise something it cannot do. A field
+  already covered by a pattern is dimmed and its checkbox disabled, so a click can
+  never rewrite a hand-written glob. The driver sent with the update is taken from
+  the saved options entry rather than the table row — a row without a driver would
+  otherwise rewrite the meter to `auto`.
 - entities carry the driver's description of their field as a `Description`
   attribute. `wmbusmeters --listfields=<driver>` prints one line per field with the
   text its author wrote; the bridge loads that catalog once per driver — the

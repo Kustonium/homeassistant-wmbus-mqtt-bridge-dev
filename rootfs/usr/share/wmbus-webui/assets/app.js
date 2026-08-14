@@ -1757,9 +1757,19 @@
     `;
   }
 
+  // Keys the bridge never turns into an entity — they identify the meter or the
+  // reception rather than measuring anything. Mirrors the exclusion list in
+  // rootfs/usr/bin/bridge-lib/09-discovery.sh; a checkbox next to them would
+  // promise control that does not exist.
+  const METADATA_FIELDS = new Set(["_", "id", "name", "meter", "media", "timestamp", "device_date_time", "rssi", "lqi"]);
+
   function meterFieldsRow(row, colspan) {
     let fields = null;
     try { fields = JSON.parse(row.last_json || ""); } catch (e) { fields = null; }
+    const meterId = normalizeMeterId(row.id || row.meter_id || "");
+    const savedMeter = ((state.data && state.data.options && state.data.options.meters) || [])
+      .find(m => m && normalizeMeterId(m.meter_id) === meterId);
+    const excludeText = (savedMeter && savedMeter.exclude_fields) || "";
     let inner;
     if (!fields || typeof fields !== "object") {
       inner = `<span style="color:#607a88;">${escapeHtml(t("published_fields_none", "No decoded telegram this session yet."))}</span>`;
@@ -1770,19 +1780,34 @@
       inner = `
         <table style="width:auto;min-width:50%;">
           <thead><tr>
+            <th>${escapeHtml(t("published_fields_publish", "Publish"))}</th>
             <th>${escapeHtml(t("published_fields_field", "Field"))}</th>
             <th>${escapeHtml(t("webui_value", "Value"))}</th>
           </tr></thead>
           <tbody>
             ${entries.map(([k, v]) => {
               const unit = typeof v === "number" ? unitFromKey(k) : "";
-              return `<tr>
+              const meta = METADATA_FIELDS.has(k);
+              const kind = meta ? "" : fieldExclusionKind(k, excludeText);
+              const byGlob = kind === "glob";
+              let cell;
+              if (meta) {
+                cell = `<span style="color:#4a6070;" title="${escapeHtml(t("published_fields_meta_hint", "Meter identity — always in the attributes, never its own entity."))}">—</span>`;
+              } else {
+                cell = `<input type="checkbox" ${kind === "" ? "checked" : ""} ${byGlob ? "disabled" : ""}
+                  data-action="toggle-meter-field" data-id="${escapeHtml(meterId)}"
+                  data-name="${escapeHtml(k)}" data-driver="${escapeHtml(row.driver || "auto")}"
+                  ${byGlob ? `title="${escapeHtml(t("driver_fields_by_pattern", "(excluded by a pattern)"))}"` : ""}>`;
+              }
+              return `<tr${byGlob ? ' style="opacity:0.55;"' : ""}>
+                <td style="text-align:center;">${cell}</td>
                 <td class="mono" style="font-size:11px;">${escapeHtml(k)}</td>
                 <td class="mono" style="font-size:11px;">${escapeHtml(String(v))}${unit ? ` <span style="color:#607a88;">${escapeHtml(unit)}</span>` : ""}</td>
               </tr>`;
             }).join("")}
           </tbody>
-        </table>`;
+        </table>
+        <div style="font-size:10px;color:#4a6070;margin-top:4px;">${escapeHtml(t("published_fields_toggle_hint", "Unchecking removes the entity and its recorded history. Rows dimmed by a pattern are changed in the meter's Driver… dialog."))}</div>`;
     }
     return `
       <tr><td colspan="${colspan}" style="background:#0b141b;border-top:1px solid #1d2f3c;padding:10px 14px;">
@@ -3388,6 +3413,36 @@
     if (action === "doctor-force-discovery") {
       state.doctorModal = null;
       triggerSoftReload(t("doctor_rediscover_started", "Re-discovery started — configs republish with the next telegrams."));
+      return;
+    }
+
+    if (action === "toggle-meter-field") {
+      const id = target.dataset.id || "";
+      const fieldName = target.dataset.name || "";
+      const driver = target.dataset.driver || "auto";
+      if (!id || !fieldName) return;
+      const saved = ((state.data && state.data.options && state.data.options.meters) || [])
+        .find(m => m && normalizeMeterId(m.meter_id) === normalizeMeterId(id));
+      const next = toggleExcludedName((saved && saved.exclude_fields) || "", fieldName);
+      // update-meter overwrites the driver with whatever it receives, so take it
+      // from the saved options entry rather than from the table row: a row
+      // without a driver would otherwise silently rewrite the meter to "auto".
+      const savedDriver = saved
+        ? (saved.type === "other" && saved.type_other ? saved.type_other : saved.type)
+        : "";
+      const effectiveDriver = savedDriver || driver;
+      // Disable while the round trip is in flight: the row repaints on every
+      // live render, and a second click would compute from a stale value.
+      target.disabled = true;
+      (async () => {
+        try {
+          await postApi("update-meter", {meter_id: id, driver: effectiveDriver, exclude_fields: next});
+          triggerSoftReload(`${t("fields_saved", "Field selection saved.")} ${t("reloading_pipeline", "Applying meter changes…")}`);
+        } catch (error) {
+          toast(error.message, true);
+          render();
+        }
+      })();
       return;
     }
 
