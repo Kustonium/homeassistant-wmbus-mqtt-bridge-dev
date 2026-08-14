@@ -1,3 +1,9 @@
+## 1.5.47-dev.239
+
+### Added
+- join opt-in per-meter RSSI onto the decoded telegram (08177ee)
+- toggle a field's entity from the METERS field panel (9f43e9a)
+
 ## 1.5.47-dev.238
 
 ### Added
