@@ -40,6 +40,14 @@
   `total_volume_subunit{subunit_counter}_m3` contribute the equivalent glob
   (`total_volume_subunit*_m3`) — the braces are a placeholder for a repeated
   field, not a literal name, and the backend validator rejects them.
+
+  Saving also drops entries another entry already covers: a plain field name is
+  redundant next to a glob that matches it, and mixing the two is the normal
+  outcome of clicking rows while a pattern is typed in the box. Keeping both is
+  not merely untidy — the name outlives the glob, so removing `history_*_date`
+  would leave `history_reference_date` excluded on its own and the click would
+  look ignored. Globs are never dropped, not even by wider globs: losing a
+  pattern someone wrote by hand is worse than storing a redundant one.
 - the add-on icon is now the WebUI brand mark. The sidebar drew a green square with
   the letters `WB`, a placeholder from before the project had artwork. `icon.png` is
   copied into the WebUI assets by the `Dockerfile` rather than duplicated under

@@ -11,6 +11,7 @@ Interactive Home Assistant add-on dashboard:
 """
 from __future__ import annotations
 
+import fnmatch
 import html
 import json
 import mimetypes
@@ -816,14 +817,37 @@ EXCLUDE_FIELDS_RE = re.compile(r"^[A-Za-z0-9_*?,.\- ]*$")
 
 
 def _clean_exclude_fields(value: str) -> tuple[bool, str, str]:
-    """Return (ok, cleaned, error). Empty means "publish every field"."""
-    cleaned = " ".join((value or "").replace(",", " ").split())
+    """Return (ok, cleaned, error). Empty means "publish every field".
+
+    Besides normalising separators, this drops entries that another entry
+    already covers: a plain field name is redundant next to a glob that matches
+    it. The field table writes exact names while a human writes globs, so the
+    two mix easily — and a name kept beside its glob is not just noise, it
+    outlives the glob. Removing `history_*_date` would otherwise leave
+    `history_reference_date` excluded on its own, which reads as the UI
+    ignoring the click. Globs are never dropped, including by wider globs:
+    losing a pattern someone typed is worse than keeping a redundant one.
+    """
+    tokens = (value or "").replace(",", " ").split()
+    cleaned = " ".join(tokens)
     if not EXCLUDE_FIELDS_RE.match(cleaned):
         return False, "", (
             "Invalid exclude_fields — allowed: letters, digits, _ . - * ? "
             "separated by commas or spaces."
         )
-    return True, cleaned, ""
+    globs = [t for t in tokens if "*" in t or "?" in t]
+    kept: list[str] = []
+    seen: set[str] = set()
+    for token in tokens:
+        low = token.lower()
+        if low in seen:
+            continue
+        is_glob = "*" in token or "?" in token
+        if not is_glob and any(fnmatch.fnmatchcase(low, g.lower()) for g in globs):
+            continue
+        seen.add(low)
+        kept.append(token)
+    return True, " ".join(kept), ""
 
 
 def add_meter_to_options(meter_id: str, driver: str, key: str, meter_name: str = "",
