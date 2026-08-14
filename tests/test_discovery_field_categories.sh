@@ -395,6 +395,15 @@ assert_json_field "other meter" "$(inject_rssi_into_json 03534159 "${TELEGRAM_RS
 printf '%s\t%s\t%s\t%s\n' "21031894" "-78" "esphome-wmbus-lilygo" "$(( $(epoch_now) - RSSI_MAX_AGE_S - 1 ))" > "${STATUS_RSSI_FILE}"
 assert_json_field "stale rssi" "$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")" rssi_dbm missing
 
+# The firmware marks "no valid sample" with different sentinels per topic
+# (1 in health, 0 in the window topics, -127 = RSSI_NOT_MEASURED in the driver).
+# None of them may ever be joined on as if it were a reading.
+for sentinel in 1 0 -127 -126; do
+  printf '%s	%s	%s	%s
+' "21031894" "${sentinel}" "dev" "$(epoch_now)" > "${STATUS_RSSI_FILE}"
+  assert_json_field "sentinel ${sentinel}" "$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")" rssi_dbm missing
+done
+
 # Garbage from a misconfigured publisher must never reach the payload.
 printf '%s\t%s\t%s\t%s\n' "21031894" "not-a-number" "dev" "$(epoch_now)" > "${STATUS_RSSI_FILE}"
 assert_json_field "malformed rssi" "$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")" rssi_dbm missing

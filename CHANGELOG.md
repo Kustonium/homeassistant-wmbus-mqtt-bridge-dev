@@ -94,6 +94,13 @@
   than `RSSI_MAX_AGE_S` (300 s) is ignored instead of being pinned to a meter forever,
   which is what would happen if the firmware stopped publishing while still forwarding.
 
+  Only a plausible measured level is accepted: an integer in -125..-1, matching the
+  firmware's own `RSSI_MIN_VALID` / `RSSI_NOT_MEASURED`. The ESP marks "no valid
+  sample" with a different sentinel per topic (`1` in health, `0` in the window
+  topics, `-127` in the driver), and publishing one of those as a reading would be
+  worse than publishing nothing. The range is enforced both when the value is stored
+  and when it is joined.
+
   Nothing changes on an existing install: the publishing side is opt-in firmware
   configuration that does not exist yet, so the topic is simply never there. Note the
   number describes only frames that arrived and decoded — a meter at the edge of range

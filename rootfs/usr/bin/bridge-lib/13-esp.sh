@@ -20,7 +20,10 @@ inject_rssi_into_json() {
   [[ -n "${row}" ]] || { printf '%s' "${line}"; return 0; }
   local _rid dbm src ts now
   IFS=$'\t' read -r _rid dbm src ts <<<"${row}"
-  [[ "${dbm}" =~ ^-?[0-9]+(\.[0-9]+)?$ && "${ts}" =~ ^[0-9]+$ ]] || { printf '%s' "${line}"; return 0; }
+  [[ "${dbm}" =~ ^-[0-9]+$ && "${ts}" =~ ^[0-9]+$ ]] || { printf '%s' "${line}"; return 0; }
+  # Same range as the subscriber: a sentinel that slipped into the file (an
+  # older row, a hand-edited file) must not become a reading either.
+  (( dbm >= -125 && dbm <= -1 )) || { printf '%s' "${line}"; return 0; }
   now="$(epoch_now)"
   if (( now - ts > RSSI_MAX_AGE_S )); then
     printf '%s' "${line}"
@@ -140,8 +143,14 @@ STATUS_ESP_METERS_FILE="${BASE}/status_esp_meters.json"
       # Device = topic segment between "wmbus/" and "/rssi/".
       _rssi_dev="${_rssi_topic#wmbus/}"
       _rssi_dev="${_rssi_dev%%/rssi/*}"
-      # Accept a bare number only; anything else is a misconfigured publisher.
-      [[ "${_rssi_val}" =~ ^-?[0-9]+(\.[0-9]+)?$ ]] || continue
+      # Accept only a plausible measured level. The firmware uses distinct
+      # "no data" sentinels per topic (1 in health, 0 in the window topics,
+      # -127 = RSSI_NOT_MEASURED in the driver), and its own consumers treat
+      # anything <= -126 as unmeasured. Publishing a sentinel as a reading would
+      # be worse than publishing nothing, so the range is enforced here and
+      # again at join time.
+      [[ "${_rssi_val}" =~ ^-[0-9]+$ ]] || continue
+      (( _rssi_val >= -125 && _rssi_val <= -1 )) || continue
       _tsv_upsert "${STATUS_RSSI_FILE}" "${_rssi_id}" \
         "$(printf '%s\t%s\t%s\t%s' "${_rssi_id}" "${_rssi_val}" "${_rssi_dev}" "$(epoch_now)")"
     done < <(
