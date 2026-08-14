@@ -2858,6 +2858,15 @@
       clearEditCompareDom();
     }
   };
+  // exclude_fields lives in state for the same reason the AES key does: a live
+  // SSE render rebuilds the modal DOM, and an input that only existed in the
+  // DOM would lose what the user is typing.
+  window.__modalExcludeSet = function (value) {
+    if (state.modal) state.modal.excludeFields = String(value == null ? "" : value);
+  };
+  window.__editModalExcludeSet = function (value) {
+    if (state.editModal) state.editModal.excludeFields = String(value == null ? "" : value);
+  };
 
   function renderEditDriverModal() {
     const em = state.editModal || {};
@@ -2893,6 +2902,11 @@
               <span id="edit-aes-key-count" style="font-size:11px;font-weight:700;min-width:40px;text-align:right;color:${cntColor};">${escapeHtml(cnt)}</span>
             </div>`;
             })()}
+            <label for="edit-meter-exclude-fields" style="margin-top:8px;">${escapeHtml(t("exclude_fields_label", "Fields to skip"))}</label>
+            <input id="edit-meter-exclude-fields" autocomplete="off" value="${escapeHtml(em.excludeFields || "")}"
+              placeholder="${escapeHtml(t("exclude_fields_placeholder", "e.g. consumption_at_history_*, history_*_date"))}"
+              oninput="window.__editModalExcludeSet(this.value)">
+            <div style="font-size:10px;color:#4a6070;margin-top:3px;">${escapeHtml(t("exclude_fields_hint", "Patterns for fields that get no Home Assistant entity. * matches any text; separate with commas. Removing a field also deletes its existing entity and its history."))}</div>
             <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
               <button id="edit-driver-compare" class="btn" type="button" data-action="compare-driver" data-id="${escapeHtml(em.id || "")}"${editKeyPartial ? " disabled" : ""}>${escapeHtml(t("compare_btn", "Compare"))}</button>
               <span style="font-size:11px;color:#9eafba;">${escapeHtml(t("compare_hint", "Choose a driver above, enter the AES key if needed, then compare. Left column = saved/auto driver; right column = selected driver."))}</span>
@@ -3049,6 +3063,17 @@
                   </div>
                   <div style="font-size:10px;color:#4a6070;margin-top:3px;">${escapeHtml(t("no_aes_key_note", 'key: "" = no key'))} · zero-key: <span class="mono">0000…0000</span></div>
                   ${modal.aesRequired ? `<div style="font-size:11px;color:#f3c84b;margin-top:6px;">🔐 ${escapeHtml(t("add_aes_warning", "This candidate is encrypted — without the 32-hex AES key it will NOT decode (this is not a bug). You can add it now and enter the key later via the Driver… button. Ask your building manager, the utility company or the meter installer for the key."))}</div>` : ""}
+                </div>
+                <div class="field">
+                  <label for="meter-exclude-fields">
+                    ${escapeHtml(t("exclude_fields_label", "Fields to skip"))}
+                    <span style="font-size:10px;color:#607a88;font-weight:400;margin-left:6px;">${escapeHtml(t("exclude_fields_hint_short", "optional — leave empty to publish everything"))}</span>
+                  </label>
+                  <input id="meter-exclude-fields" name="exclude_fields" autocomplete="off"
+                    value="${escapeHtml(modal.excludeFields || "")}"
+                    placeholder="${escapeHtml(t("exclude_fields_placeholder", "e.g. consumption_at_history_*, history_*_date"))}"
+                    oninput="window.__modalExcludeSet(this.value)">
+                  <div style="font-size:10px;color:#4a6070;margin-top:3px;">${escapeHtml(t("exclude_fields_hint", "Patterns for fields that get no Home Assistant entity. * matches any text; separate with commas. Removing a field also deletes its existing entity and its history."))}</div>
                 </div>
                 <div class="field">
                   <div style="display:flex;gap:8px;align-items:center;">
@@ -3245,7 +3270,15 @@
     if (action === "open-edit-driver") {
       const id = target.dataset.id || "";
       if (!id) return;
-      state.editModal = {id, driver: target.dataset.driver || "auto"};
+      // Prefill the pattern from the saved options entry — the whole options
+      // payload is already in state, so no extra request is needed.
+      const savedMeter = ((state.data && state.data.options && state.data.options.meters) || [])
+        .find(m => m && normalizeMeterId(m.meter_id) === normalizeMeterId(id));
+      state.editModal = {
+        id,
+        driver: target.dataset.driver || "auto",
+        excludeFields: (savedMeter && savedMeter.exclude_fields) || "",
+      };
       if (state.drivers === null) {
         fetch("assets/drivers.json", {cache: "no-store"})
           .then(r => (r.ok ? r.json() : []))
@@ -3338,7 +3371,12 @@
       // leaves the modal (the backend would reject it anyway).
       if (key && key.length !== 32) return;
       try {
-        await postApi("update-meter", key ? {meter_id: id, driver, key} : {meter_id: id, driver});
+        // exclude_fields is always sent, empty included — that is how the
+        // pattern gets cleared. The key is only sent when set, because an
+        // empty key means "keep the configured one".
+        const updatePayload = {meter_id: id, driver, exclude_fields: String(em.excludeFields || "").trim()};
+        if (key) updatePayload.key = key;
+        await postApi("update-meter", updatePayload);
         state.editModal = null;
         triggerSoftReload(`${t("driver_changed_msg", "Driver changed.")} ${t("reloading_pipeline", "Applying meter changes…")}`);
       } catch (error) {

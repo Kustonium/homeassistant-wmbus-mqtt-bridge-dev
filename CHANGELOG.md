@@ -29,7 +29,10 @@
   lingering until they expire — with the consequence that the entity's recorder
   history goes with it. The patterns are rebuilt by `refresh_meter_files()`, which
   is also the soft-reload path, so editing a meter takes effect without restarting
-  the container.
+  the container. The patterns are entered in the WebUI, in the **Add meter** modal
+  and in **Driver…** for a meter that already exists, so the option lives next to
+  the meters it applies to; the add-on Configuration tab still works but needs a
+  restart, because Supervisor only writes `options.json` on add-on start.
 - add-on logo (`logo.png`, 1482x160). Home Assistant draws `logo.png` at the top of
   the add-on page, above the name — with the file missing, the page showed the name
   alone while add-ons like InfluxDB show their wordmark. Supervisor reads it from the

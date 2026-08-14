@@ -762,7 +762,26 @@ def update_options_for_search(expected: str, tolerance: str, enabled: bool = Tru
 
 
 
-def add_meter_to_options(meter_id: str, driver: str, key: str, meter_name: str = "") -> tuple[bool, str]:
+# Glob patterns for exclude_fields. Field names are [a-z0-9_], the pattern
+# syntax adds * and ?, and the separators are commas/spaces. Anything else is
+# rejected rather than stored: the value ends up word-split in bridge.sh, and a
+# tidy charset keeps options.json readable and the matcher predictable.
+EXCLUDE_FIELDS_RE = re.compile(r"^[A-Za-z0-9_*?,.\- ]*$")
+
+
+def _clean_exclude_fields(value: str) -> tuple[bool, str, str]:
+    """Return (ok, cleaned, error). Empty means "publish every field"."""
+    cleaned = " ".join((value or "").replace(",", " ").split())
+    if not EXCLUDE_FIELDS_RE.match(cleaned):
+        return False, "", (
+            "Invalid exclude_fields — allowed: letters, digits, _ . - * ? "
+            "separated by commas or spaces."
+        )
+    return True, cleaned, ""
+
+
+def add_meter_to_options(meter_id: str, driver: str, key: str, meter_name: str = "",
+                         exclude_fields: str = "") -> tuple[bool, str]:
     """Add a meter entry to addon options via HA Supervisor API.
 
     Writing directly to /data/options.json does NOT persist across restarts —
@@ -816,6 +835,8 @@ def add_meter_to_options(meter_id: str, driver: str, key: str, meter_name: str =
         "type_other": "",
         "key": key,
     }
+    if exclude_fields:
+        entry["exclude_fields"] = exclude_fields
     meters.append(entry)
     options["meters"] = meters
 
@@ -993,7 +1014,8 @@ def remove_meter_from_options(meter_id: str) -> tuple[bool, str]:
     return True, msg
 
 
-def update_meter_in_options(meter_id: str, driver: str, key: str | None = None) -> tuple[bool, str]:
+def update_meter_in_options(meter_id: str, driver: str, key: str | None = None,
+                            exclude_fields: str | None = None) -> tuple[bool, str]:
     """Change the driver (and optionally the AES key) of an existing meter.
 
     Same Supervisor-first persistence as add/remove_meter_from_options. The
@@ -1036,6 +1058,14 @@ def update_meter_in_options(meter_id: str, driver: str, key: str | None = None) 
     entry["type_other"] = ""
     if key:
         entry["key"] = key
+    # None means the caller did not touch the field; an empty string is an
+    # explicit "publish every field again", so the key is dropped rather than
+    # stored empty.
+    if exclude_fields is not None:
+        if exclude_fields:
+            entry["exclude_fields"] = exclude_fields
+        else:
+            entry.pop("exclude_fields", None)
     options["meters"] = meters
 
     token = os.environ.get("SUPERVISOR_TOKEN", "")
@@ -2613,7 +2643,16 @@ class Handler(BaseHTTPRequestHandler):
             driver = (params.get('driver') or [''])[0].strip()
             # Empty/absent key keeps the currently configured key.
             key = (params.get('key') or [''])[0].strip()
-            ok, msg = update_meter_in_options(meter_id, driver, key or None)
+            # Absent parameter = leave the pattern alone (older front-end);
+            # present but empty = clear it.
+            if 'exclude_fields' in params:
+                ok_ex, exclude_fields, err = _clean_exclude_fields((params.get('exclude_fields') or [''])[0])
+                if not ok_ex:
+                    self._send_json(400, {"ok": False, "message": err})
+                    return
+            else:
+                exclude_fields = None
+            ok, msg = update_meter_in_options(meter_id, driver, key or None, exclude_fields)
             self._send_json(200 if ok else 400, {"ok": ok, "message": msg})
             return
         if path.endswith('/api/factory-reset'):
@@ -2702,11 +2741,16 @@ class Handler(BaseHTTPRequestHandler):
             driver = (params.get('driver') or ['auto'])[0].strip()
             key = (params.get('key') or [''])[0].strip()
             meter_name = (params.get('meter_name') or [''])[0].strip()
+            ok_ex, exclude_fields, err = _clean_exclude_fields((params.get('exclude_fields') or [''])[0])
+            if not ok_ex:
+                self._send_json(400, {"ok": False, "message": err})
+                return
             # NB: add_meter_to_options already emits the appropriate
             # webui_add_event (ok / warn / error) with the most accurate
             # context — re-logging here would double-stamp status_events.tsv
             # in the same second.
-            ok, msg = add_meter_to_options(meter_id, driver, key, meter_name=meter_name)
+            ok, msg = add_meter_to_options(meter_id, driver, key, meter_name=meter_name,
+                                           exclude_fields=exclude_fields)
             # When a previewed candidate is added permanently, drop the
             # preview meter file so the LISTEN instance doesn't keep
             # decoding the same telegrams that DECODE now handles.

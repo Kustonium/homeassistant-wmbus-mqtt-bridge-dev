@@ -556,6 +556,10 @@ I18N: dict[str, dict[str, str]] = {
         "webui_topic": "Topic",
         "webui_summary": "Summary",
         "key_hint_short": "32 hex chars, or leave empty",
+        "exclude_fields_label": "Fields to skip",
+        "exclude_fields_hint_short": "optional — leave empty to publish everything",
+        "exclude_fields_placeholder": "e.g. consumption_at_history_*, history_*_date",
+        "exclude_fields_hint": "Patterns for fields that get no Home Assistant entity. * matches any text; separate with commas. Skipping a field also deletes its existing entity and its history.",
     },
     "pl": {
         "nav_dashboard": "PANEL",
@@ -1094,6 +1098,10 @@ I18N: dict[str, dict[str, str]] = {
         "webui_topic": "Temat",
         "webui_summary": "Podsumowanie",
         "key_hint_short": "32 znaki hex, lub zostaw puste",
+        "exclude_fields_label": "Pola do pominięcia",
+        "exclude_fields_hint_short": "opcjonalne — puste publikuje wszystko",
+        "exclude_fields_placeholder": "np. consumption_at_history_*, history_*_date",
+        "exclude_fields_hint": "Wzorce pól, które nie dostaną encji w Home Assistant. * zastępuje dowolny tekst; oddzielaj przecinkami. Pominięcie pola kasuje też istniejącą encję razem z jej historią.",
     },
     "de": {
         "nav_dashboard": "DASHBOARD",
@@ -1626,6 +1634,10 @@ I18N: dict[str, dict[str, str]] = {
         "webui_topic": "Thema",
         "webui_summary": "Zusammenfassung",
         "key_hint_short": "32 Hex-Zeichen oder leer lassen",
+        "exclude_fields_label": "Felder überspringen",
+        "exclude_fields_hint_short": "optional — leer veröffentlicht alles",
+        "exclude_fields_placeholder": "z. B. consumption_at_history_*, history_*_date",
+        "exclude_fields_hint": "Muster für Felder, die keine Home-Assistant-Entität bekommen. * steht für beliebigen Text; mit Kommas trennen. Ein übersprungenes Feld löscht auch die vorhandene Entität samt Verlauf.",
     },
     "cs": {
         "nav_dashboard": "PANEL",
@@ -2158,6 +2170,10 @@ I18N: dict[str, dict[str, str]] = {
         "webui_topic": "Téma",
         "webui_summary": "Souhrn",
         "key_hint_short": "32 hex znaků nebo ponechte prázdné",
+        "exclude_fields_label": "Pole k vynechání",
+        "exclude_fields_hint_short": "volitelné — prázdné publikuje vše",
+        "exclude_fields_placeholder": "např. consumption_at_history_*, history_*_date",
+        "exclude_fields_hint": "Vzory polí, která nedostanou entitu v Home Assistantu. * nahrazuje libovolný text; oddělujte čárkami. Vynechané pole smaže i stávající entitu včetně historie.",
     },
     "sk": {
         "nav_dashboard": "PANEL",
@@ -2690,6 +2706,10 @@ I18N: dict[str, dict[str, str]] = {
         "webui_topic": "Téma",
         "webui_summary": "Súhrn",
         "key_hint_short": "32 hex znakov alebo nechajte prázdne",
+        "exclude_fields_label": "Polia na vynechanie",
+        "exclude_fields_hint_short": "voliteľné — prázdne publikuje všetko",
+        "exclude_fields_placeholder": "napr. consumption_at_history_*, history_*_date",
+        "exclude_fields_hint": "Vzory polí, ktoré nedostanú entitu v Home Assistante. * nahrádza ľubovoľný text; oddeľujte čiarkami. Vynechané pole zmaže aj existujúcu entitu vrátane histórie.",
     },
 }
 
