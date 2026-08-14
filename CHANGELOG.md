@@ -42,6 +42,19 @@
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
+### Fixed
+- the `Description` attribute never appeared. The catalog parser split
+  `--listfields` output with `sed -E 's/[[:space:]]{2,}/	/'`, which relies on GNU
+  sed turning `	` in the replacement into a tab. The add-on image is Alpine and
+  ships busybox sed, so the field names parsed into nonsense, nothing matched, and
+  every entity silently kept the plain pass-through. Parsing is now done with bash
+  parameter expansion, which depends on no sed dialect at all. The gap was in the
+  tests as much as in the code: they injected `FIELD_CATALOG` directly and never
+  ran `load_field_catalog`, so the only untested step was the one that broke. A
+  case now feeds a stub reproducing the real column layout — padded names,
+  descriptions with single spaces, a templated name and a field with no
+  description — through the parser and the glob lookup.
+
 ### Added
 - entities carry the driver's description of their field as a `Description`
   attribute. `wmbusmeters --listfields=<driver>` prints one line per field with the

@@ -105,6 +105,9 @@ guess_device_class() {
 declare -A FIELD_CATALOG
 declare -A FIELD_CATALOG_LOADED
 declare -A FIELD_DESCRIPTION_CACHE
+# Overridable so the test suite can point the catalog loader at a stub and
+# exercise the parser without the decoder binary.
+WMBUSMETERS_BIN="${WMBUSMETERS_BIN:-/usr/bin/wmbusmeters}"
 
 load_field_catalog() {
   local driver="${1,,}"
@@ -113,19 +116,29 @@ load_field_catalog() {
   [[ -z "${FIELD_CATALOG_LOADED[${driver}]+x}" ]] || return 0
   FIELD_CATALOG_LOADED["${driver}"]=1
 
-  local name desc
-  # --listfields prints "<name><2+ spaces><description>"; the sed turns the first
-  # such run into a tab so read can split on it. Descriptions contain single
-  # spaces, so splitting on any whitespace would truncate them.
-  while IFS=$'\t' read -r name desc; do
+  local line name desc
+  # --listfields prints "<padding><name><2+ spaces><description>". The split is
+  # done with bash parameter expansion rather than sed: the add-on image is
+  # Alpine and ships busybox sed, which does not turn a "\t" in the replacement
+  # into a tab the way GNU sed does. Descriptions contain single spaces, so
+  # splitting on any whitespace would truncate them.
+  while IFS= read -r line; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    [[ -n "${line}" ]] || continue
+    name="${line%%  *}"
+    if [[ "${name}" == "${line}" ]]; then
+      desc=""
+    else
+      desc="${line#"${name}"}"
+      desc="${desc#"${desc%%[![:space:]]*}"}"
+    fi
     [[ -n "${name}" ]] || continue
     # Quotes and backslashes would land inside a Jinja string literal in the
     # Discovery payload; drop them rather than escape through two layers.
     desc="${desc//\"/}"
     desc="${desc//\\/}"
     FIELD_CATALOG["${driver}|${name}"]="${desc}"
-  done < <(timeout 10 /usr/bin/wmbusmeters "--listfields=${driver}" 2>/dev/null \
-           | sed -E 's/^[[:space:]]+//; s/[[:space:]]{2,}/\t/' || true)
+  done < <(timeout 10 "${WMBUSMETERS_BIN}" "--listfields=${driver}" 2>/dev/null || true)
 }
 
 # Description for one decoded field, or empty. Memoised per driver+field so the

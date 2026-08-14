@@ -264,6 +264,51 @@ else
   fail "no exclude_fields: status sensor was altered"
 fi
 
+# --- the catalog parser itself, against real --listfields output -------------
+# Injecting FIELD_CATALOG (as the block below does) skips load_field_catalog,
+# and that is exactly where a bug hid once: the parser used GNU sed's "\t"
+# replacement, which busybox sed in the Alpine add-on image does not perform.
+# This case runs the parser over a stub that reproduces the real column layout,
+# padding and all.
+STUB_BIN="${WORK_DIR}/wmbusmeters"
+cat > "${STUB_BIN}" <<'STUB'
+#!/usr/bin/env bash
+cat <<'OUT'
+                                                  id  The meter id number.
+                                            total_m3  The total media volume consumption recorded by this meter.
+                         max_flow_since_datetime_m3h  Maximum water flow since date time.
+consumption_at_history_{storage_counter-7counter}_m3  The total water consumption at the historic date.
+                                         va_counter
+OUT
+STUB
+chmod +x "${STUB_BIN}"
+# shellcheck disable=SC2034
+WMBUSMETERS_BIN="${STUB_BIN}"
+load_field_catalog "stubdriver"
+
+assert_catalog() {
+  local key="$1" expect="$2"
+  local got="${FIELD_CATALOG[stubdriver|${key}]-<missing>}"
+  if [[ "${got}" == "${expect}" ]]; then
+    pass "catalog: ${key} parsed"
+  else
+    fail "catalog: ${key} -> '${got}' (expected '${expect}')"
+  fi
+}
+
+assert_catalog "total_m3" "The total media volume consumption recorded by this meter."
+assert_catalog "max_flow_since_datetime_m3h" "Maximum water flow since date time."
+assert_catalog "consumption_at_history_{storage_counter-7counter}_m3" "The total water consumption at the historic date."
+# A field with no description must still land in the catalog, with empty text.
+assert_catalog "va_counter" ""
+
+# And the glob lookup has to resolve a concrete field through the templated key.
+if [[ "$(field_description "stubdriver" "consumption_at_history_7_m3")" == "The total water consumption at the historic date." ]]; then
+  pass "catalog: templated entry matches a concrete field name"
+else
+  fail "catalog: templated entry did not match consumption_at_history_7_m3"
+fi
+
 # --- field descriptions become an entity attribute ---------------------------
 # FIELD_CATALOG is normally filled by load_field_catalog() from
 # `wmbusmeters --listfields`; the test fills it directly, which is the same
