@@ -35,6 +35,13 @@ command -v jq >/dev/null 2>&1 || {
   exit 1
 }
 
+# The jq build shipped for Windows terminates every line with CRLF, so a field
+# name read by the code under test arrives as "history_1_date\r" and an
+# end-anchored glob such as history_*_date stops matching. The container's jq
+# emits LF, so this is a harness concern only — strip it here rather than
+# loosening the production matcher for an artefact it never sees.
+jq() { command jq "$@" | tr -d '\r'; }
+
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "${WORK_DIR}"' EXIT
 CAPTURE="${WORK_DIR}/published.tsv"
@@ -136,6 +143,22 @@ assert_no_entity() {
   fi
 }
 
+# An excluded field must be actively removed: the topic is published with an
+# empty retained payload (the MQTT Discovery removal protocol) and never with a
+# config body.
+assert_excluded() {
+  local field="$1" domain="${2:-sensor}"
+  local topic="homeassistant/${domain}/wmbus_${METER_ID}/${field}/config"
+  local total empty
+  total="$(awk -F'\t' -v t="${topic}" '$1 == t' "${CAPTURE}" | wc -l | tr -d ' ')"
+  empty="$(awk -F'\t' -v t="${topic}" '$1 == t && $2 == ""' "${CAPTURE}" | wc -l | tr -d ' ')"
+  if [[ "${total}" -ge 1 && "${total}" == "${empty}" ]]; then
+    pass "${field}: excluded, config cleared (${total} empty publish)"
+  else
+    fail "${field}: expected only empty payloads, got ${total} publishes of which ${empty} empty"
+  fi
+}
+
 # --- apatorna1: text status fields, historic readings, dedicated "status" ----
 run_telegram 04913581 '{"_":"telegram","current_status":"OK","frame_status":"SUMMER_TIME","historic_age_h":304,"historic_datetime":"2026-07-31 22:08","historic_m3":1785.804,"historic_status":"MINIMUM_FLOW","id":"04913581","media":"water","meter":"apatorna1","meter_datetime":"2026-08-13 14:08","name":"Cold_Water_3581","status":"OK","timestamp":"2026-08-13T13:22:13Z","total_m3":1798.2}'
 
@@ -206,6 +229,40 @@ run_telegram 88776655 '{"_":"telegram","total_energy_consumption_kwh":3861.107,"
 assert_measurement total_energy_consumption_kwh "kWh"
 assert_measurement total_reactive_energy_consumption_kvarh "kVARh"
 assert_measurement current_power_consumption_kw "kW"
+
+# --- per-meter exclude_fields: glob patterns suppress and remove entities ----
+# METER_EXCLUDE_FIELDS is declared by 08-discovery-helpers.sh and filled by
+# refresh_meter_files() from options.json; the test fills it directly, which is
+# the same contract.
+METER_EXCLUDE_FIELDS["21031894"]="consumption_at_history_* history_*_date STATUS"
+
+run_telegram 21031894 '{"_":"telegram","total_m3":118.2,"consumption_at_history_1_m3":9.1,"consumption_at_history_2_m3":8.4,"history_1_date":"2026-07-31","history_2_date":"2026-06-30","current_status":"OK","status":"OK","max_flow_since_datetime_m3h":1.2,"id":"21031894","media":"water","meter":"evo868","name":"TESTOWY_1894","timestamp":"2026-08-13T14:30:19Z"}'
+
+assert_measurement total_m3 "m³"
+assert_excluded consumption_at_history_1_m3
+assert_excluded consumption_at_history_2_m3
+assert_excluded history_1_date
+assert_excluded history_2_date
+# "status" owns a sensor plus a problem binary_sensor; excluding it must take
+# both, and the pattern was written upper-case to prove matching ignores case.
+assert_excluded status
+assert_excluded status_problem binary_sensor
+# Fields outside the patterns keep their normal treatment.
+assert_diagnostic current_status
+assert_diagnostic max_flow_since_datetime_m3h
+
+# --- no patterns configured: nothing is cleared (guards the default path) ----
+# shellcheck disable=SC2034
+METER_EXCLUDE_FIELDS=()
+run_telegram 03314055 '{"_":"telegram","total_m3":29.9,"target_m3":28.0,"status":"OK","id":"03314055","media":"water","meter":"mkradio4","name":"TESTOWY_4055","timestamp":"2026-08-13T14:30:19Z"}'
+
+assert_measurement total_m3 "m³"
+assert_measurement target_m3 "m³"
+if [[ "$(field_prop "$(payload_for status)" enabled_by_default)" == "missing" ]]; then
+  pass "no exclude_fields: status keeps its dedicated sensor"
+else
+  fail "no exclude_fields: status sensor was altered"
+fi
 
 echo
 echo "Results: ${PASS} passed, ${FAIL} failed"

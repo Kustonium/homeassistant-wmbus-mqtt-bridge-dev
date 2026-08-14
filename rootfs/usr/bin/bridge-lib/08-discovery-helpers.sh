@@ -96,6 +96,33 @@ guess_device_class() {
   esac
 }
 
+# Per-meter Discovery field filter, keyed by lowercase meter id; the value is a
+# whitespace-separated list of glob patterns. Declared here, beside the function
+# that reads it, rather than in 07-meters.sh where refresh_meter_files() fills
+# it: an undeclared associative array makes bash evaluate the subscript as
+# arithmetic, and a meter id with a leading zero then aborts the lookup with
+# "value too great for base". Declaring it next to its consumer removes the
+# dependency on library sourcing order.
+declare -A METER_EXCLUDE_FIELDS
+
+# Has this meter's configuration excluded this field from Discovery?
+# METER_EXCLUDE_FIELDS holds whitespace-separated glob patterns per lowercase
+# meter id (filled by refresh_meter_files). Matching is case-insensitive and
+# uses shell globs, so one pattern covers a whole family of fields — the case
+# this exists for is a driver like evo868, which reports twelve monthly history
+# readings plus twelve matching dates on every telegram.
+field_excluded_for_meter() {
+  local id="${1,,}" key="${2,,}" patterns pat
+  patterns="${METER_EXCLUDE_FIELDS[${id}]:-}"
+  [[ -n "${patterns}" ]] || return 1
+  for pat in ${patterns}; do
+    # Unquoted on purpose: this is a glob match, not a string comparison.
+    # shellcheck disable=SC2053
+    [[ "${key}" == ${pat,,} ]] && return 0
+  done
+  return 1
+}
+
 # Does this unit measure the quantity the meter bills for (volume, energy,
 # allocation units)? Used to decide whether a field is a primary measurement or
 # a diagnostic: device_class alone is not enough, because Home Assistant has no

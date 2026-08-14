@@ -88,6 +88,22 @@ emit_discovery_from_json() {
     obj="$(sanitize_obj_id "${key}")"
     [[ -n "${obj}" ]] || continue
 
+    # Field excluded by this meter's configuration. Clearing the retained config
+    # once (rather than only skipping the publish) is what makes the option act
+    # on entities that already exist: an empty retained payload is the MQTT
+    # Discovery removal protocol, so Home Assistant drops the entity instead of
+    # leaving it behind to expire.
+    if field_excluded_for_meter "${id}" "${key}"; then
+      cache_key="${id}|${obj}|excluded"
+      if [[ -z "${DISCOVERY_SENT_FIELD[${cache_key}]+x}" ]]; then
+        if mqtt_pub "${DISCOVERY_PREFIX}/sensor/${uniq}/${obj}/config" "" "true"; then
+          DISCOVERY_SENT_FIELD["${cache_key}"]=1
+          log "discovery: field ${key} excluded for id=${id} (config cleared)"
+        fi
+      fi
+      continue
+    fi
+
     key_lc="$(echo "${key}" | tr '[:upper:]' '[:lower:]')"
     if [[ "${ftype}" == "number" ]]; then
       unit="$(guess_unit "${key}")"
@@ -187,7 +203,9 @@ emit_discovery_from_json() {
   # (device_class problem) that is ON for any non-OK value. Passthrough only --
   # the text shown is exactly what wmbusmeters emits; the only literal is the
   # OK baseline (wmbusmeters' default_message for the error-flags lookup).
-  if [[ "$(jq -r 'has("status")' <<<"${json_line}" 2>/dev/null || echo false)" == "true" ]]; then
+  local has_status
+  has_status="$(jq -r 'has("status")' <<<"${json_line}" 2>/dev/null || echo false)"
+  if [[ "${has_status}" == "true" ]] && ! field_excluded_for_meter "${id}" "status"; then
     local st_cache st_cfg st_payload bp_cache bp_cfg bp_payload
 
     st_cache="${id}|status|${expire_after}"
@@ -271,6 +289,17 @@ emit_discovery_from_json() {
       else
         warn "discovery: failed to publish status problem binary_sensor for id=${id} (will retry on next telegram)"
       fi
+    fi
+  elif [[ "${has_status}" == "true" ]]; then
+    # Excluding "status" has to take both entities of the dedicated pair with
+    # it, otherwise the problem binary_sensor would survive the text sensor it
+    # reports on.
+    local st_excl_cache="${id}|status|excluded"
+    if [[ -z "${DISCOVERY_SENT_FIELD[${st_excl_cache}]+x}" ]]; then
+      mqtt_pub "${DISCOVERY_PREFIX}/sensor/${uniq}/status/config" "" "true" || true
+      mqtt_pub "${DISCOVERY_PREFIX}/binary_sensor/${uniq}/status_problem/config" "" "true" || true
+      DISCOVERY_SENT_FIELD["${st_excl_cache}"]=1
+      log "discovery: field status excluded for id=${id} (sensor and problem binary_sensor cleared)"
     fi
   fi
 }

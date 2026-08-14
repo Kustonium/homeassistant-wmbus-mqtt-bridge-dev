@@ -360,6 +360,27 @@ already enabled and never re-enables one they disabled; `entity_category` is
 re-applied on every config update, so fields created by an older version move
 into the device's Diagnostics section.
 
+A meter entry may narrow what Discovery publishes at all. `exclude_fields` holds
+glob patterns, comma- or space-separated; a decoded field whose name matches any
+of them gets no entity. `refresh_meter_files()` rebuilds the patterns into
+`METER_EXCLUDE_FIELDS` from `options.json`, and because that function is also
+the soft-reload path, editing a meter takes effect without restarting the
+container. Excluding `status` removes both entities of its dedicated pair — the
+text sensor and the problem binary sensor — since a problem flag without the
+status it reports on is worse than neither.
+
+The option exists for drivers that report a whole ledger on every telegram:
+`evo868` sends twelve monthly history readings plus twelve matching dates, so a
+single pattern replaces twenty-four entities per meter. An excluded field is not
+merely skipped — the bridge publishes an empty retained config for it once, the
+MQTT Discovery removal protocol, so entities created before the pattern was
+added disappear instead of lingering until they expire.
+
+Removal is the part to think about before using it: the entity leaves Home
+Assistant together with its recorder history, and re-adding the field later
+brings the entity back with whatever enabled state it had, for the reason
+described next.
+
 Deleting the device in Home Assistant does not reset that state, which is worth
 knowing before drawing conclusions from a "clean" test. Home Assistant keeps
 removed entities in a graveyard and restores them when the same `unique_id`

@@ -8,6 +8,22 @@
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
 ### Added
+- per-meter `exclude_fields`: glob patterns for decoded fields that should get no
+  Home Assistant entity, comma- or space-separated (e.g.
+  `consumption_at_history_*, history_*_date`). Empty publishes every field, which is
+  what every earlier version did, so an upgrade changes nothing on its own. Prompted
+  by a forum observation on the 1.5.45 behaviour: publishing every driver field is
+  right for most meters, but a driver like `evo868` reports twelve monthly history
+  readings plus twelve matching dates on every telegram, and a household with a
+  dozen such meters drowns in entities. One pattern now replaces twenty-four of
+  them. Excluding `status` also removes its problem `binary_sensor`, since a problem
+  flag without the status it reports on is worse than neither. An excluded field is
+  removed rather than merely skipped: the bridge publishes an empty retained config
+  for it once, so entities created before the pattern was added disappear instead of
+  lingering until they expire — with the consequence that the entity's recorder
+  history goes with it. The patterns are rebuilt by `refresh_meter_files()`, which
+  is also the soft-reload path, so editing a meter takes effect without restarting
+  the container.
 - add-on logo (`logo.png`, 1482x160). Home Assistant draws `logo.png` at the top of
   the add-on page, above the name — with the file missing, the page showed the name
   alone while add-ons like InfluxDB show their wordmark. Supervisor reads it from the

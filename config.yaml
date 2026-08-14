@@ -89,3 +89,8 @@ schema:
       type: str
       type_other: str?
       key: str?
+      # Glob patterns for decoded fields that should get no Home Assistant
+      # entity, separated by commas or spaces (e.g.
+      # "consumption_at_history_*, history_*_date"). Empty publishes every
+      # field, which is the behaviour of every version before this option.
+      exclude_fields: str?
