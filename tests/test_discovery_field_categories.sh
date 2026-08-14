@@ -264,6 +264,53 @@ else
   fail "no exclude_fields: status sensor was altered"
 fi
 
+# --- field descriptions become an entity attribute ---------------------------
+# FIELD_CATALOG is normally filled by load_field_catalog() from
+# `wmbusmeters --listfields`; the test fills it directly, which is the same
+# contract and keeps the suite independent of the decoder binary. The catalog
+# uses templated names for repeated fields, so one entry must cover
+# consumption_at_history_1_m3 as well as _2_m3.
+# shellcheck disable=SC2034
+{
+  FIELD_CATALOG["evo868|total_m3"]="The total media volume consumption recorded by this meter."
+  FIELD_CATALOG["evo868|consumption_at_history_{storage_counter-7counter}_m3"]="The total water consumption at the historic date."
+  FIELD_CATALOG_LOADED["evo868"]=1
+}
+
+run_telegram 21031894 '{"_":"telegram","total_m3":118.2,"consumption_at_history_1_m3":9.1,"set_date":"2026-01-31","id":"21031894","media":"water","meter":"evo868","name":"TESTOWY_1894","timestamp":"2026-08-14T14:30:19Z"}'
+
+assert_attr_description() {
+  local field="$1" expect="$2"
+  local payload tpl
+  payload="$(payload_for "${field}")"
+  tpl="$(field_prop "${payload}" json_attributes_template)"
+  if [[ "${tpl}" == *"Description=\"${expect}\""* && "${tpl}" == *"dict(value_json"* ]]; then
+    pass "${field}: description merged into the attributes template"
+  else
+    fail "${field}: unexpected json_attributes_template: ${tpl}"
+  fi
+}
+
+assert_attr_description total_m3 "The total media volume consumption recorded by this meter."
+# Templated catalog entry has to match the concrete field name.
+assert_attr_description consumption_at_history_1_m3 "The total water consumption at the historic date."
+
+# A field the catalog does not describe keeps the plain pass-through, so the
+# whole telegram still reaches the entity attributes.
+if [[ "$(field_prop "$(payload_for set_date)" json_attributes_template)" == "missing" ]]; then
+  pass "set_date: no description, attributes pass through unchanged"
+else
+  fail "set_date: got a json_attributes_template without a description"
+fi
+
+# Every published config must stay valid JSON — the description is embedded in a
+# Jinja string literal inside it.
+if awk -F'\t' '$2 != "" {print $2}' "${CAPTURE}" | jq -e . >/dev/null 2>&1; then
+  pass "all published configs are valid JSON"
+else
+  fail "a published config is not valid JSON"
+fi
+
 echo
 echo "Results: ${PASS} passed, ${FAIL} failed"
 [[ "${FAIL}" -eq 0 ]]

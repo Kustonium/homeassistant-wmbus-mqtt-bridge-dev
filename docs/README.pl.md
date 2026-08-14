@@ -303,6 +303,10 @@ przez driver i dzieli je według tego, co mierzą:
 Encji nie dostaje wyłącznie tożsamość licznika (`id`, `name`, `meter`, `media`,
 `timestamp`, `rssi`, `lqi`) — jest już w nazwie urządzenia i w atrybutach encji.
 
+Każda encja niesie też atrybut `Description` — opis pola napisany przez autora
+drivera, pobrany z `wmbusmeters --listfields`. Stoi obok pól zdekodowanego
+telegramu w atrybutach encji, więc nic z tego, co było wcześniej, nie ginie.
+
 Home Assistant czyta `enabled_by_default` tylko przy pierwszym dodaniu encji,
 więc aktualizacja nigdy nie wyłącza tego, co już masz. `entity_category` jest
 natomiast stosowana przy każdej aktualizacji konfiguracji, więc pola liczbowe

@@ -308,6 +308,11 @@ Keine Entität erhält nur die Identität des Zählers (`id`, `name`, `meter`,
 `media`, `timestamp`, `rssi`, `lqi`) — sie steckt bereits im Gerätenamen und in
 den Entitätsattributen.
 
+Jede Entität trägt zusätzlich das Attribut `Description` — den Text, den der
+Treiberautor für dieses Feld geschrieben hat, aus `wmbusmeters --listfields`. Er
+steht neben den dekodierten Telegrammfeldern in den Attributen, es geht also
+nichts verloren, was vorher da war.
+
 Home Assistant wertet `enabled_by_default` nur beim erstmaligen Anlegen einer
 Entität aus, ein Update deaktiviert also nie etwas Bestehendes.
 `entity_category` wird dagegen bei jeder Konfigurationsaktualisierung

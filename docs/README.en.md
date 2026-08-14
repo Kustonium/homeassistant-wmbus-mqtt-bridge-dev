@@ -303,6 +303,11 @@ Only the meter's identity (`id`, `name`, `meter`, `media`, `timestamp`, `rssi`,
 `lqi`) never becomes an entity — it is already in the device name and in the
 entity attributes.
 
+Every entity also carries a `Description` attribute — the text the driver author
+wrote for that field, taken from `wmbusmeters --listfields`. It sits next to the
+decoded telegram fields in the entity's attributes, so nothing that was there
+before is lost.
+
 Home Assistant reads `enabled_by_default` only when it first adds an entity, so
 an upgrade never disables what you already have. `entity_category` is re-applied
 on every config update, so unclassified numeric fields created by an older

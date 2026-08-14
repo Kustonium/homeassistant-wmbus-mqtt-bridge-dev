@@ -35,6 +35,22 @@
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
 ### Added
+- entities carry the driver's description of their field as a `Description`
+  attribute. `wmbusmeters --listfields=<driver>` prints one line per field with the
+  text its author wrote; the bridge loads that catalog once per driver — the
+  decoder binary is pinned, so it cannot change while the container runs — and
+  matches it against the decoded field name with a glob, because the catalog names
+  repeated fields with a placeholder (`consumption_at_history_{storage_counter-7counter}_m3`).
+
+  An entity has exactly one `json_attributes_topic`, already pointed at the state
+  topic so the whole decoded telegram reaches the attributes. The description is
+  therefore merged in through a `json_attributes_template`
+  (`dict(value_json, Description="…") | tojson`) rather than replacing that
+  pass-through — replacing it would have cost every other field. A field the
+  catalog does not describe keeps the plain pass-through with no template, and if
+  the decoder cannot be queried the descriptions are simply absent. Quotes and
+  backslashes are stripped from the text before it is embedded in the Jinja
+  literal. Requested on the forum alongside the field list.
 - the meter modals list every field the driver can report, with the description
   wmbusmeters ships for it, and a checkbox per field. The catalog comes from
   `wmbusmeters --listfields=<driver>` through a new `api/driver-fields` endpoint,

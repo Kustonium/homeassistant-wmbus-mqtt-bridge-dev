@@ -360,6 +360,22 @@ already enabled and never re-enables one they disabled; `entity_category` is
 re-applied on every config update, so fields created by an older version move
 into the device's Diagnostics section.
 
+Each entity also carries the driver's own words for its field. `wmbusmeters
+--listfields=<driver>` prints a description per field; the bridge loads that
+catalog once per driver (the decoder binary is pinned, so it cannot change while
+the container runs) and merges the text into the entity's attributes as
+`Description`. The catalog names repeated fields with a placeholder —
+`consumption_at_history_{storage_counter-7counter}_m3` — so the lookup matches
+with a glob rather than by equality.
+
+The merge matters: an entity has exactly one `json_attributes_topic`, and it is
+already pointed at the state topic so every decoded field of the telegram
+reaches the attributes. The description is therefore added through a
+`json_attributes_template` that combines both — `dict(value_json,
+Description="…") | tojson` — instead of replacing the pass-through. A field the
+catalog does not describe keeps the plain pass-through with no template at all,
+and if the decoder cannot be queried the descriptions are simply absent.
+
 A meter entry may narrow what Discovery publishes at all. `exclude_fields` holds
 glob patterns, comma- or space-separated; a decoded field whose name matches any
 of them gets no entity. `refresh_meter_files()` rebuilds the patterns into

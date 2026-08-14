@@ -295,6 +295,10 @@ ovladač vrací, a rozděluje je podle toho, co měří:
 Entitu nedostane pouze identita měřiče (`id`, `name`, `meter`, `media`,
 `timestamp`, `rssi`, `lqi`) — je už v názvu zařízení a v atributech entit.
 
+Každá entita navíc nese atribut `Description` — popis pole od autora ovladače,
+získaný z `wmbusmeters --listfields`. Stojí vedle dekódovaných polí telegramu v
+atributech entity, takže nic z toho, co tam bylo dřív, nezmizí.
+
 Home Assistant čte `enabled_by_default` jen při prvním přidání entity, takže
 aktualizace nikdy nevypne to, co už máš. `entity_category` se naproti tomu
 uplatní při každé aktualizaci konfigurace, takže číselná pole bez třídy

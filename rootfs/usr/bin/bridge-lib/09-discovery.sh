@@ -83,7 +83,7 @@ emit_discovery_from_json() {
   while IFS=$'\t' read -r ftype key; do
     [[ -n "${key}" ]] || continue
 
-    local obj cache_key key_lc unit device_class state_class entity_category cfg_topic unique_id sensor_name payload
+    local obj cache_key key_lc unit device_class state_class entity_category cfg_topic unique_id sensor_name payload field_desc
 
     obj="$(sanitize_obj_id "${key}")"
     [[ -n "${obj}" ]] || continue
@@ -124,6 +124,10 @@ emit_discovery_from_json() {
     cfg_topic="${DISCOVERY_PREFIX}/sensor/${uniq}/${obj}/config"
     unique_id="${uniq}_${obj}"
     sensor_name="${name} ${key}"
+    # The driver's own words for this field, surfaced as an entity attribute.
+    # Looked up here rather than per telegram: the block below runs once per
+    # entity, guarded by the DISCOVERY_SENT_FIELD cache.
+    field_desc="$(field_description "${meter}" "${key}")"
 
     cache_key="${id}|${obj}|${expire_after}"
     [[ -n "${DISCOVERY_SENT_FIELD[${cache_key}]+x}" ]] && continue
@@ -141,6 +145,7 @@ emit_discovery_from_json() {
       --arg dc "${device_class}" \
       --arg sc "${state_class}" \
       --arg ecat "${entity_category}" \
+      --arg desc "${field_desc}" \
       --argjson expire "${expire_after}" \
       '(
         {
@@ -167,6 +172,13 @@ emit_discovery_from_json() {
         + (if ($dc|length)>0 then {device_class:$dc} else {} end)
         + (if ($sc|length)>0 then {state_class:$sc} else {} end)
         + (if ($ecat|length)>0 then {entity_category:$ecat, enabled_by_default:false} else {} end)
+        # The attributes topic already carries the whole decoded telegram, and
+        # there is only one of them per entity — so the description is MERGED
+        # into that payload rather than replacing it. Without the merge, adding
+        # the description would cost the pass-through every other field relies on.
+        + (if ($desc|length)>0
+           then {json_attributes_template: "{{ dict(value_json, Description=\"\($desc)\") | tojson }}"}
+           else {} end)
       )'
     )"
 
@@ -219,6 +231,7 @@ emit_discovery_from_json() {
         --arg dname "${dev_name}" \
         --arg dmdl "${dev_mdl}" \
         --arg dmfr "${dev_mfr}" \
+        --arg desc "$(field_description "${meter}" "status")" \
         --argjson expire "${expire_after}" \
         '{
            name: $name,
@@ -241,7 +254,10 @@ emit_discovery_from_json() {
              model: $dmdl,
              manufacturer: $dmfr
            }
-         }')"
+         }
+         + (if ($desc|length)>0
+            then {json_attributes_template: "{{ dict(value_json, Description=\"\($desc)\") | tojson }}"}
+            else {} end)')"
       if mqtt_pub "${st_cfg}" "${st_payload}" "${DISCOVERY_RETAIN}"; then
         DISCOVERY_SENT_FIELD["${st_cache}"]=1
       else

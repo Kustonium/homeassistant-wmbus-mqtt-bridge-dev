@@ -96,6 +96,65 @@ guess_device_class() {
   esac
 }
 
+# Field descriptions written by the driver author, from
+# `wmbusmeters --listfields=<driver>`. Keyed "<driver>|<pattern>"; the catalog
+# uses templated names for repeated fields
+# (consumption_at_history_{storage_counter-7counter}_m3), so lookups match with
+# a glob rather than by equality. Loaded once per driver — the decoder binary is
+# pinned, so its catalog cannot change while the container runs.
+declare -A FIELD_CATALOG
+declare -A FIELD_CATALOG_LOADED
+declare -A FIELD_DESCRIPTION_CACHE
+
+load_field_catalog() {
+  local driver="${1,,}"
+  [[ -n "${driver}" && "${driver}" != "auto" && "${driver}" != "unknown" ]] || return 0
+  [[ "${driver}" =~ ^[a-z0-9_]+$ ]] || return 0
+  [[ -z "${FIELD_CATALOG_LOADED[${driver}]+x}" ]] || return 0
+  FIELD_CATALOG_LOADED["${driver}"]=1
+
+  local name desc
+  # --listfields prints "<name><2+ spaces><description>"; the sed turns the first
+  # such run into a tab so read can split on it. Descriptions contain single
+  # spaces, so splitting on any whitespace would truncate them.
+  while IFS=$'\t' read -r name desc; do
+    [[ -n "${name}" ]] || continue
+    # Quotes and backslashes would land inside a Jinja string literal in the
+    # Discovery payload; drop them rather than escape through two layers.
+    desc="${desc//\"/}"
+    desc="${desc//\\/}"
+    FIELD_CATALOG["${driver}|${name}"]="${desc}"
+  done < <(timeout 10 /usr/bin/wmbusmeters "--listfields=${driver}" 2>/dev/null \
+           | sed -E 's/^[[:space:]]+//; s/[[:space:]]{2,}/\t/' || true)
+}
+
+# Description for one decoded field, or empty. Memoised per driver+field so the
+# glob scan runs once per entity rather than once per telegram.
+field_description() {
+  local driver="${1,,}" key="${2,,}"
+  [[ -n "${driver}" && -n "${key}" ]] || return 0
+  local cache="${driver}|${key}"
+  if [[ -n "${FIELD_DESCRIPTION_CACHE[${cache}]+x}" ]]; then
+    printf '%s' "${FIELD_DESCRIPTION_CACHE[${cache}]}"
+    return 0
+  fi
+  load_field_catalog "${driver}"
+  local entry pattern found=""
+  for entry in "${!FIELD_CATALOG[@]}"; do
+    [[ "${entry}" == "${driver}|"* ]] || continue
+    pattern="${entry#*|}"
+    # Templated placeholders behave as a wildcard for the concrete field name.
+    pattern="${pattern//\{*\}/*}"
+    # shellcheck disable=SC2053
+    if [[ "${key}" == ${pattern,,} ]]; then
+      found="${FIELD_CATALOG[${entry}]}"
+      break
+    fi
+  done
+  FIELD_DESCRIPTION_CACHE["${cache}"]="${found}"
+  printf '%s' "${found}"
+}
+
 # Per-meter Discovery field filter, keyed by lowercase meter id; the value is a
 # whitespace-separated list of glob patterns. Declared here, beside the function
 # that reads it, rather than in 07-meters.sh where refresh_meter_files() fills
