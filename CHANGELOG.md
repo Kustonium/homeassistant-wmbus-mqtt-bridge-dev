@@ -50,6 +50,10 @@
   is created. Documented in the localized READMEs and in `ARCHITECTURE.md`.
 
 ### Fixed
+- the decode-mode strings existed only in English and Polish, so the German, Czech
+  and Slovak WebUI fell back to English for the whole "candidate data is stale"
+  explanation — the one place where the numbers on screen need a caveat to be read
+  correctly. All five languages now carry the same 547 keys.
 - the driver field table offered ten fields that can never become an entity here.
   Reported from a live install running `apatorna1`: every field was ticked, yet
   `timestamp_ut`, `timestamp_lt`, `timestamp_utc`, `device` and `rssi_dbm` never
