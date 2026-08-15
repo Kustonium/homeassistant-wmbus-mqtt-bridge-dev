@@ -1,3 +1,9 @@
+## 1.5.48-dev.249
+
+### Fixed
+- raise the contrast of small hint text (ec7fc26)
+- make modal text inputs use the full width (eb93614)
+
 ## 1.5.48-dev.248
 
 ### Added
