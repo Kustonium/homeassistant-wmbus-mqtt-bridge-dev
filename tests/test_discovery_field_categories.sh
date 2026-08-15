@@ -379,27 +379,29 @@ assert_json_field() {
 
 # No file at all — the normal install, where the firmware never publishes RSSI.
 rm -f "${STATUS_RSSI_FILE}"
-assert_json_field "no rssi file" "$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")" rssi_dbm missing
+assert_json_field "no rssi file" "$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")" \
+  rssi_esphome_wmbus_lilygo_dbm missing
 
-# Fresh row: value and its source are both joined in.
+# Fresh row: the board's own field is joined in, and nothing else. The merged
+# rssi_dbm/rssi_source pair was removed on purpose — with two boards it showed
+# whichever one reported last, so these two assertions guard the removal.
 printf '%s\t%s\t%s\t%s\n' "21031894" "-78" "esphome-wmbus-lilygo" "$(epoch_now)" > "${STATUS_RSSI_FILE}"
 RSSI_JOINED="$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")"
-assert_json_field "fresh rssi" "${RSSI_JOINED}" rssi_dbm -78
-assert_json_field "fresh rssi" "${RSSI_JOINED}" rssi_source esphome-wmbus-lilygo
 assert_json_field "fresh rssi" "${RSSI_JOINED}" rssi_esphome_wmbus_lilygo_dbm -78
+assert_json_field "fresh rssi" "${RSSI_JOINED}" rssi_dbm missing
+assert_json_field "fresh rssi" "${RSSI_JOINED}" rssi_source missing
 assert_json_field "fresh rssi" "${RSSI_JOINED}" total_m3 10.5
 
-# Two ESPs hearing the same meter retain independent fields/entities. The
-# generic compatibility fields follow the newest (last, when timestamps tie)
-# source, matching the old last-writer-wins behavior.
+# Two ESPs hearing the same meter retain independent fields/entities, and still
+# no merged value is invented from them.
 printf '%s\t%s\t%s\t%s\n' \
   "21031894" "-78" "lilygo" "$(epoch_now)" \
   "21031894" "-65" "xiao-seed" "$(epoch_now)" > "${STATUS_RSSI_FILE}"
 RSSI_MULTI="$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")"
 assert_json_field "multi ESP rssi" "${RSSI_MULTI}" rssi_lilygo_dbm -78
 assert_json_field "multi ESP rssi" "${RSSI_MULTI}" rssi_xiao_seed_dbm -65
-assert_json_field "multi ESP compatibility" "${RSSI_MULTI}" rssi_dbm -65
-assert_json_field "multi ESP compatibility" "${RSSI_MULTI}" rssi_source xiao-seed
+assert_json_field "multi ESP rssi" "${RSSI_MULTI}" rssi_dbm missing
+assert_json_field "multi ESP rssi" "${RSSI_MULTI}" rssi_source missing
 
 # The production cache upsert is keyed by meter + ESP: a new board must not
 # erase another board, while an update from the same board replaces only its
@@ -422,11 +424,13 @@ else
 fi
 
 # A row for a different meter must not leak onto this one.
-assert_json_field "other meter" "$(inject_rssi_into_json 03534159 "${TELEGRAM_RSSI}")" rssi_dbm missing
+assert_json_field "other meter" "$(inject_rssi_into_json 03534159 "${TELEGRAM_RSSI}")" \
+  rssi_lilygo_dbm missing
 
 # Stale row: the firmware stopped publishing while still forwarding telegrams.
 printf '%s\t%s\t%s\t%s\n' "21031894" "-78" "esphome-wmbus-lilygo" "$(( $(epoch_now) - RSSI_MAX_AGE_S - 1 ))" > "${STATUS_RSSI_FILE}"
-assert_json_field "stale rssi" "$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")" rssi_dbm missing
+assert_json_field "stale rssi" "$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")" \
+  rssi_esphome_wmbus_lilygo_dbm missing
 
 # The firmware marks "no valid sample" with different sentinels per topic
 # (1 in health, 0 in the window topics, -127 = RSSI_NOT_MEASURED in the driver).
@@ -434,25 +438,31 @@ assert_json_field "stale rssi" "$(inject_rssi_into_json 21031894 "${TELEGRAM_RSS
 for sentinel in 1 0 -127 -126; do
   printf '%s	%s	%s	%s
 ' "21031894" "${sentinel}" "dev" "$(epoch_now)" > "${STATUS_RSSI_FILE}"
-  assert_json_field "sentinel ${sentinel}" "$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")" rssi_dbm missing
+  assert_json_field "sentinel ${sentinel}" "$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")" \
+    rssi_dev_dbm missing
 done
 
 # Garbage from a misconfigured publisher must never reach the payload.
 printf '%s\t%s\t%s\t%s\n' "21031894" "not-a-number" "dev" "$(epoch_now)" > "${STATUS_RSSI_FILE}"
-assert_json_field "malformed rssi" "$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")" rssi_dbm missing
+assert_json_field "malformed rssi" "$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")" \
+  rssi_dev_dbm missing
 
-# End to end: the joined field goes through the ordinary Discovery path —
-# rssi_dbm gets an entity (dBm implies signal_strength), rssi_source does not,
-# because provenance belongs in the attributes rather than in its own sensor.
+# End to end: each board's field goes through the ordinary Discovery path and
+# becomes its own signal-strength sensor (dBm implies signal_strength).
 printf '%s\t%s\t%s\t%s\n' "21031894" "-78" "esphome-wmbus-lilygo" "$(epoch_now)" > "${STATUS_RSSI_FILE}"
 # shellcheck disable=SC2034
 METER_EXCLUDE_FIELDS=()
 run_telegram 21031894 "$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")"
-assert_measurement rssi_dbm "dBm"
+assert_measurement rssi_esphome_wmbus_lilygo_dbm "dBm"
 run_telegram 21031894 "${RSSI_MULTI}"
 assert_measurement rssi_lilygo_dbm "dBm"
 assert_measurement rssi_xiao_seed_dbm "dBm"
 assert_no_entity rssi_source
+
+# The merged rssi_dbm sensor shipped in an earlier dev build, so every meter's
+# retained config must be actively cleared — otherwise Home Assistant keeps the
+# stale entity next to the per-board ones.
+assert_excluded rssi_dbm
 
 echo
 echo "Results: ${PASS} passed, ${FAIL} failed"

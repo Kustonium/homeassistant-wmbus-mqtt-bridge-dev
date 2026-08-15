@@ -35,6 +35,30 @@
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
+### Added
+- optional signal strength per receiving board. A telegram carries no RSSI — the RAW
+  topic is bare hexadecimal, so `wmbusmeters` never sees a level and cannot report
+  one — which is why the value has to travel out of band. When the firmware YAML
+  enables it (`wmbus_radio: publish_rssi: true`, **off by default**), each board
+  publishes `wmbus/<board>/rssi/<meter_id>`; the bridge caches it per meter *and*
+  per board and joins it onto the decoded telegram as `rssi_<board>_dbm`, so every
+  receiving board gets its own `signal_strength` entity for the same meter. Only
+  plausible measurements (-125 to -1 dBm) are stored — the firmware's "no data"
+  sentinels are dropped — and a cached value older than `RSSI_MAX_AGE_S` (300 s) is
+  not attached, so a board that stops publishing goes unavailable instead of
+  freezing on its last reading. With the option off nothing arrives and no entity
+  is created. Documented in the localized READMEs and in `ARCHITECTURE.md`.
+
+### Changed
+- the merged `rssi_dbm` and `rssi_source` fields are gone; only the per-board fields
+  remain. `rssi_dbm` was kept as a compatibility value meaning "whichever board
+  reported last", which is exactly what makes it unreadable: with two boards hearing
+  the same meter, one entity alternated between their levels and looked like a
+  fluctuating signal rather than two receivers. `clean_legacy_entities()` (formerly
+  `clean_legacy_totalm3`) now also clears the retained `rssi_dbm` config, so the
+  entity disappears from installations that already created it during this dev
+  cycle.
+
 ## 1.5.46-dev.236
 
 ### Added

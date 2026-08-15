@@ -317,6 +317,48 @@ publikovala jako běžný senzor. Smazání zařízení nepomůže, protože Hom
 odstraněné entity včetně stavu zapnutí obnoví, jakmile je stejný měřič znovu
 detekován; tento záznam si drží 30 dní. Stačí ji jednou zapnout ručně.
 
+### RSSI podle přijímací desky (volitelné, zapíná se na ESP)
+
+Úroveň signálu není součástí telegramu. RAW téma nese čistý hexadecimální
+zápis, takže `wmbusmeters` žádné RSSI nevidí a nemá co hlásit — musí ho zvlášť
+publikovat přijímací deska. Tato publikace je **ve výchozím stavu vypnutá** a
+není volbou doplňku: zapíná se v YAML firmwaru, v sekci `wmbus_radio`:
+
+```yaml
+wmbus_radio:
+  publish_rssi: true
+```
+
+Deska pak pro každý dekódovaný měřič publikuje:
+
+```text
+wmbus/<deska>/rssi/<id_měřiče>    payload: -52
+```
+
+Most si hodnotu ukládá zvlášť pro každý měřič **a** každou desku a připojuje ji
+k dekódovanému telegramu jako `rssi_<deska>_dbm`. Každá deska tak má pro tentýž
+měřič vlastní entitu síly signálu:
+
+```json
+{
+  "rssi_lilygo_dbm": -52,
+  "rssi_xiaoseed_dbm": -50
+}
+```
+
+Je to záměr. Tentýž měřič mohou slyšet dvě desky a jediná sloučená hodnota by
+mezi nimi jen přeskakovala — číslo by vypadalo jako kolísající signál, ne jako
+dva přijímače. Proto společné pole `rssi_dbm` neexistuje.
+
+Most ukládá pouze věrohodné měření: -125 až -1 dBm. Sentinely firmwaru
+označující „žádná data" se zahazují, místo aby se publikovaly jako odečet, a
+hodnota starší než pět minut se k čerstvému telegramu nepřipojí — když některá
+deska přestane publikovat, její entita se stane nedostupnou, místo aby zamrzla
+na posledním čísle.
+
+Když volbu necháte vypnutou, nic nepřijde, nepřidá se žádné pole a nevznikne
+žádná entita.
+
 ### Starší režim SEARCH
 
 | Pole | Typ | Výchozí | Popis |

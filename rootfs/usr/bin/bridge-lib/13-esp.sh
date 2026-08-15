@@ -10,12 +10,13 @@ RSSI_MAX_AGE_S=300
 
 # Join the last reported RSSI onto a decoded telegram, by meter id. Prints the
 # line unchanged when there is nothing to add, so callers can use it inline.
-# rssi_source travels with the value because two ESPs can hear the same meter;
-# the number then alternates between boards and this is what explains it.
+# One field per board and nothing else: a single merged rssi_dbm was tried first
+# and removed, because two ESPs hearing the same meter made it alternate between
+# boards, which is a number nobody can act on.
 inject_rssi_into_json() {
   local id="${1,,}" line="$2"
   [[ -s "${STATUS_RSSI_FILE}" ]] || { printf '%s' "${line}"; return 0; }
-  local _rid dbm src ts now src_key field result latest_dbm="" latest_src="" latest_ts=-1
+  local _rid dbm src ts now src_key field result
   now="$(epoch_now)"
   result="${line}"
   while IFS=$'\t' read -r _rid dbm src ts; do
@@ -33,20 +34,8 @@ inject_rssi_into_json() {
     field="rssi_${src_key}_dbm"
     result="$(jq -c --arg k "${field}" --argjson r "${dbm}" '. + {($k): $r}' \
       <<<"${result}" 2>/dev/null)" || { printf '%s' "${line}"; return 0; }
-    # Preserve the old generic fields for compatibility. The newest row wins;
-    # on equal one-second timestamps, the last-updated row is last in the file.
-    if (( ts >= latest_ts )); then
-      latest_ts="${ts}"
-      latest_dbm="${dbm}"
-      latest_src="${src}"
-    fi
   done < <(awk -F'\t' -v id="${id}" '$1 == id {print}' "${STATUS_RSSI_FILE}" 2>/dev/null || true)
 
-  if [[ -n "${latest_dbm}" ]]; then
-    result="$(jq -c --argjson r "${latest_dbm}" --arg s "${latest_src}" \
-      '. + {rssi_dbm: $r, rssi_source: $s}' <<<"${result}" 2>/dev/null)" \
-      || { printf '%s' "${line}"; return 0; }
-  fi
   printf '%s' "${result}"
 }
 

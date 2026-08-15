@@ -333,6 +333,51 @@ Löschen des Geräts hilft nicht, denn Home Assistant stellt entfernte Entitäte
 samt Aktivierungszustand wieder her, sobald derselbe Zähler erneut erkannt wird;
 dieser Eintrag bleibt 30 Tage erhalten. Einmal von Hand aktivieren genügt.
 
+### RSSI je Empfangsplatine (optional, auf dem ESP aktiviert)
+
+Der Signalpegel ist kein Bestandteil des Telegramms. Das RAW-Topic überträgt
+reines Hexadezimal, `wmbusmeters` sieht also nie einen RSSI und kann keinen
+melden — die Empfangsplatine muss ihn separat veröffentlichen. Diese
+Veröffentlichung ist **standardmäßig aus** und keine Add-on-Option: Sie
+aktivieren sie im YAML der Firmware, im Abschnitt `wmbus_radio`:
+
+```yaml
+wmbus_radio:
+  publish_rssi: true
+```
+
+Die Platine veröffentlicht dann für jeden dekodierten Zähler:
+
+```text
+wmbus/<platine>/rssi/<zähler_id>    payload: -52
+```
+
+Die Bridge speichert diesen Wert je Zähler **und** je Platine und hängt ihn als
+`rssi_<platine>_dbm` an das dekodierte Telegramm an. Jede Platine erhält damit
+für denselben Zähler ihre eigene Signalstärke-Entität:
+
+```json
+{
+  "rssi_lilygo_dbm": -52,
+  "rssi_xiaoseed_dbm": -50
+}
+```
+
+Das ist Absicht. Zwei Platinen können denselben Zähler hören, und ein einzelner
+zusammengefasster Wert würde einfach zwischen ihnen springen — eine Zahl, die
+wie ein schwankendes Signal aussieht statt wie zwei Empfänger. Deshalb gibt es
+kein gemeinsames `rssi_dbm`.
+
+Gespeichert wird nur ein plausibler Messwert: -125 bis -1 dBm. Die
+„keine Daten"-Sentinels der Firmware werden verworfen statt als Messwert
+veröffentlicht, und ein zwischengespeicherter Wert, der älter als fünf Minuten
+ist, wird nicht an ein frisches Telegramm gehängt — hört eine Platine auf zu
+senden, wird ihre Entität also nicht verfügbar, statt auf der letzten Zahl
+einzufrieren.
+
+Bleibt die Option aus, kommt nichts an, es wird kein Feld ergänzt und keine
+Entität angelegt.
+
 ### Älterer SEARCH-Modus
 
 | Feld | Typ | Default | Beschreibung |

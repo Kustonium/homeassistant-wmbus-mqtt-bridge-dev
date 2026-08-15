@@ -315,6 +315,48 @@ ako bežný senzor. Zmazanie zariadenia nepomôže, pretože Home Assistant
 odstránené entity vrátane stavu zapnutia obnoví, len čo je ten istý merač znovu
 detekovaný; tento záznam si drží 30 dní. Stačí ju raz zapnúť ručne.
 
+### RSSI podľa prijímacej dosky (voliteľné, zapína sa na ESP)
+
+Úroveň signálu nie je súčasťou telegramu. RAW téma nesie čistý hexadecimálny
+zápis, takže `wmbusmeters` žiadne RSSI nevidí a nemá čo hlásiť — musí ho zvlášť
+publikovať prijímacia doska. Táto publikácia je **predvolene vypnutá** a nie je
+voľbou doplnku: zapína sa v YAML firmvéru, v sekcii `wmbus_radio`:
+
+```yaml
+wmbus_radio:
+  publish_rssi: true
+```
+
+Doska potom pre každý dekódovaný merač publikuje:
+
+```text
+wmbus/<doska>/rssi/<id_merača>    payload: -52
+```
+
+Most si hodnotu ukladá zvlášť pre každý merač **a** každú dosku a pripája ju k
+dekódovanému telegramu ako `rssi_<doska>_dbm`. Každá doska tak má pre ten istý
+merač vlastnú entitu sily signálu:
+
+```json
+{
+  "rssi_lilygo_dbm": -52,
+  "rssi_xiaoseed_dbm": -50
+}
+```
+
+Je to zámer. Ten istý merač môžu počuť dve dosky a jediná zlúčená hodnota by
+medzi nimi len preskakovala — číslo by vyzeralo ako kolísajúci signál, nie ako
+dva prijímače. Preto spoločné pole `rssi_dbm` neexistuje.
+
+Most ukladá iba vierohodné meranie: -125 až -1 dBm. Sentinely firmvéru
+označujúce „žiadne dáta" sa zahadzujú namiesto toho, aby sa publikovali ako
+odčítanie, a hodnota staršia než päť minút sa k čerstvému telegramu nepripojí —
+keď niektorá doska prestane publikovať, jej entita sa stane nedostupnou namiesto
+toho, aby zamrzla na poslednom čísle.
+
+Ak voľbu necháte vypnutú, nič nepríde, nepridá sa žiadne pole a nevznikne žiadna
+entita.
+
 ### Starší režim SEARCH
 
 | Pole | Typ | Predvolené | Popis |

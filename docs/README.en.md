@@ -327,6 +327,50 @@ help, because Home Assistant restores removed entities (including their
 enabled/disabled state) as soon as the same meter is rediscovered; it keeps that
 record for 30 days. Enable it by hand once and it stays enabled.
 
+### RSSI per receiving board (opt-in, enabled on the ESP)
+
+Signal level is not part of a telegram. The RAW topic carries bare hexadecimal,
+so `wmbusmeters` never sees an RSSI and cannot report one — the receiving board
+has to publish it separately. That publication is **off by default** and is not
+an add-on option: you enable it in the firmware's YAML, in the `wmbus_radio`
+section:
+
+```yaml
+wmbus_radio:
+  publish_rssi: true
+```
+
+The board then publishes, for every meter it decodes:
+
+```text
+wmbus/<board>/rssi/<meter_id>    payload: -52
+```
+
+The bridge caches that value per meter **and** per board, and joins it onto the
+decoded telegram as `rssi_<board>_dbm`. Each board therefore gets its own
+signal-strength entity for the same meter:
+
+```json
+{
+  "rssi_lilygo_dbm": -52,
+  "rssi_xiaoseed_dbm": -50
+}
+```
+
+This is deliberate. Two boards can hear the same meter, and a single merged
+value would simply alternate between them — a number that looks like a
+fluctuating signal instead of two receivers. There is no combined `rssi_dbm`
+for that reason.
+
+What the bridge stores is only a plausible measurement: -125 to -1 dBm. The
+firmware's "no data" sentinels are dropped rather than published as readings,
+and a cached value older than five minutes is not attached to a fresh telegram —
+so if one board stops publishing, its entity goes unavailable instead of
+freezing on its last number.
+
+With the option left off, nothing arrives, no field is added and no entity is
+created.
+
 ### Legacy SEARCH mode
 
 | Field | Type | Default | Description |

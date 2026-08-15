@@ -326,6 +326,50 @@ nic tu nie da, bo Home Assistant przywraca usunięte encje razem ze stanem
 włączenia, gdy tylko ten sam licznik zostanie ponownie wykryty; trzyma ten wpis
 przez 30 dni. Włącz ją raz ręcznie, a zostanie włączona.
 
+### RSSI per płytka odbiorcza (opcja włączana po stronie ESP)
+
+Poziom sygnału nie jest częścią telegramu. Temat RAW niesie czysty HEX, więc
+`wmbusmeters` nigdy nie widzi RSSI i nie ma czego zgłosić — płytka odbiorcza
+musi opublikować tę wartość osobno. Publikacja jest **domyślnie wyłączona** i
+nie jest opcją dodatku: włączasz ją w YAML-u firmware'u, w sekcji
+`wmbus_radio`:
+
+```yaml
+wmbus_radio:
+  publish_rssi: true
+```
+
+Płytka publikuje wtedy dla każdego zdekodowanego licznika:
+
+```text
+wmbus/<płytka>/rssi/<id_licznika>    payload: -52
+```
+
+Most trzyma tę wartość osobno dla każdej pary licznik **i** płytka, a następnie
+dołącza ją do zdekodowanego telegramu jako `rssi_<płytka>_dbm`. Każda płytka
+dostaje więc własną encję siły sygnału dla tego samego licznika:
+
+```json
+{
+  "rssi_lilygo_dbm": -52,
+  "rssi_xiaoseed_dbm": -50
+}
+```
+
+Tak ma być. Ten sam licznik może być słyszany przez dwie płytki, a jedna
+scalona wartość po prostu skakałaby między nimi — liczba wyglądałaby na
+wahający się sygnał, a nie na dwa odbiorniki. Dlatego nie ma wspólnego pola
+`rssi_dbm`.
+
+Most zapisuje wyłącznie wiarygodny pomiar: od -125 do -1 dBm. Firmware'owe
+wartości „brak danych" są odrzucane, a nie publikowane jako odczyt; wartość
+starsza niż pięć minut nie zostaje doklejona do świeżego telegramu — jeśli
+któraś płytka przestanie publikować, jej encja staje się niedostępna, zamiast
+zamarznąć na ostatniej liczbie.
+
+Przy wyłączonej opcji nic nie przychodzi, żadne pole nie jest dodawane i żadna
+encja nie powstaje.
+
 ### Starszy tryb SEARCH
 
 | Pole | Typ | Domyślnie | Opis |

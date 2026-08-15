@@ -74,9 +74,7 @@ Dla przykładowego licznika Home Assistant otrzymuje:
 ```json
 {
   "rssi_lilygo_dbm": -52,
-  "rssi_xiaoseed_dbm": -50,
-  "rssi_dbm": -50,
-  "rssi_source": "xiaoseed"
+  "rssi_xiaoseed_dbm": -50
 }
 ```
 
@@ -87,9 +85,12 @@ unit_of_measurement: dBm
 device_class: signal_strength
 ```
 
-Dotychczasowe pola `rssi_dbm` i `rssi_source` pozostają dla kompatybilności.
-Reprezentują najnowszy świeży wpis, czyli zachowują wcześniejsze zachowanie
-„ostatni odbiornik wygrywa”.
+Scalone pola `rssi_dbm` i `rssi_source` zostały **usunięte** (2026-08-15).
+Przy dwóch płytkach `rssi_dbm` pokazywał tę, która zgłosiła się jako ostatnia,
+więc wartość skakała między odbiornikami. Zostają wyłącznie pola per płytka.
+Retained config encji `rssi_dbm` jest kasowany przez `clean_legacy_entities()`
+w `09-discovery.sh`, więc encja znika też w instalacjach, które ją już
+utworzyły.
 
 Wpis starszy niż 300 sekund jest ignorowany. Gdy konkretne ESP przestanie
 publikować, jego pole znika z kolejnych stanów i odpowiadająca encja staje się
@@ -104,10 +105,12 @@ Test regresyjny sprawdza:
 - aktualizację tylko właściwego wiersza cache,
 - zachowanie pól kompatybilności,
 - odrzucanie wartości niepoprawnych, sentinelowych i przeterminowanych,
-- klasyfikację encji jako `signal_strength` w dBm.
+- klasyfikację encji jako `signal_strength` w dBm,
+- brak scalonych pól `rssi_dbm` / `rssi_source` w telegramie,
+- skasowanie retained configu encji `rssi_dbm`.
 
 Wynik testów:
 
 ```text
-81 passed, 0 failed
+82 passed, 0 failed
 ```
