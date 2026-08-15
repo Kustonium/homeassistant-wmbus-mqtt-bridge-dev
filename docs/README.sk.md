@@ -395,6 +395,7 @@ entita.
 | `key` | str? | pri šifrovaní | 32-znakový AES kľúč (HEX) |
 | `exclude_fields` | str? | nie | Vzory (globy) polí, ktoré **nemajú** dostať entitu v Home Assistante — napr. `consumption_at_history_*, history_*_date`. Oddelené čiarkami alebo medzerami; prázdne publikuje všetky polia. |
 | `calculated_fields` | str? | nie | Ďalšie polia, ktoré **wmbusmeters** počíta z telegramu, oddelené bodkočiarkami, každé ako `názov=vzorec` — napr. `difftemp_c=flow_temperature_c - return_temperature_c`. Počíta dekodér; výsledok je bežné pole a stane sa entitou ako každé iné. |
+| `static_fields` | str? | nie | Pevné hodnoty pripojené k meraču, oddelené bodkočiarkami, každá ako `názov=hodnota` — napr. `location=kuchyna; apartment=12`. Dekodér ich vkladá do telegramu **ako text** (`apartment=12` príde ako `"12"`), takže ich vidno v atribútoch entít a ako diagnostické entity: štítok, nie meranie. |
 
 Pred písaním vzorca sa hodí vedieť dve veci. Aritmetika **stráži jednotky**:
 `total_m3 / 2 counter` funguje, `total_m3 * 2` nie — holé číslo nemá jednotku a

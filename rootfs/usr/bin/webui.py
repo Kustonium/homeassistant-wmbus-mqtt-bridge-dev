@@ -954,9 +954,38 @@ def _clean_calculated_fields(value: str) -> tuple[bool, str, str]:
     return True, "; ".join(entries), ""
 
 
+# Constant fields the user attaches to a meter (upstream's field_/json_ keys).
+# The decoder copies the value into the JSON verbatim and always as a string, so
+# they surface as diagnostic entities and as attributes on every entity of that
+# meter - a label like a location or an apartment number, not a measurement.
+# Same entry shape as the formulas, and for the same reason: a value may contain
+# spaces, so entries are separated by semicolons rather than by commas.
+def _clean_static_fields(value: str) -> tuple[bool, str, str]:
+    """Return (ok, cleaned, error). Empty means "no constant fields"."""
+    entries: list[str] = []
+    for raw_entry in re.split(r"[;\n]", value or ""):
+        entry = raw_entry.strip()
+        if not entry:
+            continue
+        if "=" not in entry:
+            return False, "", f"Invalid constant field '{entry}' - expected name=value."
+        name, text = entry.split("=", 1)
+        name = name.strip()
+        text = text.strip()
+        if not CALC_NAME_RE.match(name):
+            return False, "", (
+                f"Invalid field name '{name}' - lowercase letters, digits and _ only, "
+                "starting with a letter (e.g. location).")
+        if not text:
+            return False, "", f"Field '{name}' has an empty value."
+        entries.append(f"{name}={text}")
+    return True, "; ".join(entries), ""
+
+
 def add_meter_to_options(meter_id: str, driver: str, key: str, meter_name: str = "",
                          exclude_fields: str = "",
-                         calculated_fields: str = "") -> tuple[bool, str]:
+                         calculated_fields: str = "",
+                         static_fields: str = "") -> tuple[bool, str]:
     """Add a meter entry to addon options via HA Supervisor API.
 
     Writing directly to /data/options.json does NOT persist across restarts —
@@ -1014,6 +1043,8 @@ def add_meter_to_options(meter_id: str, driver: str, key: str, meter_name: str =
         entry["exclude_fields"] = exclude_fields
     if calculated_fields:
         entry["calculated_fields"] = calculated_fields
+    if static_fields:
+        entry["static_fields"] = static_fields
     meters.append(entry)
     options["meters"] = meters
 
@@ -1193,7 +1224,8 @@ def remove_meter_from_options(meter_id: str) -> tuple[bool, str]:
 
 def update_meter_in_options(meter_id: str, driver: str, key: str | None = None,
                             exclude_fields: str | None = None,
-                            calculated_fields: str | None = None) -> tuple[bool, str]:
+                            calculated_fields: str | None = None,
+                            static_fields: str | None = None) -> tuple[bool, str]:
     """Change the driver (and optionally the AES key) of an existing meter.
 
     Same Supervisor-first persistence as add/remove_meter_from_options. The
@@ -1249,6 +1281,11 @@ def update_meter_in_options(meter_id: str, driver: str, key: str | None = None,
             entry["calculated_fields"] = calculated_fields
         else:
             entry.pop("calculated_fields", None)
+    if static_fields is not None:
+        if static_fields:
+            entry["static_fields"] = static_fields
+        else:
+            entry.pop("static_fields", None)
     options["meters"] = meters
 
     token = os.environ.get("SUPERVISOR_TOKEN", "")
@@ -2843,8 +2880,16 @@ class Handler(BaseHTTPRequestHandler):
                     return
             else:
                 calculated_fields = None
+            if 'static_fields' in params:
+                ok_st, static_fields, err = _clean_static_fields(
+                    (params.get('static_fields') or [''])[0])
+                if not ok_st:
+                    self._send_json(400, {"ok": False, "message": err})
+                    return
+            else:
+                static_fields = None
             ok, msg = update_meter_in_options(meter_id, driver, key or None, exclude_fields,
-                                              calculated_fields)
+                                              calculated_fields, static_fields)
             self._send_json(200 if ok else 400, {"ok": ok, "message": msg})
             return
         if path.endswith('/api/factory-reset'):
@@ -2942,13 +2987,19 @@ class Handler(BaseHTTPRequestHandler):
             if not ok_calc:
                 self._send_json(400, {"ok": False, "message": err})
                 return
+            ok_st, static_fields, err = _clean_static_fields(
+                (params.get('static_fields') or [''])[0])
+            if not ok_st:
+                self._send_json(400, {"ok": False, "message": err})
+                return
             # NB: add_meter_to_options already emits the appropriate
             # webui_add_event (ok / warn / error) with the most accurate
             # context — re-logging here would double-stamp status_events.tsv
             # in the same second.
             ok, msg = add_meter_to_options(meter_id, driver, key, meter_name=meter_name,
                                            exclude_fields=exclude_fields,
-                                           calculated_fields=calculated_fields)
+                                           calculated_fields=calculated_fields,
+                                           static_fields=static_fields)
             # When a previewed candidate is added permanently, drop the
             # preview meter file so the LISTEN instance doesn't keep
             # decoding the same telegrams that DECODE now handles.

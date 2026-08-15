@@ -127,7 +127,8 @@ normalize_meter_id() { echo "$1" | tr '[:lower:]' '[:upper:]'; }
 cat > "${OPTIONS_JSON}" <<'JSON'
 {"meters": [
   {"id": "Heat", "meter_id": "03534159", "type": "kamheat", "key": "",
-   "calculated_fields": "difftemp_c=flow_temperature_c - return_temperature_c; half_m3=total_m3 / 2"},
+   "calculated_fields": "difftemp_c=flow_temperature_c - return_temperature_c; half_m3=total_m3 / 2",
+   "static_fields": "location=kitchen; riser=hot water"},
   {"id": "Water", "meter_id": "21031894", "type": "evo868", "key": ""}
 ]}
 JSON
@@ -163,6 +164,31 @@ if [[ "$(grep -c "^calculate_" "${METER_DIR}/meter-0001")" == "2" ]]; then
   pass "a reload rewrites the same two lines, not four"
 else
   fail "reload changed the formula count: $(grep -c '^calculate_' "${METER_DIR}/meter-0001")"
+fi
+
+# --- constant fields (upstream's field_ keys) --------------------------------
+# Same entry shape, different output prefix, and a value that may contain
+# spaces - "hot water" must survive as one value rather than being split.
+OUT="$(build_static_field_lines 'location=kitchen; riser=hot water' 03534159)"
+if [[ "${OUT}" == *"field_location=kitchen"* && "${OUT}" == *"field_riser=hot water"* ]]; then
+  pass "constant fields become field_ lines, spaces in the value kept"
+else
+  fail "constant fields produced: ${OUT}"
+fi
+
+: > "${WARN_LOG}"
+if [[ -z "$(build_static_field_lines 'Bad Name=x; noequals; empty=' 03534159)" ]]    && [[ "$(wc -l < "${WARN_LOG}" | tr -d ' ')" == "3" ]]; then
+  pass "malformed constant fields are all dropped and reported"
+else
+  fail "malformed constant fields: $(cat "${WARN_LOG}")"
+fi
+
+# The two options must not collide in the generated file.
+if grep -q "^field_location=kitchen$" <<<"${HEAT}"    && grep -q "^field_riser=hot water$" <<<"${HEAT}"    && grep -q "^calculate_difftemp_c=" <<<"${HEAT}"; then
+  pass "constant and calculated fields coexist in one meter file"
+else
+  fail "meter file mixes the two badly:"$'
+'"${HEAT}"
 fi
 
 echo

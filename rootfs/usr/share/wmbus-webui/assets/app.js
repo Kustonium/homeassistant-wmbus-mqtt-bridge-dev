@@ -2954,6 +2954,12 @@
   window.__editModalCalcSet = function (value) {
     if (state.editModal) state.editModal.calculatedFields = String(value == null ? "" : value);
   };
+  window.__modalStaticSet = function (value) {
+    if (state.modal) state.modal.staticFields = String(value == null ? "" : value);
+  };
+  window.__editModalStaticSet = function (value) {
+    if (state.editModal) state.editModal.staticFields = String(value == null ? "" : value);
+  };
 
   // Catalog of every field a driver can report, from wmbusmeters --listfields.
   // It is the driver's own list, so it also covers fields this meter has not
@@ -3082,6 +3088,11 @@
               placeholder="${escapeHtml(t("calculated_fields_placeholder", "e.g. difftemp_c=flow_temperature_c - return_temperature_c"))}"
               oninput="window.__editModalCalcSet(this.value)">
             <div style="font-size:10px;color:#4a6070;margin-top:3px;">${escapeHtml(t("calculated_fields_hint", "wmbusmeters computes these from the telegram and they become entities like any other field. One name=formula per entry, separated by semicolons. The arithmetic is unit-aware: total_m3 / 2 counter works, total_m3 * 2 does not."))}</div>
+            <label for="edit-meter-static-fields" style="margin-top:8px;">${escapeHtml(t("static_fields_label", "Constant fields"))}</label>
+            <input id="edit-meter-static-fields" autocomplete="off" value="${escapeHtml(em.staticFields || "")}"
+              placeholder="${escapeHtml(t("static_fields_placeholder", "e.g. location=kitchen; apartment=12"))}"
+              oninput="window.__editModalStaticSet(this.value)">
+            <div style="font-size:10px;color:#4a6070;margin-top:3px;">${escapeHtml(t("static_fields_hint", "Fixed values attached to this meter, one name=value per entry, separated by semicolons. The decoder copies them into the telegram as text, so they arrive as attributes and as diagnostic entities - a label, not a measurement."))}</div>
             <div style="margin-top:8px;">${driverFieldsSection(em.driver, em.excludeFields, "edit")}</div>
             <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
               <button id="edit-driver-compare" class="btn" type="button" data-action="compare-driver" data-id="${escapeHtml(em.id || "")}"${editKeyPartial ? " disabled" : ""}>${escapeHtml(t("compare_btn", "Compare"))}</button>
@@ -3259,6 +3270,15 @@
                     placeholder="${escapeHtml(t("calculated_fields_placeholder", "e.g. difftemp_c=flow_temperature_c - return_temperature_c"))}"
                     oninput="window.__modalCalcSet(this.value)">
                   <div style="font-size:10px;color:#4a6070;margin-top:3px;">${escapeHtml(t("calculated_fields_hint", "wmbusmeters computes these from the telegram and they become entities like any other field. One name=formula per entry, separated by semicolons. The arithmetic is unit-aware: total_m3 / 2 counter works, total_m3 * 2 does not."))}</div>
+                  <label for="meter-static-fields" style="margin-top:8px;">
+                    ${escapeHtml(t("static_fields_label", "Constant fields"))}
+                    <span style="font-size:10px;color:#607a88;font-weight:400;margin-left:6px;">${escapeHtml(t("static_fields_hint_short", "optional — a label, not a measurement"))}</span>
+                  </label>
+                  <input id="meter-static-fields" name="static_fields" autocomplete="off"
+                    value="${escapeHtml(modal.staticFields || "")}"
+                    placeholder="${escapeHtml(t("static_fields_placeholder", "e.g. location=kitchen; apartment=12"))}"
+                    oninput="window.__modalStaticSet(this.value)">
+                  <div style="font-size:10px;color:#4a6070;margin-top:3px;">${escapeHtml(t("static_fields_hint", "Fixed values attached to this meter, one name=value per entry, separated by semicolons. The decoder copies them into the telegram as text, so they arrive as attributes and as diagnostic entities - a label, not a measurement."))}</div>
                   <div style="margin-top:8px;">${driverFieldsSection(modal.driver, modal.excludeFields, "add")}</div>
                 </div>
                 <div class="field">
@@ -3514,6 +3534,7 @@
         driver: target.dataset.driver || "auto",
         excludeFields: (savedMeter && savedMeter.exclude_fields) || "",
         calculatedFields: (savedMeter && savedMeter.calculated_fields) || "",
+        staticFields: (savedMeter && savedMeter.static_fields) || "",
       };
       if (state.drivers === null) {
         fetch("assets/drivers.json", {cache: "no-store"})
@@ -3616,6 +3637,7 @@
           exclude_fields: String(em.excludeFields || "").trim(),
           // Always sent, empty included: that is how a formula gets removed.
           calculated_fields: String(em.calculatedFields || "").trim(),
+          static_fields: String(em.staticFields || "").trim(),
         };
         if (key) updatePayload.key = key;
         await postApi("update-meter", updatePayload);

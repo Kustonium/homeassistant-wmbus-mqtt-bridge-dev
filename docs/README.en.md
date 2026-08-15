@@ -407,6 +407,7 @@ created.
 | `key` | str? | when encrypted | 32-char AES key (HEX) |
 | `exclude_fields` | str? | no | Glob patterns, comma- or space-separated, for decoded fields that should get **no** Home Assistant entity — e.g. `consumption_at_history_*, history_*_date`. Empty publishes every field. |
 | `calculated_fields` | str? | no | Extra fields **wmbusmeters** computes from the telegram, semicolon separated, each `name=formula` — e.g. `difftemp_c=flow_temperature_c - return_temperature_c`. The decoder does the arithmetic; the result is a normal field and becomes an entity like any other. |
+| `static_fields` | str? | no | Constant values attached to this meter, semicolon separated, each `name=value` — e.g. `location=kitchen; apartment=12`. The decoder copies them into the telegram **as text** (`apartment=12` arrives as `"12"`), so they show up in the entity attributes and as diagnostic entities: a label, not a measurement. |
 
 Two things are worth knowing before writing one. The arithmetic is **unit-aware**:
 `total_m3 / 2 counter` works, while `total_m3 * 2` does not — a bare number carries

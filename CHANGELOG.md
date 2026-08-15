@@ -13,6 +13,18 @@
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
 ### Added
+- `static_fields` per meter: constant values attached to a meter, which upstream has
+  always supported as `field_<name>=<value>` in a meter file and which this add-on,
+  like the formulas, used to erase on every reload. Useful for the label a decoded
+  telegram cannot carry — a location, an apartment number, a riser. Verified against
+  the pinned decoder before implementing: it copies the value into the JSON **as
+  text**, so `apartment=12` arrives as `"12"`, and a value may contain spaces. That
+  makes such a field a diagnostic entity and an attribute on every entity of that
+  meter, which is the honest description of what it is: a label, not a measurement.
+  Same entry shape as the formulas (`name=value`, semicolon separated) and the same
+  guarantees: the shape is validated, a malformed entry is skipped with a warning
+  naming the meter, and no entry can inject a second key into the generated file.
+  Editable from both meter modals in all five languages.
 - `calculated_fields` per meter: extra fields the DECODER computes from the telegram,
   such as a flow/return temperature difference. Nothing here does arithmetic — the
   formula engine is upstream's and always was. `wmbusmeters` accepts
