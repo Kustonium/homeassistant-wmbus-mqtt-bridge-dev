@@ -408,6 +408,14 @@ created.
 | `exclude_fields` | str? | no | Glob patterns, comma- or space-separated, for decoded fields that should get **no** Home Assistant entity — e.g. `consumption_at_history_*, history_*_date`. Empty publishes every field. |
 | `calculated_fields` | str? | no | Extra fields **wmbusmeters** computes from the telegram, semicolon separated, each `name=formula` — e.g. `difftemp_c=flow_temperature_c - return_temperature_c`. The decoder does the arithmetic; the result is a normal field and becomes an entity like any other. |
 
+Two things are worth knowing before writing one. The arithmetic is **unit-aware**:
+`total_m3 / 2 counter` works, while `total_m3 * 2` does not — a bare number carries
+no unit and the decoder rejects the formula. Adding fields that share a unit needs
+nothing special, e.g.
+`difftemp_c=max_external_temperature_c - min_external_temperature_last_month_c`.
+And a formula the decoder cannot parse costs you only that one field: it says so in
+the log, the field is simply absent, and the rest of the meter decodes as usual.
+
 The WebUI driver list is generated from the pinned `wmbusmeters` build and its
 XMQ sources. Use that catalog instead of a manually maintained list in this guide.
 

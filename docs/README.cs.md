@@ -397,6 +397,14 @@ Když volbu necháte vypnutou, nic nepřijde, nepřidá se žádné pole a nevzn
 | `exclude_fields` | str? | ne | Vzory (globy) polí, která **nemají** dostat entitu v Home Assistantu — např. `consumption_at_history_*, history_*_date`. Oddělené čárkami nebo mezerami; prázdné publikuje všechna pole. |
 | `calculated_fields` | str? | ne | Další pole, která **wmbusmeters** počítá z telegramu, oddělená středníky, každé jako `název=vzorec` — např. `difftemp_c=flow_temperature_c - return_temperature_c`. Počítá dekodér; výsledek je běžné pole a stane se entitou jako každé jiné. |
 
+Před psaním vzorce se hodí vědět dvě věci. Aritmetika **hlídá jednotky**:
+`total_m3 / 2 counter` funguje, `total_m3 * 2` ne — holé číslo nemá jednotku a
+dekodér takový vzorec odmítne. Sčítání polí se stejnou jednotkou nepotřebuje nic
+navíc, např.
+`difftemp_c=max_external_temperature_c - min_external_temperature_last_month_c`.
+Vzorec, kterému dekodér nerozumí, stojí jen ono jedno pole: napíše to do logu, pole
+prostě nevznikne a zbytek měřiče se dekóduje normálně.
+
 Seznam ovladačů ve WebUI se generuje z připnutého sestavení `wmbusmeters` a jeho
 XMQ zdrojů. Používejte tento katalog místo ručně udržovaného seznamu v návodu.
 

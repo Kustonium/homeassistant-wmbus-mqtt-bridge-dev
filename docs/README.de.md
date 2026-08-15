@@ -417,6 +417,14 @@ Entität angelegt.
 | `exclude_fields` | str? | nein | Glob-Muster für Felder, die **keine** Home-Assistant-Entität bekommen sollen — z. B. `consumption_at_history_*, history_*_date`. Durch Kommas oder Leerzeichen getrennt; leer veröffentlicht alle Felder. |
 | `calculated_fields` | str? | nein | Zusätzliche Felder, die **wmbusmeters** aus dem Telegramm berechnet, durch Semikolon getrennt, je `name=formel` — z. B. `difftemp_c=flow_temperature_c - return_temperature_c`. Gerechnet wird im Decoder; das Ergebnis ist ein normales Feld und wird zur Entität wie jedes andere. |
 
+Zwei Dinge sind vorher gut zu wissen. Die Arithmetik **achtet auf Einheiten**:
+`total_m3 / 2 counter` funktioniert, `total_m3 * 2` nicht — eine nackte Zahl hat
+keine Einheit, und der Decoder weist die Formel ab. Felder gleicher Einheit zu
+addieren braucht nichts Besonderes, z. B.
+`difftemp_c=max_external_temperature_c - min_external_temperature_last_month_c`.
+Eine Formel, die der Decoder nicht versteht, kostet nur dieses eine Feld: er meldet
+es im Log, das Feld fehlt schlicht, und der Rest des Zählers wird normal dekodiert.
+
 Die Treiberliste der WebUI wird aus dem festgelegten `wmbusmeters`-Build und
 dessen XMQ-Quellen erzeugt. Nutze diesen Katalog statt einer manuellen Liste.
 

@@ -22,7 +22,15 @@
   whether the formula makes sense stays the decoder's judgement, and it reports a bad
   one itself rather than being second-guessed by a worse copy of its grammar. A
   malformed entry is skipped with a warning naming the meter, and cannot inject a
-  second key into the generated file.
+  second key into the generated file. Verified end to end against a real telegram
+  from the replay corpus (Kamstrup KWM2231, `kamwater`, id 53119425): the generated
+  meter file went through the pinned decoder with `--useconfig`, exactly as
+  `bridge.sh` runs it, and the JSON came back carrying
+  `"difftemp_c":7` next to the decoded fields. Two behaviours found while doing so
+  and now documented: the arithmetic is unit-aware, so `total_m3 * 2` is rejected
+  while `total_m3 / 2 counter` is not, and a formula the decoder cannot parse costs
+  only that field — it is reported in the log and the rest of the meter decodes
+  normally.
 
 ## 1.5.47-dev.243
 

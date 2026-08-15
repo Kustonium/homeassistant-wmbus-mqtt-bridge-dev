@@ -407,6 +407,14 @@ encja nie powstaje.
 | `exclude_fields` | str? | nie | Wzorce (globy) pól, które mają **nie** dostać encji w Home Assistant — np. `consumption_at_history_*, history_*_date`. Oddzielane przecinkami lub spacjami; puste publikuje wszystkie pola. |
 | `calculated_fields` | str? | nie | Dodatkowe pola liczone przez **wmbusmeters** z telegramu, rozdzielone średnikami, każde jako `nazwa=formuła` — np. `difftemp_c=flow_temperature_c - return_temperature_c`. Liczy dekoder; wynik jest zwykłym polem i dostaje encję jak każde inne. |
 
+Przed napisaniem formuły warto wiedzieć dwie rzeczy. Arytmetyka **pilnuje
+jednostek**: `total_m3 / 2 counter` zadziała, a `total_m3 * 2` nie — goła liczba nie
+ma jednostki i dekoder odrzuca taką formułę. Dodawanie pól o tej samej jednostce nie
+wymaga niczego dodatkowego, np.
+`difftemp_c=max_external_temperature_c - min_external_temperature_last_month_c`.
+Formuła, której dekoder nie rozumie, kosztuje wyłącznie to jedno pole: napisze o tym
+w logu, pole po prostu nie powstanie, a reszta licznika dekoduje się normalnie.
+
 Lista driverów w WebUI jest generowana z przypiętego buildu `wmbusmeters` i jego
 źródeł XMQ. Korzystaj z tego katalogu zamiast ręcznej listy w dokumentacji.
 
