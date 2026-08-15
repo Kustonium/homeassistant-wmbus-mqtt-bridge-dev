@@ -1,3 +1,11 @@
+## 1.5.48-dev.251
+
+### Added
+- insert field templates with one click (04412ec)
+
+### Fixed
+- drop unfilled constant-field templates instead of refusing the save (dde1182)
+
 ## 1.5.48-dev.250
 
 ### Added
