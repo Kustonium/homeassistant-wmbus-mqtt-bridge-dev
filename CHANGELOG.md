@@ -1,3 +1,11 @@
+## 1.5.48-dev.248
+
+### Added
+- attach constant fields to a meter (upstream field_) (ee9ebc2)
+
+### Fixed
+- make modal text inputs use the full width (eb93614)
+
 ## 1.5.48-dev.247
 
 ### Added
