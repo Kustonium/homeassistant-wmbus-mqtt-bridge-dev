@@ -49,6 +49,23 @@
   freezing on its last reading. With the option off nothing arrives and no entity
   is created. Documented in the localized READMEs and in `ARCHITECTURE.md`.
 
+### Fixed
+- the driver field table offered ten fields that can never become an entity here.
+  Reported from a live install running `apatorna1`: every field was ticked, yet
+  `timestamp_ut`, `timestamp_lt`, `timestamp_utc`, `device` and `rssi_dbm` never
+  appeared, and unticking `media`/`timestamp` changed nothing. The table is
+  `wmbusmeters --listfields`, which is the driver's whole catalog rather than what
+  this path publishes, and every driver's catalog opens with the same ten universal
+  fields. Three of them are timestamps wmbusmeters deliberately keeps out of JSON
+  (they exist for the CSV/`fields` formats); `device` and `rssi_dbm` are written
+  only when a radio device received the telegram, which never happens when the
+  decoder is fed through `stdin:hex`; the remaining five are the meter's identity,
+  which `emit_discovery_from_json` has always kept out of the entity list because it
+  is the device name and travels in every entity's attributes. Those rows now stay
+  visible but lose their checkbox and state the reason, so the panel no longer
+  promises a publish it cannot perform. The decoder's own `rssi_dbm` is unrelated to
+  the opt-in per-board RSSI this add-on joins on as `rssi_<board>_dbm`.
+
 ### Changed
 - the merged `rssi_dbm` and `rssi_source` fields are gone; only the per-board fields
   remain. `rssi_dbm` was kept as a compatibility value meaning "whichever board

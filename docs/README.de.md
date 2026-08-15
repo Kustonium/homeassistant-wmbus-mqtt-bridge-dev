@@ -411,6 +411,18 @@ Entität angelegt.
 Die Treiberliste der WebUI wird aus dem festgelegten `wmbusmeters`-Build und
 dessen XMQ-Quellen erzeugt. Nutze diesen Katalog statt einer manuellen Liste.
 
+Die Feldtabelle im Treiberpanel des Zählers stammt aus
+`wmbusmeters --listfields` — dem vollständigen Katalog des Treibers, nicht der
+Liste dessen, was dieser Pfad veröffentlicht. Zehn Felder, die jeder Treiber
+gemeinsam hat, werden deshalb ausgegraut angezeigt und lassen sich nicht
+ankreuzen. `id`, `name`, `meter`, `media` und `timestamp` sind die Identität des
+Zählers: Sie bleiben im Gerätenamen und in den Entitätsattributen, statt eigene
+Entitäten zu werden. `timestamp_ut`, `timestamp_lt`, `timestamp_utc`, `device`
+und `rssi_dbm` erreichen hier nie das JSON des Decoders — die drei Zeitstempel
+existieren nur für die Ausgabeformate CSV/`fields`, und die letzten beiden füllt
+ein empfangendes Funkgerät, das der Decoder nicht hat, wenn ihm Telegramme als
+Hex übergeben werden.
+
 ---
 
 ## 9. Sprache der Oberfläche

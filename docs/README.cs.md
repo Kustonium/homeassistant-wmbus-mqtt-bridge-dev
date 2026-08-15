@@ -392,6 +392,16 @@ Když volbu necháte vypnutou, nic nepřijde, nepřidá se žádné pole a nevzn
 Seznam ovladačů ve WebUI se generuje z připnutého sestavení `wmbusmeters` a jeho
 XMQ zdrojů. Používejte tento katalog místo ručně udržovaného seznamu v návodu.
 
+Tabulka polí v panelu ovladače měřiče pochází z `wmbusmeters --listfields` — je
+to úplný katalog ovladače, ne seznam toho, co tato cesta publikuje. Deset polí
+společných všem ovladačům se proto zobrazuje ztlumeně a nelze je zaškrtnout.
+`id`, `name`, `meter`, `media` a `timestamp` jsou identita měřiče: zůstávají v
+názvu zařízení a v atributech entit, místo aby dostaly vlastní entity.
+`timestamp_ut`, `timestamp_lt`, `timestamp_utc`, `device` a `rssi_dbm` se sem do
+JSON dekodéru nikdy nedostanou — tři časová razítka existují jen pro výstupní
+formáty CSV/`fields` a poslední dvě vyplňuje přijímací rádiové zařízení, které
+dekodér nemá, když mu telegramy předáváte jako HEX.
+
 ---
 
 ## 9. Jazyk rozhraní

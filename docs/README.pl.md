@@ -401,6 +401,17 @@ encja nie powstaje.
 Lista driverów w WebUI jest generowana z przypiętego buildu `wmbusmeters` i jego
 źródeł XMQ. Korzystaj z tego katalogu zamiast ręcznej listy w dokumentacji.
 
+Tabela pól w panelu drivera licznika pochodzi z `wmbusmeters --listfields` — to
+pełny katalog drivera, a nie lista tego, co publikuje ta ścieżka. Dziesięć pól
+wspólnych dla wszystkich driverów jest więc pokazanych jako wyszarzone i nie da
+się ich zaznaczyć. `id`, `name`, `meter`, `media` i `timestamp` to tożsamość
+licznika: zostają w nazwie urządzenia i w atrybutach encji, zamiast dostawać
+własne encje. `timestamp_ut`, `timestamp_lt`, `timestamp_utc`, `device` i
+`rssi_dbm` nigdy nie trafiają tutaj do JSON-a dekodera — trzy znaczniki czasu
+istnieją wyłącznie dla formatów CSV/`fields`, a dwa ostatnie wypełnia radiowe
+urządzenie odbiorcze, którego dekoder nie ma, gdy telegramy podaje mu się jako
+HEX.
+
 ---
 
 ## 9. Język interfejsu

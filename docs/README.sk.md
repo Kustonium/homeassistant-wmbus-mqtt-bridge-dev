@@ -391,6 +391,16 @@ Zoznam ovládačov vo WebUI sa generuje z pripnutého zostavenia `wmbusmeters` a
 jeho XMQ zdrojov. Používajte tento katalóg namiesto ručne udržiavaného zoznamu
 v návode.
 
+Tabuľka polí v paneli ovládača merača pochádza z `wmbusmeters --listfields` — je
+to úplný katalóg ovládača, nie zoznam toho, čo táto cesta publikuje. Desať polí
+spoločných všetkým ovládačom sa preto zobrazuje stlmene a nedá sa zaškrtnúť.
+`id`, `name`, `meter`, `media` a `timestamp` sú identita merača: zostávajú v
+názve zariadenia a v atribútoch entít, namiesto toho, aby dostali vlastné
+entity. `timestamp_ut`, `timestamp_lt`, `timestamp_utc`, `device` a `rssi_dbm` sa
+sem do JSON dekodéra nikdy nedostanú — tri časové pečiatky existujú len pre
+výstupné formáty CSV/`fields` a posledné dve vypĺňa prijímacie rádiové
+zariadenie, ktoré dekodér nemá, keď mu telegramy podávate ako HEX.
+
 ---
 
 ## 9. Jazyk rozhrania

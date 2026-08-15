@@ -402,6 +402,17 @@ created.
 The WebUI driver list is generated from the pinned `wmbusmeters` build and its
 XMQ sources. Use that catalog instead of a manually maintained list in this guide.
 
+The field table in the meter's driver panel comes from
+`wmbusmeters --listfields` — the driver's full catalog, not the list of what
+this path publishes. Ten fields common to every driver are therefore shown
+greyed out and cannot be ticked. `id`, `name`, `meter`, `media` and `timestamp`
+are the meter's identity: they stay in the device name and in the entity
+attributes instead of becoming entities of their own. `timestamp_ut`,
+`timestamp_lt`, `timestamp_utc`, `device` and `rssi_dbm` never reach the
+decoder's JSON here — the three timestamps exist only for the CSV/`fields`
+output formats, and the last two are filled in by a receiving radio device,
+which the decoder does not have when telegrams are fed to it as hex.
+
 ---
 
 ## 9. Interface language

@@ -2990,6 +2990,21 @@
     const rows = entry.fields.map(field => {
       const pattern = fieldPattern(field.name);
       const templated = pattern !== field.name;
+      // A field that can never become an entity here (see NON_ENTITY_FIELDS in
+      // webui.py) keeps its row, but loses the checkbox and says why. Ticking
+      // it did nothing, which read as a broken switch.
+      const noEntity = String(field.no_entity || "");
+      if (noEntity) {
+        const why = noEntity === "identity"
+          ? t("driver_fields_identity", "meter identity — already in the device name and in the entity attributes")
+          : t("driver_fields_not_in_json", "the decoder does not send this field on the RAW path");
+        return `
+        <tr style="opacity:0.55;">
+          <td style="padding:2px 6px;"><input type="checkbox" disabled></td>
+          <td class="mono" style="padding:2px 6px;white-space:nowrap;">${escapeHtml(field.name)}</td>
+          <td style="padding:2px 6px;color:#9eafba;">${escapeHtml(field.description || "")} <span style="color:#7d909c;">(${escapeHtml(why)})</span></td>
+        </tr>`;
+      }
       // A templated row has no literal name to match, so it counts as excluded
       // only when its own glob is present verbatim; a hand-written pattern
       // still greys out ordinary rows.

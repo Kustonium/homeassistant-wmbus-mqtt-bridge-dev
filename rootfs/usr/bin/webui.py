@@ -770,6 +770,38 @@ def update_options_for_search(expected: str, tolerance: str, enabled: bool = Tru
 # process-lifetime cache is enough.
 DRIVER_FIELDS_CACHE: dict[str, list[dict]] = {}
 
+# Every driver's catalog opens with the same ten universal fields, and none of
+# them can become a Home Assistant entity here. Marking them is what keeps the
+# table honest: a checkbox next to a field that cannot be published reads as a
+# broken switch (reported from a live install: all fields ticked, five of them
+# never appeared). Two distinct causes, both taken from the decoder's own
+# behaviour rather than assumed:
+#
+#   not_in_json — the field is not in the decoder's JSON output at all.
+#     timestamp_ut / timestamp_lt / timestamp_utc are deliberately left out of
+#     JSON by wmbusmeters (they exist for the `fields`/CSV formats), while
+#     device and rssi_dbm are written only when a radio device received the
+#     telegram. The bridge feeds the decoder through stdin:hex, so there is no
+#     receiving device to report and the keys are omitted.
+#   identity — the field is in the JSON, but emit_discovery_from_json() keeps
+#     the meter's identity out of the entity list on purpose: it is already the
+#     device name and it travels in every entity's attributes.
+#
+# NB the decoder's own rssi_dbm is unrelated to the opt-in per-board RSSI this
+# add-on joins on as rssi_<board>_dbm — same idea, different origin.
+NON_ENTITY_FIELDS: dict[str, str] = {
+    "timestamp_ut": "not_in_json",
+    "timestamp_lt": "not_in_json",
+    "timestamp_utc": "not_in_json",
+    "device": "not_in_json",
+    "rssi_dbm": "not_in_json",
+    "id": "identity",
+    "name": "identity",
+    "meter": "identity",
+    "media": "identity",
+    "timestamp": "identity",
+}
+
 
 def driver_fields(driver: str) -> tuple[bool, list[dict], str]:
     """Return (ok, [{"name":…, "description":…}], error) for one driver."""
@@ -801,6 +833,7 @@ def driver_fields(driver: str) -> tuple[bool, list[dict], str]:
         fields.append({
             "name": name,
             "description": parts[1].strip() if len(parts) > 1 else "",
+            "no_entity": NON_ENTITY_FIELDS.get(name.lower(), ""),
         })
     if not fields:
         # An unknown driver prints nothing useful; do not cache that.
