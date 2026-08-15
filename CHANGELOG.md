@@ -1,3 +1,11 @@
+## 1.5.48-dev.250
+
+### Added
+- insert field templates with one click (04412ec)
+
+### Fixed
+- raise the contrast of small hint text (ec7fc26)
+
 ## 1.5.48-dev.249
 
 ### Fixed
