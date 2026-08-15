@@ -1,3 +1,16 @@
+## 1.5.47-dev.243
+
+### Added
+- offer the upstream issue report for configured meters (7cd8660)
+
+### Fixed
+- translate the decode-mode strings into de/cs/sk (333af33)
+- mark driver fields that can never become entities (7d27997)
+- keep only the per-board RSSI entity (c90b00c)
+
+### Other (review)
+- Document per-ESP RSSI entities (298f8cf)
+
 ## 1.5.47-dev.242
 
 ### Other (review)
