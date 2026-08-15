@@ -177,18 +177,40 @@ else
 fi
 
 : > "${WARN_LOG}"
-if [[ -z "$(build_static_field_lines 'Bad Name=x; noequals; empty=' 03534159)" ]]    && [[ "$(wc -l < "${WARN_LOG}" | tr -d ' ')" == "3" ]]; then
+if [[ -z "$(build_static_field_lines 'Bad Name=x; noequals; empty=' 03534159)" ]] \
+   && [[ "$(wc -l < "${WARN_LOG}" | tr -d ' ')" == "3" ]]; then
   pass "malformed constant fields are all dropped and reported"
 else
   fail "malformed constant fields: $(cat "${WARN_LOG}")"
 fi
 
 # The two options must not collide in the generated file.
-if grep -q "^field_location=kitchen$" <<<"${HEAT}"    && grep -q "^field_riser=hot water$" <<<"${HEAT}"    && grep -q "^calculate_difftemp_c=" <<<"${HEAT}"; then
+if grep -q "^field_location=kitchen$" <<<"${HEAT}" \
+   && grep -q "^field_riser=hot water$" <<<"${HEAT}" \
+   && grep -q "^calculate_difftemp_c=" <<<"${HEAT}"; then
   pass "constant and calculated fields coexist in one meter file"
 else
-  fail "meter file mixes the two badly:"$'
-'"${HEAT}"
+  fail "meter file mixes the two badly:"$'\n'"${HEAT}"
+fi
+
+# --- the WebUI validator: unfilled templates must not block a save -----------
+# The modals offer chips that insert "location=" for the user to complete.
+# Clicking four and filling two is the normal way to use them, so an entry left
+# empty is dropped rather than rejected - refusing the whole save (driver and
+# key included) would punish the convenience. A formula is different: an empty
+# one is a typo, not an unused template, and still errors.
+if command -v python3 >/dev/null 2>&1; then
+  VALIDATOR_OUT="$(WMBUS_BASE="${WORK_DIR}" python3 "${SCRIPT_DIR}/helpers/check_field_validators.py" "${ROOT_DIR}")"
+  while IFS=$'\t' read -r verdict label detail; do
+    [[ -n "${label}" ]] || continue
+    if [[ "${verdict}" == "OK" ]]; then
+      pass "webui validator: ${label}"
+    else
+      fail "webui validator: ${label} -> ${detail}"
+    fi
+  done <<< "${VALIDATOR_OUT}"
+else
+  echo "SKIP: python3 unavailable, webui validator not checked"
 fi
 
 echo

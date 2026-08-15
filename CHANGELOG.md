@@ -55,6 +55,11 @@
   refused with "Could not extract a valid unit from calculated field name", the field
   is not created, and the meter keeps decoding. Constant fields carry no such rule:
   any name is accepted, since nothing is converted.
+  A constant left at its inserted template (`location=` with no value) is dropped on
+  save instead of refusing it: clicking several chips and filling some in is how they
+  are meant to be used, and rejecting the save would also discard the driver and key
+  edited in the same modal. An empty formula still errors — that is a typo, not an
+  unused template — and a malformed field name is still refused in both.
 - `static_fields` per meter: constant values attached to a meter, which upstream has
   always supported as `field_<name>=<value>` in a meter file and which this add-on,
   like the formulas, used to erase on every reload. Useful for the label a decoded

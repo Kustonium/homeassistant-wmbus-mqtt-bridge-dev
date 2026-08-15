@@ -976,8 +976,14 @@ def _clean_static_fields(value: str) -> tuple[bool, str, str]:
             return False, "", (
                 f"Invalid field name '{name}' - lowercase letters, digits and _ only, "
                 "starting with a letter (e.g. location).")
+        # An empty value is a template the user inserted from a chip and did not
+        # fill in. Refusing the whole save for it would punish the convenience:
+        # clicking four chips and filling two is the normal way to use them.
+        # A constant with no value has nothing to publish anyway, so it is
+        # dropped rather than rejected. Formulas keep the error - an empty one
+        # is a typo, not an unused template.
         if not text:
-            return False, "", f"Field '{name}' has an empty value."
+            continue
         entries.append(f"{name}={text}")
     return True, "; ".join(entries), ""
 
