@@ -7,6 +7,23 @@
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
+### Added
+- `calculated_fields` per meter: extra fields the DECODER computes from the telegram,
+  such as a flow/return temperature difference. Nothing here does arithmetic — the
+  formula engine is upstream's and always was. `wmbusmeters` accepts
+  `calculate_<name>=<formula>` in a meter config file and publishes the result as an
+  ordinary JSON field, which then becomes a Home Assistant entity through the normal
+  Discovery path, unit and device class included. What blocked it was this add-on:
+  `refresh_meter_files` deletes and rewrites every `meter-*` file on start and on
+  every soft reload, writing only `name`, `id`, `key` and `driver`, so a hand-added
+  `calculate_` line survived seconds. It is now carried through from the add-on
+  configuration instead. Entries are semicolon separated, `name=formula` each, because
+  a formula contains both spaces and commas. Only the shape is validated here —
+  whether the formula makes sense stays the decoder's judgement, and it reports a bad
+  one itself rather than being second-guessed by a worse copy of its grammar. A
+  malformed entry is skipped with a warning naming the meter, and cannot inject a
+  second key into the generated file.
+
 ## 1.5.47-dev.243
 
 ### Added
@@ -58,21 +75,6 @@
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
 ### Added
-- `calculated_fields` per meter: extra fields the DECODER computes from the telegram,
-  such as a flow/return temperature difference. Nothing here does arithmetic — the
-  formula engine is upstream's and always was. `wmbusmeters` accepts
-  `calculate_<name>=<formula>` in a meter config file and publishes the result as an
-  ordinary JSON field, which then becomes a Home Assistant entity through the normal
-  Discovery path, unit and device class included. What blocked it was this add-on:
-  `refresh_meter_files` deletes and rewrites every `meter-*` file on start and on
-  every soft reload, writing only `name`, `id`, `key` and `driver`, so a hand-added
-  `calculate_` line survived seconds. It is now carried through from the add-on
-  configuration instead. Entries are semicolon separated, `name=formula` each, because
-  a formula contains both spaces and commas. Only the shape is validated here —
-  whether the formula makes sense stays the decoder's judgement, and it reports a bad
-  one itself rather than being second-guessed by a worse copy of its grammar. A
-  malformed entry is skipped with a warning naming the meter, and cannot inject a
-  second key into the generated file.
 - the upstream issue report is available for configured meters, not only for
   candidates: METERS now carries the same **Report…** button in every row. Asked for
   by a user who had added a meter and then had no way to look at its raw frame,
