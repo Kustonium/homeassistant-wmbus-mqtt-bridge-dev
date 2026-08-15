@@ -2946,6 +2946,14 @@
   window.__editModalExcludeSet = function (value) {
     if (state.editModal) state.editModal.excludeFields = String(value == null ? "" : value);
   };
+  // Same live-state treatment for the formulas: an SSE-driven re-render mid-typing
+  // must not throw the half-written formula away.
+  window.__modalCalcSet = function (value) {
+    if (state.modal) state.modal.calculatedFields = String(value == null ? "" : value);
+  };
+  window.__editModalCalcSet = function (value) {
+    if (state.editModal) state.editModal.calculatedFields = String(value == null ? "" : value);
+  };
 
   // Catalog of every field a driver can report, from wmbusmeters --listfields.
   // It is the driver's own list, so it also covers fields this meter has not
@@ -3069,6 +3077,11 @@
               placeholder="${escapeHtml(t("exclude_fields_placeholder", "e.g. consumption_at_history_*, history_*_date"))}"
               oninput="window.__editModalExcludeSet(this.value)">
             <div style="font-size:10px;color:#4a6070;margin-top:3px;">${escapeHtml(t("exclude_fields_hint", "Patterns for fields that get no Home Assistant entity. * matches any text; separate with commas. Removing a field also deletes its existing entity and its history."))}</div>
+            <label for="edit-meter-calculated-fields" style="margin-top:8px;">${escapeHtml(t("calculated_fields_label", "Calculated fields"))}</label>
+            <input id="edit-meter-calculated-fields" autocomplete="off" value="${escapeHtml(em.calculatedFields || "")}"
+              placeholder="${escapeHtml(t("calculated_fields_placeholder", "e.g. difftemp_c=flow_temperature_c - return_temperature_c"))}"
+              oninput="window.__editModalCalcSet(this.value)">
+            <div style="font-size:10px;color:#4a6070;margin-top:3px;">${escapeHtml(t("calculated_fields_hint", "wmbusmeters computes these from the telegram and they become entities like any other field. One name=formula per entry, separated by semicolons. The arithmetic is unit-aware: total_m3 / 2 counter works, total_m3 * 2 does not."))}</div>
             <div style="margin-top:8px;">${driverFieldsSection(em.driver, em.excludeFields, "edit")}</div>
             <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
               <button id="edit-driver-compare" class="btn" type="button" data-action="compare-driver" data-id="${escapeHtml(em.id || "")}"${editKeyPartial ? " disabled" : ""}>${escapeHtml(t("compare_btn", "Compare"))}</button>
@@ -3237,6 +3250,15 @@
                     placeholder="${escapeHtml(t("exclude_fields_placeholder", "e.g. consumption_at_history_*, history_*_date"))}"
                     oninput="window.__modalExcludeSet(this.value)">
                   <div style="font-size:10px;color:#4a6070;margin-top:3px;">${escapeHtml(t("exclude_fields_hint", "Patterns for fields that get no Home Assistant entity. * matches any text; separate with commas. Removing a field also deletes its existing entity and its history."))}</div>
+                  <label for="meter-calculated-fields" style="margin-top:8px;">
+                    ${escapeHtml(t("calculated_fields_label", "Calculated fields"))}
+                    <span style="font-size:10px;color:#607a88;font-weight:400;margin-left:6px;">${escapeHtml(t("calculated_fields_hint_short", "optional — the decoder computes them"))}</span>
+                  </label>
+                  <input id="meter-calculated-fields" name="calculated_fields" autocomplete="off"
+                    value="${escapeHtml(modal.calculatedFields || "")}"
+                    placeholder="${escapeHtml(t("calculated_fields_placeholder", "e.g. difftemp_c=flow_temperature_c - return_temperature_c"))}"
+                    oninput="window.__modalCalcSet(this.value)">
+                  <div style="font-size:10px;color:#4a6070;margin-top:3px;">${escapeHtml(t("calculated_fields_hint", "wmbusmeters computes these from the telegram and they become entities like any other field. One name=formula per entry, separated by semicolons. The arithmetic is unit-aware: total_m3 / 2 counter works, total_m3 * 2 does not."))}</div>
                   <div style="margin-top:8px;">${driverFieldsSection(modal.driver, modal.excludeFields, "add")}</div>
                 </div>
                 <div class="field">
@@ -3491,6 +3513,7 @@
         id,
         driver: target.dataset.driver || "auto",
         excludeFields: (savedMeter && savedMeter.exclude_fields) || "",
+        calculatedFields: (savedMeter && savedMeter.calculated_fields) || "",
       };
       if (state.drivers === null) {
         fetch("assets/drivers.json", {cache: "no-store"})
@@ -3587,7 +3610,13 @@
         // exclude_fields is always sent, empty included — that is how the
         // pattern gets cleared. The key is only sent when set, because an
         // empty key means "keep the configured one".
-        const updatePayload = {meter_id: id, driver, exclude_fields: String(em.excludeFields || "").trim()};
+        const updatePayload = {
+          meter_id: id,
+          driver,
+          exclude_fields: String(em.excludeFields || "").trim(),
+          // Always sent, empty included: that is how a formula gets removed.
+          calculated_fields: String(em.calculatedFields || "").trim(),
+        };
         if (key) updatePayload.key = key;
         await postApi("update-meter", updatePayload);
         state.editModal = null;
