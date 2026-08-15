@@ -1,3 +1,8 @@
+## 1.5.48-dev.246
+
+### Added
+- pass the decoder's calculate_ fields through to the meter file (2fe978e)
+
 ## 1.5.48-dev.245
 
 ### Added
