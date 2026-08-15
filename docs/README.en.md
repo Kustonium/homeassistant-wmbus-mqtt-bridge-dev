@@ -406,6 +406,7 @@ created.
 | `type_other` | str? | when `type=other` | Custom driver name |
 | `key` | str? | when encrypted | 32-char AES key (HEX) |
 | `exclude_fields` | str? | no | Glob patterns, comma- or space-separated, for decoded fields that should get **no** Home Assistant entity — e.g. `consumption_at_history_*, history_*_date`. Empty publishes every field. |
+| `calculated_fields` | str? | no | Extra fields **wmbusmeters** computes from the telegram, semicolon separated, each `name=formula` — e.g. `difftemp_c=flow_temperature_c - return_temperature_c`. The decoder does the arithmetic; the result is a normal field and becomes an entity like any other. |
 
 The WebUI driver list is generated from the pinned `wmbusmeters` build and its
 XMQ sources. Use that catalog instead of a manually maintained list in this guide.

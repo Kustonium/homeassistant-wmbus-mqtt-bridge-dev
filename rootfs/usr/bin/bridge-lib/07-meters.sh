@@ -163,6 +163,44 @@ status_detect_key_problem() {
 # the reload path refreshes the filter too, so editing a meter takes effect
 # without a container restart and there is no second cache to invalidate.
 
+# Turn the user's "name=formula;name=formula" string into the calculate_ lines
+# wmbusmeters expects in a meter file, dropping entries that are not shaped like
+# a field definition. Prints the lines; the caller redirects them into the file,
+# so nothing here may write to stdout except those lines — warnings go to the
+# log through warn(), which does not.
+#
+# The arithmetic itself belongs to the decoder (config.cc accepts calculate_ in
+# a meter config file and hands it to the formula engine); the bridge only has
+# to stop dropping the user's line when it regenerates the file.
+build_calculated_field_lines() {
+  local spec="$1" id="$2" entry name formula
+  local IFS=';'
+  for entry in ${spec}; do
+    entry="${entry#"${entry%%[![:space:]]*}"}"
+    entry="${entry%"${entry##*[![:space:]]}"}"
+    [[ -n "${entry}" ]] || continue
+    name="${entry%%=*}"
+    formula="${entry#*=}"
+    # A newline would let one entry inject an unrelated key into the file.
+    if [[ "${entry}" != *"="* || "${entry}" == *$'\n'* ]]; then
+      warn "calculated_fields for ${id}: '${entry}' is not name=formula -> skipped"
+      continue
+    fi
+    name="${name//[[:space:]]/}"
+    formula="${formula#"${formula%%[![:space:]]*}"}"
+    formula="${formula%"${formula##*[![:space:]]}"}"
+    if [[ ! "${name}" =~ ^[a-z][a-z0-9_]*$ ]]; then
+      warn "calculated_fields for ${id}: field name '${name}' is not [a-z][a-z0-9_]* -> skipped"
+      continue
+    fi
+    if [[ -z "${formula}" ]]; then
+      warn "calculated_fields for ${id}: '${name}' has an empty formula -> skipped"
+      continue
+    fi
+    printf 'calculate_%s=%s\n' "${name}" "${formula}"
+  done
+}
+
 # shellcheck disable=SC2034
 refresh_meter_files() {
   rm -f "${METER_DIR}/meter-"* 2>/dev/null || true
@@ -195,7 +233,7 @@ refresh_meter_files() {
     write_search_status "listen" "listen_mode"
   else
     local loaded_count=0
-    local meter_json file friendly_name driver driver_other mid_raw key mid exclude_fields
+    local meter_json file friendly_name driver driver_other mid_raw key mid exclude_fields calculated_fields calculated_lines
     while IFS= read -r meter_json; do
       friendly_name="$(echo "${meter_json}" | jq -r '.id // "meter"')"
       driver="$(echo "${meter_json}" | jq -r '.type // "auto"')"
@@ -205,6 +243,7 @@ refresh_meter_files() {
       # Accept commas as separators too — a human writing a list of patterns
       # reaches for them, and options.json holds a single string.
       exclude_fields="$(echo "${meter_json}" | jq -r '.exclude_fields // empty' | tr ',' ' ')"
+      calculated_fields="$(echo "${meter_json}" | jq -r '.calculated_fields // empty')"
 
       if [[ -z "${key}" || "${key}" == "null" ]]; then
         key=""
@@ -233,6 +272,14 @@ refresh_meter_files() {
         METER_EXCLUDE_FIELDS["${mid,,}"]="${exclude_fields}"
       fi
 
+      # Built before the redirect below: build_calculated_field_lines warns
+      # about malformed entries, and a warning emitted inside the block would
+      # be redirected into the meter file itself.
+      calculated_lines=""
+      if [[ -n "${calculated_fields}" && "${calculated_fields}" != "null" ]]; then
+        calculated_lines="$(build_calculated_field_lines "${calculated_fields}" "${mid}")"
+      fi
+
       loaded_count=$((loaded_count + 1))
       file="$(printf '%s/meter-%04d' "${METER_DIR}" "${loaded_count}")"
       {
@@ -248,6 +295,9 @@ refresh_meter_files() {
         fi
         if [[ "${driver}" != "auto" ]]; then
           echo "driver=${driver}"
+        fi
+        if [[ -n "${calculated_lines}" ]]; then
+          printf '%s\n' "${calculated_lines}"
         fi
       } > "${file}"
 

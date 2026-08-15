@@ -405,6 +405,7 @@ encja nie powstaje.
 | `type_other` | str? | gdy `type=other` | Niestandardowa nazwa sterownika |
 | `key` | str? | gdy szyfrowany | 32-znakowy klucz AES (HEX) |
 | `exclude_fields` | str? | nie | Wzorce (globy) pól, które mają **nie** dostać encji w Home Assistant — np. `consumption_at_history_*, history_*_date`. Oddzielane przecinkami lub spacjami; puste publikuje wszystkie pola. |
+| `calculated_fields` | str? | nie | Dodatkowe pola liczone przez **wmbusmeters** z telegramu, rozdzielone średnikami, każde jako `nazwa=formuła` — np. `difftemp_c=flow_temperature_c - return_temperature_c`. Liczy dekoder; wynik jest zwykłym polem i dostaje encję jak każde inne. |
 
 Lista driverów w WebUI jest generowana z przypiętego buildu `wmbusmeters` i jego
 źródeł XMQ. Korzystaj z tego katalogu zamiast ręcznej listy w dokumentacji.

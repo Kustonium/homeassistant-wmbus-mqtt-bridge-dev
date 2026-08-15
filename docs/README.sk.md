@@ -394,6 +394,7 @@ entita.
 | `type_other` | str? | pri `type=other` | Vlastný názov ovládača |
 | `key` | str? | pri šifrovaní | 32-znakový AES kľúč (HEX) |
 | `exclude_fields` | str? | nie | Vzory (globy) polí, ktoré **nemajú** dostať entitu v Home Assistante — napr. `consumption_at_history_*, history_*_date`. Oddelené čiarkami alebo medzerami; prázdne publikuje všetky polia. |
+| `calculated_fields` | str? | nie | Ďalšie polia, ktoré **wmbusmeters** počíta z telegramu, oddelené bodkočiarkami, každé ako `názov=vzorec` — napr. `difftemp_c=flow_temperature_c - return_temperature_c`. Počíta dekodér; výsledok je bežné pole a stane sa entitou ako každé iné. |
 
 Zoznam ovládačov vo WebUI sa generuje z pripnutého zostavenia `wmbusmeters` a
 jeho XMQ zdrojov. Používajte tento katalóg namiesto ručne udržiavaného zoznamu

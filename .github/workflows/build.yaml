@@ -104,6 +104,7 @@ jobs:
           bash tests/test_discovery_publish_order.sh
           bash tests/test_discovery_field_categories.sh
           bash tests/test_issue_report_sources.sh
+          bash tests/test_calculated_fields.sh
 
   # ---------------------------------------------------------------------------
   # Build — build + push BOTH arch images tagged :dev and :dev.<run_number>.

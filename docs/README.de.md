@@ -415,6 +415,7 @@ Entität angelegt.
 | `type_other` | str? | bei `type=other` | Eigener Treibername |
 | `key` | str? | bei verschlüsselt | 32-Zeichen-AES-Schlüssel (HEX) |
 | `exclude_fields` | str? | nein | Glob-Muster für Felder, die **keine** Home-Assistant-Entität bekommen sollen — z. B. `consumption_at_history_*, history_*_date`. Durch Kommas oder Leerzeichen getrennt; leer veröffentlicht alle Felder. |
+| `calculated_fields` | str? | nein | Zusätzliche Felder, die **wmbusmeters** aus dem Telegramm berechnet, durch Semikolon getrennt, je `name=formel` — z. B. `difftemp_c=flow_temperature_c - return_temperature_c`. Gerechnet wird im Decoder; das Ergebnis ist ein normales Feld und wird zur Entität wie jedes andere. |
 
 Die Treiberliste der WebUI wird aus dem festgelegten `wmbusmeters`-Build und
 dessen XMQ-Quellen erzeugt. Nutze diesen Katalog statt einer manuellen Liste.

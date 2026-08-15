@@ -94,3 +94,11 @@ schema:
       # "consumption_at_history_*, history_*_date"). Empty publishes every
       # field, which is the behaviour of every version before this option.
       exclude_fields: str?
+      # Extra fields wmbusmeters computes from the telegram, semicolon
+      # separated, each "name=formula" (e.g.
+      # "difftemp_c=flow_temperature_c-return_temperature_c"). The decoder owns
+      # the arithmetic — see its calculate_ documentation — and the result is a
+      # normal field in the JSON, so it becomes a Home Assistant entity like
+      # any other. Semicolons separate entries because a formula contains both
+      # spaces and commas.
+      calculated_fields: str?

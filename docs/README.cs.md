@@ -395,6 +395,7 @@ Když volbu necháte vypnutou, nic nepřijde, nepřidá se žádné pole a nevzn
 | `type_other` | str? | při `type=other` | Vlastní název ovladače |
 | `key` | str? | při šifrování | 32znakový AES klíč (HEX) |
 | `exclude_fields` | str? | ne | Vzory (globy) polí, která **nemají** dostat entitu v Home Assistantu — např. `consumption_at_history_*, history_*_date`. Oddělené čárkami nebo mezerami; prázdné publikuje všechna pole. |
+| `calculated_fields` | str? | ne | Další pole, která **wmbusmeters** počítá z telegramu, oddělená středníky, každé jako `název=vzorec` — např. `difftemp_c=flow_temperature_c - return_temperature_c`. Počítá dekodér; výsledek je běžné pole a stane se entitou jako každé jiné. |
 
 Seznam ovladačů ve WebUI se generuje z připnutého sestavení `wmbusmeters` a jeho
 XMQ zdrojů. Používejte tento katalog místo ručně udržovaného seznamu v návodu.

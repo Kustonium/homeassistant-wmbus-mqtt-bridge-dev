@@ -918,8 +918,45 @@ def _clean_exclude_fields(value: str) -> tuple[bool, str, str]:
     return True, " ".join(kept), ""
 
 
+# Extra fields the DECODER computes from the telegram ("name=formula",
+# semicolon separated). The arithmetic is upstream's: wmbusmeters accepts
+# calculate_<name>=<formula> in a meter config file and publishes the result as
+# an ordinary JSON field, which then becomes an entity through the normal
+# Discovery path. The bridge only has to carry the user's line into the file it
+# regenerates. Semicolons separate entries because a formula contains spaces
+# and commas ("flow_temperature_c - return_temperature_c").
+#
+# Only the SHAPE is validated here. Whether the formula makes sense is the
+# decoder's judgement, and it reports a bad one on its own; guessing at it here
+# would mean maintaining a second, worse copy of its grammar.
+CALC_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+def _clean_calculated_fields(value: str) -> tuple[bool, str, str]:
+    """Return (ok, cleaned, error). Empty means "no calculated fields"."""
+    entries: list[str] = []
+    for raw_entry in re.split(r"[;\n]", value or ""):
+        entry = raw_entry.strip()
+        if not entry:
+            continue
+        if "=" not in entry:
+            return False, "", f"Invalid calculated field '{entry}' - expected name=formula."
+        name, formula = entry.split("=", 1)
+        name = name.strip()
+        formula = formula.strip()
+        if not CALC_NAME_RE.match(name):
+            return False, "", (
+                f"Invalid field name '{name}' - lowercase letters, digits and _ only, "
+                "starting with a letter (e.g. difftemp_c).")
+        if not formula:
+            return False, "", f"Field '{name}' has an empty formula."
+        entries.append(f"{name}={formula}")
+    return True, "; ".join(entries), ""
+
+
 def add_meter_to_options(meter_id: str, driver: str, key: str, meter_name: str = "",
-                         exclude_fields: str = "") -> tuple[bool, str]:
+                         exclude_fields: str = "",
+                         calculated_fields: str = "") -> tuple[bool, str]:
     """Add a meter entry to addon options via HA Supervisor API.
 
     Writing directly to /data/options.json does NOT persist across restarts —
@@ -975,6 +1012,8 @@ def add_meter_to_options(meter_id: str, driver: str, key: str, meter_name: str =
     }
     if exclude_fields:
         entry["exclude_fields"] = exclude_fields
+    if calculated_fields:
+        entry["calculated_fields"] = calculated_fields
     meters.append(entry)
     options["meters"] = meters
 
@@ -1153,7 +1192,8 @@ def remove_meter_from_options(meter_id: str) -> tuple[bool, str]:
 
 
 def update_meter_in_options(meter_id: str, driver: str, key: str | None = None,
-                            exclude_fields: str | None = None) -> tuple[bool, str]:
+                            exclude_fields: str | None = None,
+                            calculated_fields: str | None = None) -> tuple[bool, str]:
     """Change the driver (and optionally the AES key) of an existing meter.
 
     Same Supervisor-first persistence as add/remove_meter_from_options. The
@@ -1204,6 +1244,11 @@ def update_meter_in_options(meter_id: str, driver: str, key: str | None = None,
             entry["exclude_fields"] = exclude_fields
         else:
             entry.pop("exclude_fields", None)
+    if calculated_fields is not None:
+        if calculated_fields:
+            entry["calculated_fields"] = calculated_fields
+        else:
+            entry.pop("calculated_fields", None)
     options["meters"] = meters
 
     token = os.environ.get("SUPERVISOR_TOKEN", "")
@@ -2790,7 +2835,16 @@ class Handler(BaseHTTPRequestHandler):
                     return
             else:
                 exclude_fields = None
-            ok, msg = update_meter_in_options(meter_id, driver, key or None, exclude_fields)
+            if 'calculated_fields' in params:
+                ok_calc, calculated_fields, err = _clean_calculated_fields(
+                    (params.get('calculated_fields') or [''])[0])
+                if not ok_calc:
+                    self._send_json(400, {"ok": False, "message": err})
+                    return
+            else:
+                calculated_fields = None
+            ok, msg = update_meter_in_options(meter_id, driver, key or None, exclude_fields,
+                                              calculated_fields)
             self._send_json(200 if ok else 400, {"ok": ok, "message": msg})
             return
         if path.endswith('/api/factory-reset'):
@@ -2883,12 +2937,18 @@ class Handler(BaseHTTPRequestHandler):
             if not ok_ex:
                 self._send_json(400, {"ok": False, "message": err})
                 return
+            ok_calc, calculated_fields, err = _clean_calculated_fields(
+                (params.get('calculated_fields') or [''])[0])
+            if not ok_calc:
+                self._send_json(400, {"ok": False, "message": err})
+                return
             # NB: add_meter_to_options already emits the appropriate
             # webui_add_event (ok / warn / error) with the most accurate
             # context — re-logging here would double-stamp status_events.tsv
             # in the same second.
             ok, msg = add_meter_to_options(meter_id, driver, key, meter_name=meter_name,
-                                           exclude_fields=exclude_fields)
+                                           exclude_fields=exclude_fields,
+                                           calculated_fields=calculated_fields)
             # When a previewed candidate is added permanently, drop the
             # preview meter file so the LISTEN instance doesn't keep
             # decoding the same telegrams that DECODE now handles.
