@@ -1,3 +1,9 @@
+## 1.5.48-dev.247
+
+### Added
+- attach constant fields to a meter (upstream field_) (ee9ebc2)
+- edit calculated_fields from the meter modals (b89c15e)
+
 ## 1.5.48-dev.246
 
 ### Added
