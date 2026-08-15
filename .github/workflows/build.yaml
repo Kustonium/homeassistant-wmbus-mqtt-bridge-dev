@@ -103,6 +103,7 @@ jobs:
           bash tests/test_driver_catalog_contract.sh
           bash tests/test_discovery_publish_order.sh
           bash tests/test_discovery_field_categories.sh
+          bash tests/test_issue_report_sources.sh
 
   # ---------------------------------------------------------------------------
   # Build — build + push BOTH arch images tagged :dev and :dev.<run_number>.

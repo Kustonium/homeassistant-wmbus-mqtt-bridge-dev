@@ -231,6 +231,14 @@ Das Telegramm enthält die Seriennummer des Zählers; der AES-Schlüssel wird ni
 beigefügt. Wird ein gespeicherter Schlüssel für die Analyse verwendet, kann die
 entschlüsselte Ausgabe Zählerstände enthalten.
 
+Derselbe Button **Meldung…** steht in jeder Zeile von ZÄHLER, sodass sich ein
+bereits hinzugefügter Zähler — einer, der zwar dekodiert, aber ein Feld falsch
+oder weniger Felder als sein Display meldet — melden lässt, ohne ihn vorher zu
+entfernen. Das ist zugleich der Weg, den Rohframe eines konfigurierten Zählers
+zu sehen: die Meldung beginnt mit dem Telegramm selbst. Der Frame stammt aus
+dem Ringpuffer der zuletzt empfangenen Telegramme und steht nach einem Neustart
+zur Verfügung, sobald der Zähler wieder sendet.
+
 ---
 
 ## 7. Nach Wert filtern — wenn zu viele fremde Zähler zu hören sind

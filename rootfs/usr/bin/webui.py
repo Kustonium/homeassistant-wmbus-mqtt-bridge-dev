@@ -329,9 +329,12 @@ def candidate_issue_report(meter_id: str) -> tuple[bool, dict]:
     if not mid or not VALID_ID_RE.match(mid):
         return False, {"ok": False, "error": "invalid_meter_id"}
 
-    raw_rows = read_tsv(CANDIDATE_RAW_TSV, ["id", "ts", "raw_len", "raw"])
-    raw_row = next((r for r in raw_rows if normalize_meter_id(r.get("id")) == mid), None)
-    raw = str((raw_row or {}).get("raw") or "").strip()
+    # Candidates keep a RAW row of their own; a configured meter does not, so
+    # the frame comes from the rolling all-frames buffer, matched on the id in
+    # little-endian order. That is the same lookup the preview path uses and it
+    # is what makes the report available for meters that are already added —
+    # asked for by a user who had no way to see the raw frame after adding one.
+    raw, raw_ts = _resolve_raw_for_id(mid)
     if not raw:
         return False, {"ok": False, "error": "no_raw_telegram"}
 
@@ -350,14 +353,38 @@ def candidate_issue_report(meter_id: str) -> tuple[bool, dict]:
     # while the key itself is never part of the output or the report. The
     # report does reveal meter readings in that case (flagged to the UI).
     key = ""
+    meter_entry: dict = {}
     options = read_json(OPTIONS_JSON)
     if isinstance(options, dict):
         for m in options.get("meters", []) or []:
             if isinstance(m, dict) and normalize_meter_id(m.get("meter_id")) == mid:
+                meter_entry = m
                 cand_key = str(m.get("key") or "").strip()
                 if re.match(r"^[0-9A-Fa-f]{32}$", cand_key):
                     key = cand_key
                 break
+
+    # A configured meter usually has no candidate row left, so the header lines
+    # come from its own configuration and its last decoded telegram. The
+    # manufacturer is in the analyze output below either way.
+    if meter_entry:
+        cfg_driver = str(meter_entry.get("type") or "").strip()
+        if cfg_driver == "other":
+            cfg_driver = str(meter_entry.get("type_other") or "").strip()
+        if driver == "unknown" and cfg_driver:
+            driver = cfg_driver
+    if mtype == "unknown":
+        last_row = next(
+            (r for r in read_tsv(METER_LAST_JSON_TSV, ["id", "ts", "json"])
+             if normalize_meter_id(r.get("id")) == mid),
+            None,
+        )
+        try:
+            last_json = json.loads(str((last_row or {}).get("json") or "") or "{}")
+        except (ValueError, TypeError):
+            last_json = {}
+        if isinstance(last_json, dict):
+            mtype = str(last_json.get("media") or "").strip() or "unknown"
 
     analyze_arg = f"--analyze={key}" if key else "--analyze"
     analyze_output = ""
@@ -372,6 +399,14 @@ def candidate_issue_report(meter_id: str) -> tuple[bool, dict]:
     except subprocess.TimeoutExpired:
         analyze_output = "(wmbusmeters --analyze timed out)"
     analyze_output = analyze_output.strip()
+
+    # The candidate table knows the manufacturer, the meters table does not —
+    # but the analysis just printed it (dll-mfct), so take it from there rather
+    # than sending "unknown" upstream in a report about an unrecognised meter.
+    if manufacturer == "unknown":
+        mfct = re.search(r"dll-mfct \(([A-Z0-9]{2,4})\)", analyze_output)
+        if mfct:
+            manufacturer = mfct.group(1)
 
     analyze_note = (
         "--- wmbusmeters --analyze output (decrypted with the configured AES key; key not included) ---"
@@ -393,7 +428,7 @@ def candidate_issue_report(meter_id: str) -> tuple[bool, dict]:
         "ok": True,
         "meter_id": mid,
         "report": report,
-        "raw_ts": str((raw_row or {}).get("ts") or ""),
+        "raw_ts": raw_ts,
         "key_used": bool(key),
     }
 

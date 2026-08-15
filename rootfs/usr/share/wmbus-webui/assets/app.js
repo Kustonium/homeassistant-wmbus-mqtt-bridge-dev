@@ -1869,7 +1869,7 @@
                     </td>
                     ${
                       withActions
-                        ? `<td><div class="actions"><button class="btn" data-action="toggle-meter-fields" data-id="${escapeHtml(id)}">${escapeHtml(t("published_fields_btn", "Fields"))} ${state.expandedMeterFields.has(id) ? "▴" : "▾"}</button><button class="btn" data-action="open-edit-driver" data-id="${escapeHtml(id)}" data-driver="${escapeHtml(row.driver || "auto")}">${escapeHtml(t("change_driver_btn", "Driver…"))}</button><button class="btn danger" data-action="remove-meter" data-id="${escapeHtml(id)}">${escapeHtml(t("webui_remove", "Remove"))}</button></div></td>`
+                        ? `<td><div class="actions"><button class="btn" data-action="toggle-meter-fields" data-id="${escapeHtml(id)}">${escapeHtml(t("published_fields_btn", "Fields"))} ${state.expandedMeterFields.has(id) ? "▴" : "▾"}</button><button class="btn" data-action="open-edit-driver" data-id="${escapeHtml(id)}" data-driver="${escapeHtml(row.driver || "auto")}">${escapeHtml(t("change_driver_btn", "Driver…"))}</button><button class="btn" data-action="export-report" data-id="${escapeHtml(id)}" title="${escapeHtml(t("export_report_title", "wmbusmeters issue report"))}">${escapeHtml(t("export_report_btn", "Report…"))}</button><button class="btn danger" data-action="remove-meter" data-id="${escapeHtml(id)}">${escapeHtml(t("webui_remove", "Remove"))}</button></div></td>`
                         : ""
                     }
                   </tr>
@@ -3610,7 +3610,7 @@
           state.reportModal = {id, report: data.report || "", keyUsed: !!data.key_used};
         } else {
           const msg = data.error === "no_raw_telegram"
-            ? t("export_report_no_raw", "No raw telegram stored for this candidate yet.")
+            ? t("export_report_no_raw", "No raw telegram stored for this meter yet.")
             : (data.error || `HTTP ${resp.status}`);
           state.reportModal = {id, error: msg};
         }

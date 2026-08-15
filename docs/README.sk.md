@@ -222,6 +222,14 @@ telegram + výstup `wmbusmeters --analyze`). Telegram obsahuje sériové číslo
 merača. Uložený AES kľúč môže byť použitý na analýzu rovnakého ID, ale samotný
 kľúč sa nikdy neprikladá. Dešifrovaný výstup môže obsahovať odpočty merača.
 
+To isté tlačidlo **Hlásenie…** je v každom riadku pohľadu MERAČE, takže už
+pridaný merač — taký, ktorý sa dekóduje, ale hlási pole nesprávne alebo menej
+polí, než ukazuje jeho displej — nahlásite bez toho, aby ste ho museli odobrať.
+Je to zároveň spôsob, ako si pozrieť surový rámec nakonfigurovaného merača:
+hlásenie začína práve telegramom. Rámec pochádza z kruhového buffera naposledy
+prijatých telegramov, takže po reštarte je k dispozícii hneď, ako merač znova
+vyšle.
+
 ---
 
 ## 7. Filtrovanie podľa hodnoty — keď je počuť priveľa cudzích meračov

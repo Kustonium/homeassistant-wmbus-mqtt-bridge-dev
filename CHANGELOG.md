@@ -36,6 +36,17 @@
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
 ### Added
+- the upstream issue report is available for configured meters, not only for
+  candidates: METERS now carries the same **Report…** button in every row. Asked for
+  by a user who had added a meter and then had no way to look at its raw frame,
+  and needed by anyone whose meter decodes but reports a field wrongly — until now
+  reporting that meant removing it from the configuration first. A configured meter
+  has no candidate RAW row, so the frame comes from the rolling all-frames buffer
+  matched on the id in little-endian order (`_resolve_raw_for_id`, the same lookup
+  the driver comparison uses, and one that also works for Diehl-style frames whose
+  A-field does not parse). The driver comes from the meter's own configuration, the
+  medium from its last decoded telegram, and the manufacturer is read back out of
+  the analysis. The AES key is still never part of the report.
 - optional signal strength per receiving board. A telegram carries no RSSI — the RAW
   topic is bare hexadecimal, so `wmbusmeters` never sees a level and cannot report
   one — which is why the value has to travel out of band. When the firmware YAML

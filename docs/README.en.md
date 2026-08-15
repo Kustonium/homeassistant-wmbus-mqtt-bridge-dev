@@ -227,6 +227,14 @@ ready-to-paste issue block for the upstream wmbusmeters project (raw telegram +
 number. The AES key is never included; when a configured key is used for the
 analysis, the decrypted output may include meter readings.
 
+The same **Report…** button sits in every row on METERS, so a meter you have
+already added — one that decodes but reports a field wrongly, or reports fewer
+fields than its display shows — can be reported without removing it first. It
+is also the way to see the raw frame of a configured meter: the report opens
+with the telegram itself. The frame comes from the rolling buffer of recently
+received telegrams, so it is available as soon as the meter transmits again
+after a restart.
+
 ---
 
 ## 7. Filter by value — when you hear too many other meters

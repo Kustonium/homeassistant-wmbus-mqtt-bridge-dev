@@ -228,6 +228,14 @@ add-on buduje gotowy do wklejenia blok zgłoszenia do projektu wmbusmeters
 seryjny licznika. Klucz AES nigdy nie jest dołączany; jeśli zapisany klucz
 został użyty do analizy, zdekodowany wynik może zawierać odczyty licznika.
 
+Ten sam przycisk **Zgłoszenie…** jest w każdym wierszu widoku LICZNIKI, więc już
+dodany licznik — taki, który dekoduje się, ale podaje pole błędnie albo mniej
+pól, niż pokazuje jego wyświetlacz — zgłosisz bez usuwania go z konfiguracji.
+To jest też sposób na podejrzenie surowej ramki skonfigurowanego licznika:
+zgłoszenie zaczyna się właśnie od telegramu. Ramka pochodzi z bufora ostatnio
+odebranych telegramów, więc po restarcie jest dostępna, gdy tylko licznik znów
+nada.
+
 ---
 
 ## 7. Filtr wartości — gdy słychać za dużo cudzych liczników
