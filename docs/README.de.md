@@ -426,6 +426,16 @@ addieren braucht nichts Besonderes, z. B.
 Eine Formel, die der Decoder nicht versteht, kostet nur dieses eine Feld: er meldet
 es im Log, das Feld fehlt schlicht, und der Rest des Zählers wird normal dekodiert.
 
+Der Name eines berechneten Feldes ist nicht frei wählbar: er muss auf eine
+Einheit enden, und diese rechnet das Ergebnis um. Aus derselben Formel liefert
+`difftemp_c` °C und `difftemp_f` °F — an einem echten Telegramm gemessen kamen
+11 °C als `11`, `51.8` und `284.15` unter den Namen `_c`, `_f` und `_k` zurück.
+Ein Name ohne Einheit oder mit einer unbekannten (`meinfeld`, `kopie_xyz`) wird
+abgelehnt: der Decoder meldet *"Could not extract a valid unit from calculated
+field name"*, das Feld entsteht nicht, und der Zähler dekodiert weiter. Für
+konstante Felder gilt das nicht — dort ist jeder Name zulässig, da nichts
+umgerechnet wird.
+
 Die Treiberliste der WebUI wird aus dem festgelegten `wmbusmeters`-Build und
 dessen XMQ-Quellen erzeugt. Nutze diesen Katalog statt einer manuellen Liste.
 

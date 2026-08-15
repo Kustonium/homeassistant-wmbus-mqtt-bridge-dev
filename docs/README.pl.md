@@ -416,6 +416,15 @@ wymaga niczego dodatkowego, np.
 Formuła, której dekoder nie rozumie, kosztuje wyłącznie to jedno pole: napisze o tym
 w logu, pole po prostu nie powstanie, a reszta licznika dekoduje się normalnie.
 
+Nazwa pola liczonego nie jest dowolna: musi kończyć się jednostką, i to ona
+przelicza wynik. Z tej samej formuły `difftemp_c` da °C, a `difftemp_f` da °F —
+zmierzone na żywym telegramie: 11 °C wróciło jako `11`, `51.8` i `284.15` dla
+nazw `_c`, `_f` i `_k`. Nazwa bez jednostki albo z nieznaną (`mojepole`,
+`kopia_xyz`) jest odrzucana: dekoder pisze *„Could not extract a valid unit from
+calculated field name"*, pole nie powstaje, a licznik dekoduje się dalej. Pól
+stałych ta zasada nie dotyczy — tam każda nazwa jest dobra, bo nic nie jest
+przeliczane.
+
 Lista driverów w WebUI jest generowana z przypiętego buildu `wmbusmeters` i jego
 źródeł XMQ. Korzystaj z tego katalogu zamiast ręcznej listy w dokumentacji.
 

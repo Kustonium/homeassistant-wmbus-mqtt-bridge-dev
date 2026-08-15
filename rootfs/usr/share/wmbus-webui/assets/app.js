@@ -2985,6 +2985,37 @@
       });
   }
 
+
+  // Preset chips for the two free-text field options. The key before "=" is the
+  // name the field gets in Home Assistant, so it cannot be guessed for the user
+  // - but it can be offered. A click appends the template and puts the caret
+  // after it, which leaves exactly the value to type.
+  //
+  // The calculated presets are whole formulas rather than bare names: the
+  // arithmetic is unit-aware, so a starting point that already balances its
+  // units teaches more than an empty "name=" would. Field names differ per
+  // driver, and the driver field table below the input lists the real ones.
+  const FIELD_PRESETS = {
+    static: ["location=", "apartment=", "floor=", "riser="],
+    calc: [
+      "difftemp_c=flow_temperature_c - return_temperature_c",
+      "net_m3=total_m3 - backflow_m3",
+      "half_m3=total_m3 / 2 counter",
+    ],
+  };
+
+  function presetRow(kind, scope) {
+    const chips = (FIELD_PRESETS[kind] || []).map(text => `
+      <button class="btn" type="button" style="padding:2px 8px;font-size:11px;"
+        data-action="append-field-preset" data-kind="${escapeHtml(kind)}"
+        data-scope="${escapeHtml(scope)}" data-text="${escapeHtml(text)}"
+        title="${escapeHtml(text)}">+ ${escapeHtml(text.split("=")[0])}</button>`).join("");
+    return `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;align-items:center;">
+      <span style="font-size:10px;color:var(--muted);">${escapeHtml(t("field_presets_hint", "Templates — click to insert:"))}</span>
+      ${chips}
+    </div>`;
+  }
+
   function driverFieldsSection(driver, excludeText, scope) {
     const key = String(driver || "").trim().toLowerCase();
     if (!key || key === "auto" || key === "other") {
@@ -3087,11 +3118,13 @@
             <input id="edit-meter-calculated-fields" autocomplete="off" value="${escapeHtml(em.calculatedFields || "")}"
               placeholder="${escapeHtml(t("calculated_fields_placeholder", "e.g. difftemp_c=flow_temperature_c - return_temperature_c"))}"
               oninput="window.__editModalCalcSet(this.value)">
+            ${presetRow("calc", "edit")}
             <div style="font-size:10px;color:var(--muted);margin-top:3px;">${escapeHtml(t("calculated_fields_hint", "wmbusmeters computes these from the telegram and they become entities like any other field. One name=formula per entry, separated by semicolons. The arithmetic is unit-aware: total_m3 / 2 counter works, total_m3 * 2 does not."))}</div>
             <label for="edit-meter-static-fields" style="margin-top:8px;">${escapeHtml(t("static_fields_label", "Constant fields"))}</label>
             <input id="edit-meter-static-fields" autocomplete="off" value="${escapeHtml(em.staticFields || "")}"
               placeholder="${escapeHtml(t("static_fields_placeholder", "e.g. location=kitchen; apartment=12"))}"
               oninput="window.__editModalStaticSet(this.value)">
+            ${presetRow("static", "edit")}
             <div style="font-size:10px;color:var(--muted);margin-top:3px;">${escapeHtml(t("static_fields_hint", "Fixed values attached to this meter, one name=value per entry, separated by semicolons. The decoder copies them into the telegram as text, so they arrive as attributes and as diagnostic entities - a label, not a measurement."))}</div>
             <div style="margin-top:8px;">${driverFieldsSection(em.driver, em.excludeFields, "edit")}</div>
             <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
@@ -3269,6 +3302,7 @@
                     value="${escapeHtml(modal.calculatedFields || "")}"
                     placeholder="${escapeHtml(t("calculated_fields_placeholder", "e.g. difftemp_c=flow_temperature_c - return_temperature_c"))}"
                     oninput="window.__modalCalcSet(this.value)">
+                  ${presetRow("calc", "add")}
                   <div style="font-size:10px;color:var(--muted);margin-top:3px;">${escapeHtml(t("calculated_fields_hint", "wmbusmeters computes these from the telegram and they become entities like any other field. One name=formula per entry, separated by semicolons. The arithmetic is unit-aware: total_m3 / 2 counter works, total_m3 * 2 does not."))}</div>
                   <label for="meter-static-fields" style="margin-top:8px;">
                     ${escapeHtml(t("static_fields_label", "Constant fields"))}
@@ -3278,6 +3312,7 @@
                     value="${escapeHtml(modal.staticFields || "")}"
                     placeholder="${escapeHtml(t("static_fields_placeholder", "e.g. location=kitchen; apartment=12"))}"
                     oninput="window.__modalStaticSet(this.value)">
+                  ${presetRow("static", "add")}
                   <div style="font-size:10px;color:var(--muted);margin-top:3px;">${escapeHtml(t("static_fields_hint", "Fixed values attached to this meter, one name=value per entry, separated by semicolons. The decoder copies them into the telegram as text, so they arrive as attributes and as diagnostic entities - a label, not a measurement."))}</div>
                   <div style="margin-top:8px;">${driverFieldsSection(modal.driver, modal.excludeFields, "add")}</div>
                 </div>
@@ -3505,6 +3540,37 @@
 
     if (action === "load-driver-fields") {
       loadDriverFields(target.dataset.driver || "");
+      return;
+    }
+
+    if (action === "append-field-preset") {
+      const text = target.dataset.text || "";
+      const kind = target.dataset.kind === "calc" ? "calc" : "static";
+      const edit = target.dataset.scope === "edit";
+      const holder = edit ? state.editModal : state.modal;
+      if (!text || !holder) return;
+      const key = kind === "calc" ? "calculatedFields" : "staticFields";
+      const current = String(holder[key] || "").trim();
+      // Entries are semicolon separated, so a second click extends the list
+      // instead of replacing what is already there - but the same field name
+      // twice is a mess the user would have to clean up by hand, so a chip for
+      // a name that is already in the box only moves the caret there.
+      const name = text.split("=")[0];
+      const present = current.split(";").some(e => e.trim().split("=")[0].trim() === name);
+      if (!present) holder[key] = current ? `${current}; ${text}` : text;
+      render();
+      // After the re-render, put the caret where the value goes - that is the
+      // whole point of the chip: the user types only their own text.
+      const id = `${edit ? "edit-meter-" : "meter-"}${kind === "calc" ? "calculated" : "static"}-fields`;
+      // setTimeout, not requestAnimationFrame: rAF does not fire while the tab
+      // is not compositing (a background tab, or a hidden pane), and then the
+      // caret would silently never move.
+      setTimeout(() => {
+        const input = document.getElementById(id);
+        if (!input) return;
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      }, 0);
       return;
     }
 

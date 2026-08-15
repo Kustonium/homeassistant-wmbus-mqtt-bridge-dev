@@ -417,6 +417,15 @@ nothing special, e.g.
 And a formula the decoder cannot parse costs you only that one field: it says so in
 the log, the field is simply absent, and the rest of the meter decodes as usual.
 
+The name of a calculated field is not free-form: it must end in a unit, and that
+unit converts the result. From one and the same formula, `difftemp_c` yields °C
+while `difftemp_f` yields °F — measured on a live telegram, 11 °C came back as
+`11`, `51.8` and `284.15` under the `_c`, `_f` and `_k` names. A name with no unit
+or an unknown one (`mojepole`, `kopia_xyz`) is refused: the decoder says
+*"Could not extract a valid unit from calculated field name"*, that field is not
+created, and the meter keeps decoding. Constant fields have no such rule — any
+name is accepted, because nothing is converted.
+
 The WebUI driver list is generated from the pinned `wmbusmeters` build and its
 XMQ sources. Use that catalog instead of a manually maintained list in this guide.
 

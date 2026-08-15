@@ -33,6 +33,20 @@
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
 ### Added
+- one-click templates for both field options, and the rule behind the names. The key
+  before `=` is the name the field gets in Home Assistant, so it cannot be guessed for
+  the user — but it can be offered: a chip appends the template and puts the caret
+  after it, leaving only the value to type. A chip whose name is already in the box
+  only moves the caret there rather than duplicating it. The calculated templates are
+  whole formulas, because a starting point that already balances its units teaches
+  more than a bare name.
+  While building them, the decoder settled a question worth documenting: for a
+  CALCULATED field the name is not free-form. It must end in a unit, and that unit
+  converts the result — from one formula, `difftemp_c` returns 11 and `difftemp_f`
+  returns 51.8 for the same 11 °C source. A name with no unit or an unknown one is
+  refused with "Could not extract a valid unit from calculated field name", the field
+  is not created, and the meter keeps decoding. Constant fields carry no such rule:
+  any name is accepted, since nothing is converted.
 - `static_fields` per meter: constant values attached to a meter, which upstream has
   always supported as `field_<name>=<value>` in a meter file and which this add-on,
   like the formulas, used to erase on every reload. Useful for the label a decoded

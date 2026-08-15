@@ -406,6 +406,14 @@ navíc, např.
 Vzorec, kterému dekodér nerozumí, stojí jen ono jedno pole: napíše to do logu, pole
 prostě nevznikne a zbytek měřiče se dekóduje normálně.
 
+Název počítaného pole není libovolný: musí končit jednotkou a ta převádí
+výsledek. Ze stejného vzorce dá `difftemp_c` °C a `difftemp_f` °F — změřeno na
+skutečném telegramu: 11 °C se vrátilo jako `11`, `51.8` a `284.15` pro názvy
+`_c`, `_f` a `_k`. Název bez jednotky nebo s neznámou (`mojepole`, `kopie_xyz`)
+je odmítnut: dekodér napíše *"Could not extract a valid unit from calculated
+field name"*, pole nevznikne a měřič dekóduje dál. Konstantních polí se to
+netýká — tam je přípustný jakýkoli název, protože se nic nepřevádí.
+
 Seznam ovladačů ve WebUI se generuje z připnutého sestavení `wmbusmeters` a jeho
 XMQ zdrojů. Používejte tento katalog místo ručně udržovaného seznamu v návodu.
 
