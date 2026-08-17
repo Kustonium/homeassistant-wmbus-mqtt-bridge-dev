@@ -3108,6 +3108,11 @@ def frontend_payload(lang: str = DEFAULT_LANG, include_i18n: bool = True) -> dic
         "model": status_model(data),
         "search_config": search_config_model(data),
         "esp": _esp_payload(),
+        # The nav needs this before anything M-Bus specific is fetched. Without
+        # it the tab could never appear: its visibility flag lived only in the
+        # /api/mbus payload, which is loaded lazily when the tab is opened —
+        # the tab the user cannot reach while it is hidden.
+        "mbus_tab_visible": bool((read_options() or {}).get("mbus_tab_visible")),
         **data,
     }
     if include_i18n:

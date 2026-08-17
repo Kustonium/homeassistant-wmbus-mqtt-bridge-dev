@@ -22,7 +22,14 @@
   // no change at all. The hash route is guarded too — hiding a nav entry while
   // #/mbus still opens the page would make the gate decorative.
   function mbusTabVisible() {
-    return Boolean(state.mbus?.tab_visible ?? state.data?.model?.mbus_tab_visible);
+    // The flag has to come from the main payload, not from state.mbus: that one
+    // is fetched only when the tab is opened, so relying on it alone made the
+    // tab permanently invisible - it could never be reached to load its own
+    // visibility. api/app carries mbus_tab_visible for exactly this reason.
+    if (state.mbus && typeof state.mbus.tab_visible === "boolean") {
+      return state.mbus.tab_visible;
+    }
+    return Boolean(state.data?.mbus_tab_visible);
   }
 
   function visibleNavItems() {

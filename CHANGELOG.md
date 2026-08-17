@@ -45,6 +45,12 @@
   loss/recovery cycle — but not against anyone's actual meters. Reporting an issue
   is the only thing that changes that, and the tab asks for it.
 
+  Every M-Bus option now carries a name and a description in the add-on
+  configuration UI instead of a bare key, in English and Polish. The first one
+  states what the whole block is not: an RTL-SDR, a DVB-T stick or a wM-Bus radio
+  dongle does not belong here and will not work — radio is received by the ESP and
+  arrives over MQTT exactly as before.
+
 
 ## 1.5.48-dev.251
 
