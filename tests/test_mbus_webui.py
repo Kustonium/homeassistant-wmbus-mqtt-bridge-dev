@@ -17,6 +17,16 @@ SPEC.loader.exec_module(webui)
 
 
 class MBusWebUITest(unittest.TestCase):
+    def test_wired_runtime_maps_decoded_ids_to_bus_alias(self):
+        runtime = {
+            "bus_alias": "MAIN",
+            "meters": {
+                "heat": {"id": "10000284", "last_ok_epoch": 123},
+                "silent": {"id": ""},
+            },
+        }
+        self.assertEqual(webui.mbus_source_map(runtime), {"10000284": "MAIN"})
+
     def test_frame_shapes(self):
         cases = {
             "e5": "ack",

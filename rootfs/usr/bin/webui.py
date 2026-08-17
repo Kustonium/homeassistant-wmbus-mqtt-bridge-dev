@@ -2285,9 +2285,25 @@ def _sync_meters_tsv(valid_ids: set[str]) -> None:
         pass  # non-fatal
 
 
+def mbus_source_map(runtime: dict) -> dict[str, str]:
+    """Map frame IDs seen by the wired instance to their bus alias."""
+    if not isinstance(runtime, dict):
+        return {}
+    meters = runtime.get("meters")
+    if not isinstance(meters, dict):
+        return {}
+    alias = str(runtime.get("bus_alias") or "M-Bus")
+    return {
+        normalize_meter_id(v.get("id")): alias
+        for v in meters.values()
+        if isinstance(v, dict) and normalize_meter_id(v.get("id"))
+    }
+
+
 def state(include_ignored: bool = False) -> dict:
     status = read_json(STATUS_JSON)
     options = read_options()
+    mbus_runtime = mbus_runtime_state()
     meters = read_tsv(
         METERS_TSV,
         ["id", "name", "driver", "media", "value_key", "value", "last_seen", "discovery", "seen_count", "avg_interval_s", "seen_15m", "seen_60m", "value_parts"],
@@ -2582,6 +2598,24 @@ def state(include_ignored: bool = False) -> dict:
         m["band"] = band_by_id.get(normalize_meter_id(m.get("id") or m.get("meter_id")), "")
         m["band_source"] = band_source_by_id.get(normalize_meter_id(m.get("id") or m.get("meter_id")), "")
 
+    # A wired meter's frame id is learned only from its first valid reply.  The
+    # M-Bus runtime file is therefore the authoritative link between a decoded
+    # status row and the separate serial polling instance.
+    mbus_source_by_id = mbus_source_map(mbus_runtime)
+    for m in meters:
+        mid = normalize_meter_id(m.get("id"))
+        if mid in mbus_source_by_id:
+            m["source"] = "mbus"
+            m["source_label"] = mbus_source_by_id[mid]
+            # Radio-only diagnostics must never be shown for a wired reading.
+            m["esp_flagged"] = "false"
+            m["reception_pct"] = -1
+            m["reception_esps"] = []
+            m["band"] = ""
+            m["band_source"] = ""
+        else:
+            m["source"] = "radio"
+
     # Build normalized options_meter_ids early — used both for TSV filtering and
     # candidate dedup. Do not write back to status_meters.tsv from this read path.
     options_meters_list = options.get("meters") if isinstance(options, dict) and "meters" in options else None
@@ -2596,7 +2630,7 @@ def state(include_ignored: bool = False) -> dict:
     # An empty list is a valid empty config; missing/invalid options keep the
     # cautious fallback and do not hide runtime rows automatically.
     if options_meters_valid:
-        meters = [m for m in meters if normalize_meter_id(m.get("id")) in options_meter_ids]
+        meters = [m for m in meters if normalize_meter_id(m.get("id")) in (options_meter_ids | set(mbus_source_by_id))]
 
     # Remove candidates that are already in configured meters (decoded)
     configured_ids = {normalize_meter_id(m.get("id")) for m in meters if normalize_meter_id(m.get("id"))}
@@ -2724,7 +2758,7 @@ def state(include_ignored: bool = False) -> dict:
             normalize_meter_id(c.get("id")) or str(c.get("id") or ""),
         ),
     )
-    return {"status": status, "options": options, "config_options": config_options_spec(), "meters": meters, "pending_meters": pending_meters, "candidates": candidates, "events": events, "ignored": sorted(ignored), "search_candidates": search_candidates, "search_matches": search_matches, "search_status": search_status, "analysis": analysis}
+    return {"status": status, "options": options, "config_options": config_options_spec(), "meters": meters, "pending_meters": pending_meters, "candidates": candidates, "events": events, "ignored": sorted(ignored), "search_candidates": search_candidates, "search_matches": search_matches, "search_status": search_status, "analysis": analysis, "mbus": mbus_runtime}
 
 
 def search_config_model(data: dict) -> dict:
@@ -2767,7 +2801,12 @@ def status_model(data: dict) -> dict:
         for m in (options_meters or [])
         if isinstance(m, dict) and normalize_meter_id(m.get("meter_id"))
     }
-    meter_count = len(configured_meter_ids) if configured_meter_ids else decoded_meter_count
+    wired_meter_ids = {
+        normalize_meter_id(v.get("id"))
+        for v in ((data.get("mbus") or {}).get("meters") or {}).values()
+        if isinstance(v, dict) and normalize_meter_id(v.get("id"))
+    }
+    meter_count = len(configured_meter_ids | wired_meter_ids) if (configured_meter_ids or wired_meter_ids) else decoded_meter_count
     mqtt_ok = bool(mqtt.get("connected"))
     raw_ok = raw_count > 0
     wmbus_ok = bool(pipe.get("wmbusmeters_running")) or candidate_count > 0 or decoded_count > 0

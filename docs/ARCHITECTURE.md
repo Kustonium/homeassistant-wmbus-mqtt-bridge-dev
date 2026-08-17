@@ -316,6 +316,15 @@ where a line came from. The meter id in the JSON is built by the decoder from th
 address inside the frame, not from the polling address, so it passes the same
 `^[0-9A-Fa-f]{8}$` gate and produces entities the normal way.
 
+An accepted wired telegram also goes through `status_meter_seen()`. This is the
+shared runtime index used by the Dashboard and Meters views; without that call a
+wired meter could publish working MQTT state and HA entities while remaining
+invisible in the WebUI. `status_mbus.json` maps the configured bus entry to the
+frame id, so `webui.py` can retain that row alongside radio-configured ids and mark
+its source as `mbus`. Radio-only ESP, link-mode and reception diagnostics are
+cleared for that row. The dashboard renders a second wired pipeline only after the
+runtime state reaches `ok`, never merely because the option is enabled.
+
 Three consequences of the transport that are not visible from the radio path:
 
 - **`pollinterval` belongs in each meter file, never in `wmbusmeters.conf`.** The

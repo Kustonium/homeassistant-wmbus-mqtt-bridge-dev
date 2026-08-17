@@ -451,6 +451,13 @@ Wszystko dalej jest takie samo jak przy radiu — te same drivery, jednostki,
 Discovery, pola liczone i stałe. Różni się tylko transport: liczniki się odpytuje
 zamiast nasłuchiwać, i adresuje zamiast wykrywać.
 
+Po pierwszej prawidłowej odpowiedzi licznik przewodowy pojawia się również w
+**Panelu** i **Licznikach**. Kolumna źródła pokazuje `M-Bus · <alias magistrali>`
+zamiast odznak ESP, pasma radiowego i jakości odbioru, a Panel dodaje rzeczywisty
+potok przewodowy `licznik → master szeregowy → odpytujący wmbusmeters → MQTT + HA`.
+Potok jest oznaczony jako aktywny dopiero po przyjęciu telegramu przez runtime, a
+nie po samym włączeniu silnika.
+
 **Dwa przełączniki, oba domyślnie wyłączone.** `mbus_tab_visible` tylko pokazuje
 zakładkę, `mbus_enabled` uruchamia silnik. Przy obu wyłączonych nic się dla Ciebie
 nie zmienia.
@@ -502,6 +509,9 @@ to przypadek — per licznik, razem z chwilą ostatniej odpowiedzi każdego z ni
 **Niesprawdzone na prawdziwej magistrali.** Protokół był testowany na symulatorze,
 nie na prawdziwych licznikach — autor nie ma sprzętu M-Bus po kablu. Jeśli coś nie
 działa, zgłoś issue; to jedyna droga, żeby to naprawić.
+
+Widok **O projekcie** dokumentuje oba rzeczywiste potoki danych i wyświetla notę o
+wsparciu AI. Kopia repozytorium znajduje się w [NOTICE.md](../NOTICE.md).
 
 ## 9. Język interfejsu
 

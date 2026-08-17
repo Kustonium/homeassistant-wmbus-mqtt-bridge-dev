@@ -439,6 +439,12 @@ Vše navazující zůstává stejné jako u rádia — stejné ovladače, jednot
 počítaná i konstantní pole. Liší se jen transport: měřiče se dotazují místo
 poslouchání a adresují místo objevování.
 
+Po první platné odpovědi se kabelový měřič zobrazí také v **PANELU** a
+**MĚŘIČÍCH**. Sloupec zdroje ukazuje `M-Bus · <alias sběrnice>` místo odznaků ESP,
+rádiového pásma a příjmu a Panel doplní skutečnou kabelovou cestu
+`měřič → sériový master → dotazující wmbusmeters → MQTT + HA`. Cesta je označena
+jako aktivní až po přijetí telegramu runtime, ne pouhým zapnutím enginu.
+
 **Dva přepínače, oba ve výchozím stavu vypnuté.** `mbus_tab_visible` pouze zobrazí
 záložku, `mbus_enabled` spustí engine. Při obou vypnutých se pro vás nic nemění.
 
@@ -487,6 +493,9 @@ měřičích, spolu s okamžikem poslední odpovědi každého z nich:
 **Neověřeno na skutečné sběrnici.** Protokol byl testován proti simulátoru, ne proti
 skutečným měřičům — autor nemá drátový M-Bus hardware. Pokud něco nefunguje, založte
 issue; jinak to nelze opravit.
+
+Zobrazení **O PROJEKTU** dokumentuje obě skutečné datové cesty a zobrazuje oznámení
+o podpoře AI. Kopie v repozitáři je v [NOTICE.md](../NOTICE.md).
 
 ## 9. Jazyk rozhraní
 

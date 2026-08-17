@@ -285,6 +285,8 @@ fi
 # without this the user gets a second device in Home Assistant from one entry.
 normalize_meter_id() { printf '%s' "$1"; }
 emit_discovery_from_json() { :; }
+STATUS_METER_SEEN_CALLS=0
+status_meter_seen() { STATUS_METER_SEEN_CALLS=$(( STATUS_METER_SEEN_CALLS + 1 )); }
 mqtt_pub() { :; }
 status_mark_discovery_published() { :; }
 write_status_json() { :; }
@@ -295,6 +297,11 @@ STATE_PREFIX="wmbusmeters"
 STATE_RETAIN="true"
 mbus_consume_line '{"_":"telegram","name":"sim","id":"10000284","total_m3":1.5}' >/dev/null
 mbus_consume_line '{"_":"telegram","name":"sim","id":"77000284","total_m3":9.9}' >/dev/null
+if [[ "${STATUS_METER_SEEN_CALLS}" -eq 2 ]]; then
+  pass "accepted wired telegrams feed the shared WebUI meter status"
+else
+  fail "wired telegram status calls: ${STATUS_METER_SEEN_CALLS}, expected 2"
+fi
 if [[ "$(jq -r '.meters.sim.clash_with' "${MBUS_STATUS_FILE}")" == "10000284" ]]; then
   pass "address clash recorded against the meter"
 else

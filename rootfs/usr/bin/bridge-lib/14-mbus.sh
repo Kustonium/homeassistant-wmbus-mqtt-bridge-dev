@@ -405,6 +405,10 @@ mbus_consume_line() {
       # become a "0 dBm" entity. device is kept: on a bus it is the port alias
       # and genuinely meaningful.
       line="$(echo "${line}" | jq -c 'del(.rssi_dbm)' 2>/dev/null || printf '%s' "${line}")"
+      # Feed the same runtime index as the radio decoder.  Discovery/state were
+      # already published below, but without this call the WebUI had no meter
+      # row to display even though the wired path was working correctly.
+      status_meter_seen "${line}"
       emit_discovery_from_json "${line}"
       mqtt_pub "${STATE_PREFIX}/${id}/state" "${line}" "${STATE_RETAIN}" || true
       status_mark_discovery_published

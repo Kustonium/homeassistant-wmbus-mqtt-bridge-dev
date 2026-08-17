@@ -464,6 +464,10 @@
   // per-ESP data we fall back to the single best-across-ESP %. Honest-witness:
   // nothing is rendered when there is neither a flag nor any reception data.
   function espReceptionBadges(row) {
+    if (row.source === "mbus") {
+      const alias = String(row.source_label || "M-Bus");
+      return `<div style="margin-top:5px;"><span class="pill ok" title="${escapeHtml(t("source_mbus_hint", "Reading from the wired M-Bus polling instance"))}">🔌 M-Bus · ${escapeHtml(alias)}</span></div>`;
+    }
     const flagged = row.esp_flagged === "true";
     const esps    = Array.isArray(row.reception_esps) ? row.reception_esps : [];
     const bestPct = Number(row.reception_pct);
@@ -1328,6 +1332,22 @@
       haText = haStatus;
     }
 
+    const mbus = (state.data && state.data.mbus) || {};
+    const wiredMeters = Object.values(mbus.meters || {}).filter((m) => m && m.id).length;
+    const wiredPipeline = mbus.state === "ok" ? `
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+        <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:8px;">${escapeHtml(t("pipeline_wired_active", "WIRED M-BUS · ACTIVE"))}</div>
+        <div class="pipeline">
+          <div class="pipeline-node"><div class="pipeline-icon">🔢</div><div class="pipeline-title">M-Bus</div><div class="pipeline-meta">${dot(true, false, true)} ${wiredMeters} ${escapeHtml(t("pipeline_wired_meters", "meters"))}</div></div>
+          <div class="pipeline-arrow"><span>${escapeHtml(mbus.bus_alias || "M-Bus")}</span></div>
+          <div class="pipeline-node"><div class="pipeline-icon">🔌</div><div class="pipeline-title">${escapeHtml(t("pipeline_serial_master", "serial master"))}</div><div class="pipeline-meta">${dot(true, false, true)} ${escapeHtml(t("pipeline_wired_receiving", "receiving"))}</div></div>
+          <div class="pipeline-arrow"></div>
+          <div class="pipeline-node"><div class="pipeline-icon">⚙</div><div class="pipeline-title">wmbusmeters</div><div class="pipeline-meta">${dot(true, false, true)} ${escapeHtml(t("pipeline_wmbus_polling", "polling"))}</div></div>
+          <div class="pipeline-arrow"></div>
+          <div class="pipeline-node"><div class="pipeline-icon">📨🏠</div><div class="pipeline-title">MQTT + HA</div><div class="pipeline-meta">${dot(!!model.mqtt_ok, !model.mqtt_ok, !!model.mqtt_ok)} ${escapeHtml(model.mqtt_ok ? t("pipeline_mqtt_online", "online") : t("pipeline_mqtt_offline", "offline"))}</div></div>
+        </div>
+      </div>` : "";
+
     return `
       <section class="section">
         <div class="pipeline">
@@ -1367,6 +1387,7 @@
             ${chevron("ha")}
           </button>
         </div>
+        ${wiredPipeline}
         ${pipelineWorkspace(model)}
       </section>
     `;
@@ -1860,7 +1881,7 @@
               <th>${escapeHtml(t("manufacturer_col", "Manufacturer"))}</th>
               <th>${escapeHtml(t("webui_value", "Value"))}</th>
               <th>${escapeHtml(t("webui_last_seen", "Last seen"))}</th>
-              <th>${escapeHtml(t("reception", "Reception"))}${receptionLegendInfo()}</th>
+              <th>${escapeHtml(t("source_reception", "Source / reception"))}${receptionLegendInfo()}</th>
               ${withActions ? "<th></th>" : ""}
             </tr>
           </thead>
@@ -1900,7 +1921,9 @@
                     </td>
                     ${
                       withActions
-                        ? `<td><div class="actions"><button class="btn" data-action="toggle-meter-fields" data-id="${escapeHtml(id)}">${escapeHtml(t("published_fields_btn", "Fields"))} ${state.expandedMeterFields.has(id) ? "▴" : "▾"}</button><button class="btn" data-action="open-edit-driver" data-id="${escapeHtml(id)}" data-driver="${escapeHtml(row.driver || "auto")}">${escapeHtml(t("change_driver_btn", "Driver…"))}</button><button class="btn" data-action="export-report" data-id="${escapeHtml(id)}" title="${escapeHtml(t("export_report_title", "wmbusmeters issue report"))}">${escapeHtml(t("export_report_btn", "Report…"))}</button><button class="btn danger" data-action="remove-meter" data-id="${escapeHtml(id)}">${escapeHtml(t("webui_remove", "Remove"))}</button></div></td>`
+                        ? (row.source === "mbus"
+                          ? `<td><a class="btn" href="#mbus" style="text-decoration:none;">${escapeHtml(t("source_mbus_manage", "Manage in M-Bus"))}</a></td>`
+                          : `<td><div class="actions"><button class="btn" data-action="toggle-meter-fields" data-id="${escapeHtml(id)}">${escapeHtml(t("published_fields_btn", "Fields"))} ${state.expandedMeterFields.has(id) ? "▴" : "▾"}</button><button class="btn" data-action="open-edit-driver" data-id="${escapeHtml(id)}" data-driver="${escapeHtml(row.driver || "auto")}">${escapeHtml(t("change_driver_btn", "Driver…"))}</button><button class="btn" data-action="export-report" data-id="${escapeHtml(id)}" title="${escapeHtml(t("export_report_title", "wmbusmeters issue report"))}">${escapeHtml(t("export_report_btn", "Report…"))}</button><button class="btn danger" data-action="remove-meter" data-id="${escapeHtml(id)}">${escapeHtml(t("webui_remove", "Remove"))}</button></div></td>`)
                         : ""
                     }
                   </tr>
@@ -2825,12 +2848,16 @@
         </div>
       </section>
       <section class="section">
-        <div class="section-head"><h2>${escapeHtml(t("webui_pipeline", "Pipeline"))}</h2></div>
-        <div class="code">ESP32 / Gateway / Bridge
--> MQTT raw HEX
--> wmbusmeters stdin:hex
--> MQTT decoded JSON
--> Home Assistant Discovery</div>
+        <div class="section-head"><h2>${escapeHtml(t("webui_pipeline", "Pipelines"))}</h2></div>
+        <h3>${escapeHtml(t("about_pipeline_radio", "Wireless wM-Bus"))}</h3>
+        <div class="code">${escapeHtml(t("about_pipeline_radio_flow", "wM-Bus meter → ESP32 / gateway → MQTT raw HEX → wmbusmeters stdin:hex → MQTT decoded JSON + Home Assistant Discovery"))}</div>
+        <h3 style="margin-top:16px;">${escapeHtml(t("about_pipeline_wired", "Wired M-Bus"))}</h3>
+        <div class="code">${escapeHtml(t("about_pipeline_wired_flow", "M-Bus meter → master converter / serial port → separate polling wmbusmeters instance → MQTT decoded JSON + Home Assistant Discovery"))}</div>
+      </section>
+      <section class="section">
+        <div class="section-head"><h2>${escapeHtml(t("about_ai_title", "AI-assisted development"))}</h2></div>
+        <p>${escapeHtml(t("about_ai_p1", "This project uses AI-assisted development and review. Some code, documentation, analysis, comparisons, and refactoring were created or refined with help from AI tools, including OpenAI ChatGPT and Anthropic Claude."))}</p>
+        <p>${escapeHtml(t("about_ai_p2", "Final responsibility for the repository content, testing, licensing, maintenance, and release decisions remains with the repository maintainer. AI assistance was used as a development and review aid, not as an independent copyright holder."))}</p>
       </section>
     `;
   }

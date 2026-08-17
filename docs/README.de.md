@@ -463,6 +463,13 @@ Alles Nachgelagerte bleibt wie beim Funk — dieselben Treiber, Einheiten, Disco
 berechnete und konstante Felder. Nur der Transport unterscheidet sich: Zähler werden
 abgefragt statt mitgehört und adressiert statt erkannt.
 
+Nach der ersten gültigen Antwort erscheint ein kabelgebundener Zähler auch unter
+**PANEL** und **ZÄHLER**. Die Quellspalte zeigt `M-Bus · <Bus-Alias>` statt ESP-,
+Funkband- und Empfangskennzeichen, und das Dashboard ergänzt den tatsächlichen
+kabelgebundenen Pfad `Zähler → serieller Master → abfragendes wmbusmeters → MQTT + HA`.
+Dieser Pfad gilt erst nach einem vom Runtime akzeptierten Telegramm als aktiv, nicht
+schon durch das Einschalten der Engine.
+
 **Zwei Schalter, beide standardmäßig aus.** `mbus_tab_visible` zeigt nur den Tab,
 `mbus_enabled` startet die Engine. Sind beide aus, ändert sich für Sie nichts.
 
@@ -515,6 +522,10 @@ letzten Antwort:
 getestet, nicht gegen echte Zähler — der Autor besitzt keine drahtgebundene
 M-Bus-Hardware. Funktioniert etwas nicht, melden Sie ein Issue; nur so lässt es sich
 beheben.
+
+Die Ansicht **ÜBER DAS PROJEKT** dokumentiert beide tatsächlichen Datenpfade und
+zeigt den Hinweis zur KI-Unterstützung. Die Repository-Fassung steht in
+[NOTICE.md](../NOTICE.md).
 
 ## 9. Sprache der Oberfläche
 

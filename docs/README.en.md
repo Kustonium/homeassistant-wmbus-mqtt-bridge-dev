@@ -452,6 +452,13 @@ Everything downstream is the same as for radio — same drivers, units, Discover
 calculated and constant fields. Only the transport differs: meters are polled
 instead of listened to, and they are addressed rather than discovered.
 
+After the first valid reply, a wired meter also appears in **Dashboard** and
+**Meters**. The source column shows `M-Bus · <bus alias>` instead of ESP, radio-band
+and reception badges, and the Dashboard adds the actual wired path
+`meter → serial master → polling wmbusmeters → MQTT + HA`. This path is shown as
+active only after the runtime has accepted a telegram, not merely after enabling
+the engine.
+
 **Two switches, both off by default.** `mbus_tab_visible` only shows the tab;
 `mbus_enabled` starts the engine. With both off nothing changes for you.
 
@@ -501,6 +508,9 @@ which one it is, per meter, together with the moment each one last answered:
 **Not verified on a real bus.** The protocol was tested against a simulator, not
 against real meters — the author has no wired M-Bus hardware. If something does not
 work, open an issue; that is the only way it gets fixed.
+
+The **About** view documents both actual data paths and displays the project's
+AI-assistance disclosure. The repository copy is [NOTICE.md](../NOTICE.md).
 
 ## 9. Interface language
 
