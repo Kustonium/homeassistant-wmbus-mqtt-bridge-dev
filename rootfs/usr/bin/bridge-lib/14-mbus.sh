@@ -108,7 +108,11 @@ write_mbus_conf() {
   MBUS_POLL_DEFAULT="$(mbus_opt mbus_poll_interval "15m")"
 
   if [[ -z "${dev}" || "${dev}" == "null" ]]; then
-    warn "M-Bus: no device configured -> instance not started"
+    # Reachable only with mbus_enabled=true, so the user asked for polling and
+    # gets a warning they did not cause on purpose. Say what to do about it: the
+    # engine can be armed from the add-on options page, which has no way to
+    # enforce "pick a port first" — that guard exists only in the WebUI.
+    warn "M-Bus: polling is enabled but no port is selected -> not starting. Pick a port in the M-Bus tab, or turn mbus_enabled off."
     return 1
   fi
   if [[ ! "${alias}" =~ ^[A-Za-z0-9_]+$ ]]; then
@@ -120,13 +124,15 @@ write_mbus_conf() {
   identity="$(mbus_identity_check "${dev}" "${pinned}")"
   case "${identity}" in
     device_missing)
-      warn "M-Bus: device ${dev} does not exist -> instance not started"
+      # /dev names are not stable across replugs, so this is the expected
+      # outcome of moving the converter to another socket, not a defect.
+      warn "M-Bus: the configured port ${dev} is gone -> not starting. Re-pick it in the M-Bus tab; serial port names change when USB devices are replugged."
       return 1
       ;;
     changed)
       # Refusing to poll is the right call: the alternative is talking M-Bus
       # into a Zigbee coordinator or into the user's own ESP bridge.
-      err "M-Bus: ${dev} is now a different device than the one configured -> refusing to poll"
+      err "M-Bus: ${dev} is now a different device than the one you selected -> refusing to poll. Something else took that port; re-pick the converter in the M-Bus tab to confirm."
       status_add_event "error" "M-Bus device identity changed on ${dev}"
       return 1
       ;;
