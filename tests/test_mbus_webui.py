@@ -31,6 +31,11 @@ class MBusWebUITest(unittest.TestCase):
         self.assertIn("async function refreshMbusDevices()", source)
         self.assertIn("refreshMbusDevices();", source)
 
+    def test_wired_meter_driver_uses_the_bundled_catalog(self):
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn('list="mbus-driver-options"', source)
+        self.assertIn('fetch("assets/drivers.json", {cache: "no-store"})', source)
+
     def test_wired_runtime_maps_decoded_ids_to_bus_alias(self):
         runtime = {
             "bus_alias": "MAIN",

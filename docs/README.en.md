@@ -480,8 +480,16 @@ The selected bus can then be checked explicitly: **Check whether the bus is aliv
 sends one test broadcast, **Scan primary addresses** walks only the range you choose
 (`p1`–`p250`, at most 32 per request), and **Poll once** requests one configured
 primary address. All three are refused while regular polling is running because
-M-Bus has one master. Their raw replies and decoder errors remain visible in the
+M-Bus has one master. **Poll once is diagnostic only:** it displays the raw reply,
+but does not decode it, publish it to MQTT/Home Assistant or add the meter to the
+Pipeline. For normal operation, save a meter, enable the engine, click **Apply**
+and restart the add-on. Decoder output from that regular engine is visible in the
 read-only **Bus console**; it never accepts arbitrary bytes to transmit.
+
+The meter table's **Driver** field suggests every driver shipped in the current
+image while still accepting a custom name. `auto` may identify a meter, but is not
+guaranteed to select a useful driver for every wired response; choose the meter's
+documented driver when automatic decoding produces no values.
 
 **In Docker** map your converter explicitly:
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Never `/dev:/dev`, never

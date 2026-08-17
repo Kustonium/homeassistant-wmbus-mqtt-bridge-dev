@@ -466,9 +466,17 @@ Vybranou sběrnici pak můžete výslovně ověřit: **Ověřit, zda sběrnice �
 jeden testovací broadcast, **Sken primárních adres** projde jen zadaný rozsah
 (`p1`–`p250`, nejvýše 32 adres na požadavek) a **Dotázat jednou** osloví jednu
 nakonfigurovanou primární adresu. Za běžícího pravidelného dotazování jsou všechny
-tři akce odmítnuty, protože M-Bus má jediný master. Surové odpovědi a chyby dekodéru
-zůstávají viditelné v **Konzoli sběrnice**, která je pouze pro čtení a neumí odesílat
-libovolné bajty.
+tři akce odmítnuty, protože M-Bus má jediný master. **„Dotázat jednou“ slouží pouze
+k diagnostice:** zobrazí surovou odpověď, ale nedekóduje ji, nepublikuje do
+MQTT/Home Assistant ani nepřidá měřič do Pipeline. Pro běžný provoz měřič uložte,
+zapněte engine, klikněte na **Použít** a restartujte doplněk. Výstup tohoto běžného
+enginu zůstává viditelný v **Konzoli sběrnice**, která je pouze pro čtení a neumí
+odesílat libovolné bajty.
+
+Pole **Ovladač** v tabulce měřičů nabízí všechny ovladače dodané v aktuálním obrazu
+a nadále přijímá vlastní název. `auto` může měřič rozpoznat, ale nezaručuje výběr
+použitelného ovladače pro každou kabelovou odpověď; pokud automatické dekódování
+nevrací hodnotu, vyberte ovladač uvedený v dokumentaci měřiče.
 
 **V Dockeru** namapujte převodník výslovně:
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Nikdy `/dev:/dev`, nikdy

@@ -491,9 +491,19 @@ Den ausgewählten Bus können Sie anschließend ausdrücklich prüfen: **Prüfen
 Bus lebt** sendet genau einen Test-Broadcast, **Primäradressen scannen** durchläuft nur
 den gewählten Bereich (`p1`–`p250`, höchstens 32 je Anfrage), und **Einmal abfragen**
 fragt eine konfigurierte Primäradresse ab. Während die reguläre Abfrage läuft, werden
-alle drei Aktionen abgewiesen, weil M-Bus nur einen Master hat. Rohantworten und
-Decoderfehler bleiben in der schreibgeschützten **Bus-Konsole** sichtbar; beliebige
-Bytes lassen sich dort nicht senden.
+alle drei Aktionen abgewiesen, weil M-Bus nur einen Master hat. **„Einmal abfragen“
+dient nur zur Diagnose:** Die Rohantwort wird angezeigt, aber nicht dekodiert, an
+MQTT/Home Assistant veröffentlicht oder zur Pipeline hinzugefügt. Für den normalen
+Betrieb speichern Sie einen Zähler, aktivieren die Engine, klicken auf **Anwenden**
+und starten das Add-on neu. Die Ausgabe dieser regulären Engine bleibt in der
+schreibgeschützten **Bus-Konsole** sichtbar; beliebige Bytes lassen sich dort nicht
+senden.
+
+Das Feld **Treiber** in der Zählertabelle schlägt alle im aktuellen Image
+enthaltenen Treiber vor und akzeptiert weiterhin eigene Namen. `auto` kann einen
+Zähler erkennen, wählt aber nicht für jede kabelgebundene Antwort garantiert einen
+nützlichen Treiber; liefert die automatische Dekodierung keinen Wert, verwenden Sie
+den in der Zählerdokumentation genannten Treiber.
 
 **Unter Docker** binden Sie den Konverter explizit ein:
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Niemals `/dev:/dev`, niemals

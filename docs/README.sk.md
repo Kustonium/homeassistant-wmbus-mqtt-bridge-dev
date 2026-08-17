@@ -466,9 +466,17 @@ Vybranú zbernicu potom môžete výslovne overiť: **Overiť, či zbernica žij
 jeden testovací broadcast, **Sken primárnych adries** prejde iba zadaný rozsah
 (`p1`–`p250`, najviac 32 adries na požiadavku) a **Dopytovať raz** osloví jednu
 nakonfigurovanú primárnu adresu. Počas bežného dopytovania sú všetky tri akcie
-odmietnuté, pretože M-Bus má jediný master. Surové odpovede a chyby dekodéra zostávajú
-viditeľné v **Konzole zbernice**, ktorá je iba na čítanie a neumožňuje posielať
-ľubovoľné bajty.
+odmietnuté, pretože M-Bus má jediný master. **„Dopytovať raz“ slúži iba na
+diagnostiku:** zobrazí surovú odpoveď, ale nedekóduje ju, nepublikuje do MQTT/Home
+Assistant ani nepridá merač do Pipeline. Pre bežnú prevádzku merač uložte, zapnite
+engine, kliknite na **Použiť** a reštartujte doplnok. Výstup tohto bežného enginu
+zostáva viditeľný v **Konzole zbernice**, ktorá je iba na čítanie a neumožňuje
+posielať ľubovoľné bajty.
+
+Pole **Ovládač** v tabuľke meračov ponúka všetky ovládače dodané v aktuálnom obraze
+a naďalej prijíma vlastný názov. `auto` môže merač rozpoznať, ale nezaručuje výber
+použiteľného ovládača pre každú káblovú odpoveď; ak automatické dekódovanie nevráti
+hodnotu, vyberte ovládač uvedený v dokumentácii merača.
 
 **V Dockeri** namapujte prevodník výslovne:
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Nikdy `/dev:/dev`, nikdy

@@ -138,6 +138,12 @@
   a reply three seconds late for a two-second `pollinterval` is still accepted.
 
 ### Fixed
+- the wired meter form no longer leaves users to type a driver name blindly. It
+  suggests the driver catalog baked from the exact `wmbusmeters` build in the
+  image, while preserving `auto` and custom names.
+- the M-Bus tab now states that **Poll once** is raw diagnostics only and cannot
+  populate Pipeline, MQTT or Home Assistant. A saved meter with polling disabled
+  shows the exact normal-operation sequence: enable, apply and restart.
 - the wired M-Bus health state was computed and thrown away. It is established in
   the subshell that reads the decoder's output, so the parent shell never saw it
   and the WebUI — a different process again — could not reach it at all. The state

@@ -3409,6 +3409,20 @@
   }
 
   // ── Wired M-Bus tab ────────────────────────────────────────
+  function ensureDriverCatalog() {
+    if (state.drivers !== null) return;
+    // Mark the request as in flight so repeated M-Bus renders do not start
+    // duplicate downloads before the first response arrives.
+    state.drivers = [];
+    fetch("assets/drivers.json", {cache: "no-store"})
+      .then(r => (r.ok ? r.json() : []))
+      .then(list => {
+        state.drivers = Array.isArray(list) ? list : [];
+        render();
+      })
+      .catch(() => { state.drivers = []; });
+  }
+
   async function loadMbus(force = false) {
     if (state.mbusLoading) return;
     if (state.mbus && !force) return;
@@ -3419,6 +3433,7 @@
       // adapter remains invisible until the user performs Ctrl+F5.
       const response = await fetch("api/mbus", {cache: "no-store"});
       state.mbus = await response.json();
+      ensureDriverCatalog();
     } catch (_) {
       state.mbus = {error: true};
     } finally {
@@ -3749,7 +3764,9 @@
             <tr>
               <td><input type="text" class="mbus-m-name" data-i="${index}" value="${escapeHtml(m.id || "")}"></td>
               <td><input type="text" class="mbus-m-addr" data-i="${index}" value="${escapeHtml(m.address || "")}"></td>
-              <td><input type="text" class="mbus-m-type" data-i="${index}" value="${escapeHtml(m.type || "auto")}"></td>
+              <td><input type="text" class="mbus-m-type" data-i="${index}" list="mbus-driver-options"
+                    value="${escapeHtml(m.type || "auto")}"
+                    title="${escapeHtml(t("mbus_driver_picker_hint", "Choose a driver shipped with this add-on, leave auto, or type a custom driver name."))}"></td>
               <td><input type="text" class="mbus-m-poll" data-i="${index}" value="${escapeHtml(m.poll_interval || "")}"
                     placeholder="${escapeHtml(mbus.poll_interval || "15m")}"></td>
               <td><div class="actions"><button class="btn" data-action="mbus-poll-one" data-i="${index}"${
@@ -3763,10 +3780,16 @@
                 <button class="btn danger" data-action="mbus-del-meter" data-i="${index}">${escapeHtml(t("remove", "Remove"))}</button></div></td>
             </tr>`).join("")}
         </table></div>
+        <datalist id="mbus-driver-options">
+          <option value="auto"></option>
+          ${(state.drivers || []).map(d => `<option value="${escapeHtml(d.driver || "")}">${escapeHtml(d.type || "")}</option>`).join("")}
+        </datalist>
         <div class="row-actions">
           <button class="btn" data-action="mbus-add-meter">${escapeHtml(t("mbus_add_meter", "Add meter"))}</button>
           <button class="btn primary" data-action="mbus-save-meters">${escapeHtml(t("mbus_save_meters", "Save meters"))}</button>
         </div>
+        <p class="hint">${escapeHtml(t("mbus_poll_once_diagnostic", "Poll once is diagnostic only: it shows the raw reply but does not decode it, publish it to MQTT/Home Assistant or add the meter to Pipeline."))}</p>
+        ${meters.length && !mbus.enabled ? `<div class="banner banner-warn">${escapeHtml(t("mbus_engine_required_banner", "The meter is saved, but polling is OFF. To make it appear in Pipeline and Home Assistant, enable the engine below, click Apply and restart the add-on."))}</div>` : ""}
         ${mbusScanCard(mbus)}
       </div>
 

@@ -480,9 +480,18 @@ Wybraną magistralę możesz potem sprawdzić jawnie: **Sprawdź, czy magistrala
 wysyła jeden broadcast testowy, **Skan adresów pierwotnych** przechodzi tylko podany
 zakres (`p1`–`p250`, najwyżej 32 adresy na żądanie), a **Odpytaj raz** pyta jeden
 skonfigurowany adres pierwotny. Wszystkie trzy akcje są odrzucane podczas zwykłego
-odpytywania, bo M-Bus ma jednego mastera. Surowe odpowiedzi i błędy dekodera zostają
-w **Konsoli magistrali**, która jest tylko do odczytu i nie przyjmuje dowolnych bajtów
-do wysłania.
+odpytywania, bo M-Bus ma jednego mastera. **„Odpytaj raz” służy tylko do
+diagnostyki:** pokazuje surową odpowiedź, ale jej nie dekoduje, nie publikuje do
+MQTT/Home Assistant i nie dodaje licznika do Pipeline. Do normalnej pracy zapisz
+licznik, włącz silnik, kliknij **Zastosuj** i zrestartuj dodatek. Wyjście dekodera
+z tego regularnego silnika widać w **Konsoli magistrali**, która jest tylko do
+odczytu i nie przyjmuje dowolnych bajtów do wysłania.
+
+Pole **Driver** w tabeli liczników podpowiada wszystkie drivery dostarczone w
+bieżącym obrazie, ale nadal przyjmuje własną nazwę. `auto` może rozpoznać licznik,
+lecz nie gwarantuje dobrania użytecznego drivera dla każdej odpowiedzi przewodowej;
+gdy automatyczne dekodowanie nie daje wartości, wybierz driver z dokumentacji
+licznika.
 
 **W Dockerze** zmapuj konwerter jawnie:
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Nigdy `/dev:/dev`, nigdy
