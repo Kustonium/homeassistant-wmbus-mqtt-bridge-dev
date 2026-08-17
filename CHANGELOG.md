@@ -1,3 +1,8 @@
+## 1.5.49-dev.253
+
+### Added
+- poll wired M-Bus meters from a serial bus (7fef93b)
+
 ## 1.5.49-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
