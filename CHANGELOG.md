@@ -1,3 +1,11 @@
+## 1.5.49-dev.255
+
+### Added
+- fence off the M-Bus options in the settings form (b24aed1)
+
+### Fixed
+- make the tab reachable and label every option (e9ed9bf)
+
 ## 1.5.49-dev.254
 
 ### Added
