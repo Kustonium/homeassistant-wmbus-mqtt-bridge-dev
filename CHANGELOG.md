@@ -1,3 +1,11 @@
+## 1.5.49-dev.261
+
+### Added
+- surface wired meters across dashboard (a1fd3bc)
+
+### Fixed
+- align engine guidance with process state (9a9b2fe)
+
 ## 1.5.49-dev.260
 
 ### Fixed
