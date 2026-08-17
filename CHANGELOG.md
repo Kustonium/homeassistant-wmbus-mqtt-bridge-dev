@@ -1,3 +1,11 @@
+## 1.5.49-dev.266
+
+### Added
+- diagnose replies during address scan (47f43aa)
+
+### Fixed
+- preserve decoded units and expand simulator coverage (747313c)
+
 ## 1.5.49-dev.265
 
 ### Added
