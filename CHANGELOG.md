@@ -1,3 +1,11 @@
+## 1.5.49-dev.257
+
+### Added
+- show why nothing is arriving on the bus (67bf5c9)
+
+### Fixed
+- tell the user what to do when polling cannot start (d81d481)
+
 ## 1.5.49-dev.256
 
 ### Added
