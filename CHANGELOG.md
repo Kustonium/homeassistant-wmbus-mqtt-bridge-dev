@@ -1,3 +1,11 @@
+## 1.5.49-dev.262
+
+### Added
+- surface wired meters across dashboard (a1fd3bc)
+
+### Fixed
+- refresh USB ports and repair option saving (966825d)
+
 ## 1.5.49-dev.261
 
 ### Added
