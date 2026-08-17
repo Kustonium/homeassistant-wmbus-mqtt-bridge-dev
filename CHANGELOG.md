@@ -1,3 +1,11 @@
+## 1.5.49-dev.265
+
+### Added
+- detect wired meter drivers (6b99fe6)
+
+### Fixed
+- preserve decoded units and expand simulator coverage (747313c)
+
 ## 1.5.49-dev.264
 
 ### Added
