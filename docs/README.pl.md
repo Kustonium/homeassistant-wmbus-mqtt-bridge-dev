@@ -478,7 +478,8 @@ urządzenie i melduje sukces — więc port zawsze wskazujesz Ty.
 
 Wybraną magistralę możesz potem sprawdzić jawnie: **Sprawdź, czy magistrala żyje**
 wysyła jeden broadcast testowy, **Skan adresów pierwotnych** przechodzi tylko podany
-zakres (`p1`–`p250`, najwyżej 32 adresy na żądanie), a **Odpytaj raz** pyta jeden
+zakres (`p1`–`p250`, najwyżej 32 adresy na żądanie) i w każdym wierszu pokazuje
+zarówno potwierdzenie adresu, jak i diagnozę odpowiedzi z danymi, a **Odpytaj raz** pyta jeden
 skonfigurowany adres pierwotny. Wszystkie trzy akcje są odrzucane podczas zwykłego
 odpytywania, bo M-Bus ma jednego mastera. **„Odpytaj raz” służy tylko do
 diagnostyki:** pokazuje surową odpowiedź, ale jej nie dekoduje, nie publikuje do

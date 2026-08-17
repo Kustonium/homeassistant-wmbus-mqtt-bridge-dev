@@ -103,6 +103,22 @@ class MBusWebUITest(unittest.TestCase):
             with self.subTest(frame=frame):
                 self.assertEqual(webui.mbus_frame_shape(frame), expected)
 
+    def test_scan_diagnostic_checks_checksum_and_extra_frames(self):
+        valid = "680303680801727b16"
+        self.assertEqual(webui.mbus_reply_diagnostic(""), "no_reply")
+        self.assertEqual(webui.mbus_reply_diagnostic("e5"), "ack")
+        self.assertEqual(webui.mbus_reply_diagnostic("7ea001"), "not_mbus")
+        self.assertEqual(webui.mbus_reply_diagnostic(valid), "frame_long")
+        self.assertEqual(webui.mbus_reply_diagnostic(valid[:-4] + "0016"), "checksum")
+        self.assertEqual(webui.mbus_reply_diagnostic(valid[:-2]), "incomplete")
+        self.assertEqual(webui.mbus_reply_diagnostic(valid + valid), "multiple")
+
+    def test_scan_ui_displays_presence_and_data_diagnosis(self):
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("scan.results || scan.found", source)
+        self.assertIn("mbus_scan_data_checksum", source)
+        self.assertIn("mbus_scan_data_multiple", source)
+
     def test_console_classifies_decoder_signatures_and_raw_shapes(self):
         with tempfile.TemporaryDirectory() as directory:
             old_base = webui.BASE

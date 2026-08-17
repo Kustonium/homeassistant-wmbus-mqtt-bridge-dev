@@ -478,7 +478,8 @@ and reports success — so the port is always chosen by you.
 
 The selected bus can then be checked explicitly: **Check whether the bus is alive**
 sends one test broadcast, **Scan primary addresses** walks only the range you choose
-(`p1`–`p250`, at most 32 per request), and **Poll once** requests one configured
+(`p1`–`p250`, at most 32 per request), shows both address acknowledgement and the
+immediate data-reply diagnosis for every row, and **Poll once** requests one configured
 primary address. All three are refused while regular polling is running because
 M-Bus has one master. **Poll once is diagnostic only:** it displays the raw reply,
 but does not decode it, publish it to MQTT/Home Assistant or add the meter to the

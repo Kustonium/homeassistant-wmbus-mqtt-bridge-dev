@@ -98,6 +98,10 @@
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
 ### Added
+- the primary-address scan now combines presence detection with an immediate
+  data request. Every scanned address reports both whether it acknowledged and
+  whether its reply is valid, ACK-only, foreign, incomplete, checksum-failed or
+  multiple, removing the need to click Poll once for every test address.
 - wired meters can request a driver suggestion from the analyzer in the bundled
   `wmbusmeters`. Detection performs one bounded diagnostic poll, fills the field
   for review and never saves a guess automatically.

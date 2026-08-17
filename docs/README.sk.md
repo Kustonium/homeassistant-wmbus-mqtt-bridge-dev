@@ -464,7 +464,8 @@ vyberáte vy.
 
 Vybranú zbernicu potom môžete výslovne overiť: **Overiť, či zbernica žije** odošle
 jeden testovací broadcast, **Sken primárnych adries** prejde iba zadaný rozsah
-(`p1`–`p250`, najviac 32 adries na požiadavku) a **Dopytovať raz** osloví jednu
+(`p1`–`p250`, najviac 32 adries na požiadavku) a v každom riadku zobrazí potvrdenie
+adresy aj diagnostiku dátovej odpovede; **Dopytovať raz** osloví jednu
 nakonfigurovanú primárnu adresu. Počas bežného dopytovania sú všetky tri akcie
 odmietnuté, pretože M-Bus má jediný master. **„Dopytovať raz“ slúži iba na
 diagnostiku:** zobrazí surovú odpoveď, ale nedekóduje ju, nepublikuje do MQTT/Home

@@ -464,7 +464,8 @@ vybíráte vy.
 
 Vybranou sběrnici pak můžete výslovně ověřit: **Ověřit, zda sběrnice žije** odešle
 jeden testovací broadcast, **Sken primárních adres** projde jen zadaný rozsah
-(`p1`–`p250`, nejvýše 32 adres na požadavek) a **Dotázat jednou** osloví jednu
+(`p1`–`p250`, nejvýše 32 adres na požadavek) a v každém řádku zobrazí potvrzení
+adresy i diagnostiku datové odpovědi; **Dotázat jednou** osloví jednu
 nakonfigurovanou primární adresu. Za běžícího pravidelného dotazování jsou všechny
 tři akce odmítnuty, protože M-Bus má jediný master. **„Dotázat jednou“ slouží pouze
 k diagnostice:** zobrazí surovou odpověď, ale nedekóduje ji, nepublikuje do

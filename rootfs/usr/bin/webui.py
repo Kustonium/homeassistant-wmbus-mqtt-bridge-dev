@@ -1901,17 +1901,57 @@ def mbus_scan_range(first: int, last: int) -> tuple[int, int]:
     return first, min(last, first + MBUS_SCAN_MAX - 1)
 
 
+def _mbus_read_until_idle(fd: int, wait_s: float, idle_s: float = 0.2) -> bytes:
+    """Read one reply, retaining concatenated/colliding frames until the bus is idle."""
+    deadline = time.monotonic() + wait_s
+    last_byte = None
+    received = b''
+    while time.monotonic() < deadline:
+        if received and last_byte is not None and time.monotonic() - last_byte >= idle_s:
+            break
+        ready, _, _ = select.select([fd], [], [], 0.05)
+        if not ready:
+            continue
+        try:
+            chunk = os.read(fd, 4096)
+        except OSError:
+            break
+        if chunk:
+            received += chunk
+            last_byte = time.monotonic()
+    return received
+
+
+def mbus_reply_diagnostic(hex_text: str) -> str:
+    """Classify a diagnostic reply, including checksum and multiple-frame faults."""
+    try:
+        raw = bytes.fromhex(hex_text or '')
+    except ValueError:
+        return 'not_mbus'
+    shape = mbus_frame_shape(hex_text)
+    if shape != 'frame_long':
+        return 'no_reply' if shape == 'empty' else shape
+    expected = raw[1] + 6
+    if len(raw) > expected:
+        return 'multiple'
+    if len(raw) != expected or raw[-1:] != b'\x16':
+        return 'incomplete'
+    if (sum(raw[4:-2]) & 0xFF) != raw[-2]:
+        return 'checksum'
+    return 'frame_long'
+
+
 def mbus_scan_addresses(device: str, first: int, last: int, baudrate: int = 2400,
-                        wait_s: float = 0.4) -> tuple[str, list]:
-    """Send SND_NKE to each primary address in turn and note who answers.
+                        wait_s: float = 0.4, data_wait_s: float = 3.5) -> tuple[str, list]:
+    """Check presence and immediately request data from every primary address.
 
     Valid primaries are 1..250. 0 is the factory "unset" value and is not part
     of a normal address sweep; 251..255 are reserved or broadcast and are never
     scanned.
 
-    Returns (state, [{address, answered, hex}]). A meter answers a short ACK
-    (0xE5) - measured against a bus simulator, where a nonexistent address stays
-    silent.
+    Returns one row for every scanned address. SND_NKE supplies the independent
+    presence result; addresses that acknowledge are then sent REQ_UD2 so the UI
+    can show the telegram diagnosis without nine separate button presses.
     """
     if termios is None:
         return 'busy_or_error', []
@@ -1924,7 +1964,7 @@ def mbus_scan_addresses(device: str, first: int, last: int, baudrate: int = 2400
         return 'denied', []
     except OSError:
         return 'busy_or_error', []
-    found = []
+    results = []
     try:
         _set_serial_8e1(fd, baudrate)
         for addr in range(first, last + 1):
@@ -1935,23 +1975,23 @@ def mbus_scan_addresses(device: str, first: int, last: int, baudrate: int = 2400
                 pass
             # SND_NKE: start 0x10, C=0x40, A=addr, checksum, stop 0x16.
             os.write(fd, bytes([0x10, 0x40, addr, (0x40 + addr) & 0xFF, 0x16]))
-            deadline = time.monotonic() + wait_s
-            received = b''
-            while time.monotonic() < deadline:
-                ready, _, _ = select.select([fd], [], [], 0.1)
-                if ready:
-                    try:
-                        chunk = os.read(fd, 4096)
-                    except OSError:
-                        break
-                    if chunk:
-                        received += chunk
-            if received:
-                found.append({'address': addr, 'answered': True,
-                              'hex': received.hex()})
+            presence = _mbus_read_until_idle(fd, wait_s)
+            answered = bool(presence)
+            row = {'address': addr, 'answered': answered,
+                   'presence_hex': presence.hex(), 'data_state': 'not_requested',
+                   'hex': ''}
+            if answered:
+                # REQ_UD2: request user data. The long window also covers slow
+                # meters; reading stops 200 ms after the reply becomes idle.
+                os.write(fd, bytes([0x10, 0x5B, addr,
+                                    (0x5B + addr) & 0xFF, 0x16]))
+                data = _mbus_read_until_idle(fd, data_wait_s)
+                row['hex'] = data.hex()
+                row['data_state'] = mbus_reply_diagnostic(row['hex'])
+            results.append(row)
     finally:
         os.close(fd)
-    return 'ok', found
+    return 'ok', results
 
 
 def mbus_poll_once(device: str, address: int, baudrate: int = 2400,
@@ -3634,12 +3674,13 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json(400, {"ok": False, "message": "first/last must be numbers."})
                 return
             first, last = mbus_scan_range(first, last)
-            state_name, found = mbus_scan_addresses(device, first, last, baud)
+            state_name, results = mbus_scan_addresses(device, first, last, baud)
+            found = [row for row in results if row.get('answered')]
             # The scanned range is reported back rather than assumed: it is
             # capped, and a caller that does not know where the sweep stopped
             # would read a partial result as a complete one.
             self._send_json(200, {"ok": state_name == 'ok', "state": state_name,
-                                  "found": found, "first": first,
+                                  "found": found, "results": results, "first": first,
                                   "last": last, "chunk": MBUS_SCAN_MAX})
             return
         if path.endswith('/api/mbus/poll-one') or path.endswith('/api/mbus/detect-driver'):

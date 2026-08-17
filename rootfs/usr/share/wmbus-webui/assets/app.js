@@ -3591,11 +3591,22 @@
   // engine holds the bus.
   function mbusScanCard(mbus) {
     const scan = state.mbusScan || {};
-    const rows = (scan.found || []).map((f) => `
+    const labels = {
+      not_requested: t("mbus_scan_data_not_requested", "no data request"),
+      no_reply: t("mbus_scan_data_no_reply", "no data reply"),
+      ack: t("mbus_scan_data_ack", "ACK only"),
+      frame_short: t("mbus_scan_data_short", "short frame"),
+      frame_long: t("mbus_scan_data_long", "valid long frame"),
+      not_mbus: t("mbus_scan_data_foreign", "foreign/non-M-Bus data"),
+      checksum: t("mbus_scan_data_checksum", "bad checksum"),
+      incomplete: t("mbus_scan_data_incomplete", "incomplete frame"),
+      multiple: t("mbus_scan_data_multiple", "multiple/colliding frames"),
+    };
+    const rows = (scan.results || scan.found || []).map((f) => `
       <div class="mbus-meter-state">
         <span class="name">p${f.address}</span>
-        <span class="detail">${escapeHtml(t("mbus_scan_answered", "answered"))}${f.hex ? ` · <code>${escapeHtml(f.hex.slice(0, 24))}</code>` : ""}</span>
-        <button class="btn" data-action="mbus-scan-add" data-addr="${f.address}">${escapeHtml(t("mbus_scan_add", "Add"))}</button>
+        <span class="detail">${escapeHtml(f.answered ? t("mbus_scan_answered", "present") : t("mbus_scan_silent", "no response"))} · ${escapeHtml(labels[f.data_state] || f.data_state || "")}${f.hex ? ` · <code>${escapeHtml(f.hex.slice(0, 24))}</code>` : ""}</span>
+        ${f.answered ? `<button class="btn" data-action="mbus-scan-add" data-addr="${f.address}">${escapeHtml(t("mbus_scan_add", "Add"))}</button>` : ""}
       </div>`).join("");
     const summary = scan.done
       ? `<p class="hint">${escapeHtml(
@@ -3607,7 +3618,7 @@
     return `
       <div class="mbus-scan-section">
         <h2>${escapeHtml(t("mbus_scan_title", "Scan primary addresses"))}</h2>
-        <p class="hint">${escapeHtml(t("mbus_scan_hint", "The scan transmits one frame per address, so it never starts on its own. Valid primaries are p1–p250; p0 is the factory 'unset' value. Run the bus probe first — it answers 'is anything on this cable' with a single frame."))}</p>
+        <p class="hint">${escapeHtml(t("mbus_scan_hint", "The diagnostic scan checks whether each address acknowledges and immediately requests its data. It never starts on its own. Valid primaries are p1–p250; p0 is the factory 'unset' value."))}</p>
         <div class="mbus-scan-controls">
           <label>${escapeHtml(t("mbus_scan_from", "From"))}
             <input type="number" id="mbus_scan_first" min="1" max="250" value="${escapeHtml(String(scan.nextFirst ?? 1))}">
@@ -3985,6 +3996,7 @@
         state.mbusScan = {
           running: false, done: true,
           found: asArray(result.found),
+          results: asArray(result.results),
           first: result.first, last: result.last,
           nextFirst: Math.min(250, Number(result.last) + 1),
           nextLast: Math.min(250, Number(result.last) + Number(result.chunk || 32)),
