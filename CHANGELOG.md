@@ -84,6 +84,9 @@
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
 ### Added
+- wired meters can request a driver suggestion from the analyzer in the bundled
+  `wmbusmeters`. Detection performs one bounded diagnostic poll, fills the field
+  for review and never saves a guess automatically.
 - wired M-Bus: the add-on can now poll meters on a serial bus itself, as a third
   wmbusmeters instance next to DECODE and LISTEN. Everything downstream is
   unchanged — the same drivers, units, Discovery and calculated/constant fields —
@@ -148,7 +151,8 @@
 ### Fixed
 - the wired meter form no longer leaves users to type a driver name blindly. It
   suggests the driver catalog baked from the exact `wmbusmeters` build in the
-  image, while preserving `auto` and custom names.
+  image, while preserving `auto` and custom names. Catalog entries are
+  de-duplicated case-insensitively, so the special `auto` choice appears once.
 - the M-Bus tab now states that **Poll once** is raw diagnostics only and cannot
   populate Pipeline, MQTT or Home Assistant. A saved meter with polling disabled
   shows the exact normal-operation sequence: enable, apply and restart.

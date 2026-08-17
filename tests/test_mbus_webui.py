@@ -6,6 +6,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -35,6 +36,16 @@ class MBusWebUITest(unittest.TestCase):
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn('list="mbus-driver-options"', source)
         self.assertIn('fetch("assets/drivers.json", {cache: "no-store"})', source)
+        self.assertIn('postApi("mbus/detect-driver", {address})', source)
+        self.assertIn('name !== "auto"', source)
+
+    @mock.patch.object(webui.subprocess, "run")
+    def test_wired_driver_detection_uses_wmbusmeters_analysis(self, run):
+        run.return_value = mock.Mock(stdout="Auto driver : piigth\n", stderr="")
+        self.assertEqual(webui._analyze_auto_driver("68030368010203", ""), "piigth")
+        args = run.call_args.args[0]
+        self.assertEqual(args[0], webui.WMBUSMETERS_BIN)
+        self.assertEqual(args[1], "--analyze")
 
     def test_wired_runtime_maps_decoded_ids_to_bus_alias(self):
         runtime = {

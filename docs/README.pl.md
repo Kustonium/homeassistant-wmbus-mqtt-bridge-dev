@@ -492,6 +492,11 @@ bieżącym obrazie, ale nadal przyjmuje własną nazwę. `auto` może rozpoznać
 lecz nie gwarantuje dobrania użytecznego drivera dla każdej odpowiedzi przewodowej;
 gdy automatyczne dekodowanie nie daje wartości, wybierz driver z dokumentacji
 licznika.
+**Wykryj driver** wykonuje jedno odpytanie diagnostyczne i przekazuje otrzymaną
+ramkę do analizatora we wbudowanym `wmbusmeters`. Sugestia wypełnia pole, ale
+nigdy nie zapisuje się automatycznie: sprawdź ją i kliknij **Zapisz liczniki**.
+Jeżeli analizator nie ma wiarygodnej sugestii, interfejs mówi o tym wprost zamiast
+zgadywać.
 
 **W Dockerze** zmapuj konwerter jawnie:
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Nigdy `/dev:/dev`, nigdy

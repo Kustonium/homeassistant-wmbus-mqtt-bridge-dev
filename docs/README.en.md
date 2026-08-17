@@ -490,6 +490,10 @@ The meter table's **Driver** field suggests every driver shipped in the current
 image while still accepting a custom name. `auto` may identify a meter, but is not
 guaranteed to select a useful driver for every wired response; choose the meter's
 documented driver when automatic decoding produces no values.
+**Detect driver** performs one diagnostic poll and passes the returned frame to
+the analyzer in the bundled `wmbusmeters`. A suggestion fills the field but is
+never saved automatically: review it and click **Save meters**. If the analyzer
+cannot make a reliable suggestion, the UI says so instead of guessing.
 
 **In Docker** map your converter explicitly:
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Never `/dev:/dev`, never

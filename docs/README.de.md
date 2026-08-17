@@ -504,6 +504,11 @@ enthaltenen Treiber vor und akzeptiert weiterhin eigene Namen. `auto` kann einen
 Zähler erkennen, wählt aber nicht für jede kabelgebundene Antwort garantiert einen
 nützlichen Treiber; liefert die automatische Dekodierung keinen Wert, verwenden Sie
 den in der Zählerdokumentation genannten Treiber.
+**Treiber erkennen** führt eine Diagnoseabfrage aus und übergibt den empfangenen
+Rahmen an den Analysator des mitgelieferten `wmbusmeters`. Ein Vorschlag füllt das
+Feld, wird aber nie automatisch gespeichert: Prüfen Sie ihn und klicken Sie auf
+**Zähler speichern**. Kann der Analysator keinen verlässlichen Vorschlag machen,
+meldet die Oberfläche dies ausdrücklich, statt zu raten.
 
 **Unter Docker** binden Sie den Konverter explizit ein:
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Niemals `/dev:/dev`, niemals

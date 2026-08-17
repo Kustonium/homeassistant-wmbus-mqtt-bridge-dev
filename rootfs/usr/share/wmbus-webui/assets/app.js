@@ -3477,6 +3477,15 @@
     render();
   }
 
+  function mbusMetersFromForm() {
+    return Array.from(document.querySelectorAll(".mbus-m-name")).map((input, index) => ({
+      id: input.value.trim(),
+      address: (document.querySelector(`.mbus-m-addr[data-i="${index}"]`)?.value || "").trim(),
+      type: (document.querySelector(`.mbus-m-type[data-i="${index}"]`)?.value || "auto").trim(),
+      poll_interval: (document.querySelector(`.mbus-m-poll[data-i="${index}"]`)?.value || "").trim(),
+    }));
+  }
+
   function mbusAccessBanner(mbus) {
     const access = mbus.access || {};
     // The gate is NOT "no ports listed": Supervisor bind-mounts the host's
@@ -3777,12 +3786,23 @@
                           ? t("mbus_poll_primary_only", "Only a primary address (p1–p250) can be polled from here.")
                           : ""))}"
                   >${escapeHtml(t("mbus_poll_once", "Poll once"))}</button>
+                <button class="btn" data-action="mbus-detect-driver" data-i="${index}"${
+                    mbus.enabled || !/^p(?:[1-9]|[1-9]\d|1\d\d|2[0-4]\d|250)$/.test(String(m.address || "")) ? " disabled" : ""}
+                    title="${escapeHtml(t("mbus_detect_driver_hint", "Poll this address and ask the bundled wmbusmeters analyzer for a driver suggestion. Nothing is saved automatically."))}"
+                  >${escapeHtml(t("mbus_detect_driver", "Detect driver"))}</button>
                 <button class="btn danger" data-action="mbus-del-meter" data-i="${index}">${escapeHtml(t("remove", "Remove"))}</button></div></td>
             </tr>`).join("")}
         </table></div>
         <datalist id="mbus-driver-options">
           <option value="auto"></option>
-          ${(state.drivers || []).map(d => `<option value="${escapeHtml(d.driver || "")}">${escapeHtml(d.type || "")}</option>`).join("")}
+          ${(state.drivers || [])
+            .filter((d, index, rows) => {
+              const name = String(d.driver || "").trim().toLowerCase();
+              return name && name !== "auto" && rows.findIndex(
+                other => String(other.driver || "").trim().toLowerCase() === name
+              ) === index;
+            })
+            .map(d => `<option value="${escapeHtml(d.driver || "")}">${escapeHtml(d.type || "")}</option>`).join("")}
         </datalist>
         <div class="row-actions">
           <button class="btn" data-action="mbus-add-meter">${escapeHtml(t("mbus_add_meter", "Add meter"))}</button>
@@ -4005,6 +4025,27 @@
       return;
     }
 
+    if (action === "mbus-detect-driver") {
+      const index = Number(target.dataset.i);
+      // Preserve every unsaved row before toast/render updates the page. Only
+      // the suggested driver is changed; the user still decides whether to
+      // persist it with Save meters.
+      state.mbus.meters = mbusMetersFromForm();
+      const address = state.mbus.meters[index]?.address || "";
+      try {
+        const result = await postApi("mbus/detect-driver", {address});
+        if (result.detected && result.driver) {
+          state.mbus.meters[index].type = result.driver;
+          toast(t("mbus_detect_driver_found", "Suggested driver: {driver}. Review it, then click Save meters.", {driver: result.driver}));
+        } else {
+          toast(t("mbus_detect_driver_none", "No reliable driver suggestion. Keep auto or choose the driver from the meter documentation."), true);
+        }
+      } catch (error) {
+        toast(error.message, true);
+      }
+      return;
+    }
+
     if (action === "mbus-console-refresh") {
       await loadMbusConsole();
       return;
@@ -4025,14 +4066,7 @@
     }
 
     if (action === "mbus-save-meters") {
-      const collect = (cls) => Array.from(document.querySelectorAll(cls));
-      const names = collect(".mbus-m-name");
-      const meters = names.map((input, index) => ({
-        id: input.value.trim(),
-        address: (document.querySelector(`.mbus-m-addr[data-i="${index}"]`)?.value || "").trim(),
-        type: (document.querySelector(`.mbus-m-type[data-i="${index}"]`)?.value || "auto").trim(),
-        poll_interval: (document.querySelector(`.mbus-m-poll[data-i="${index}"]`)?.value || "").trim(),
-      }));
+      const meters = mbusMetersFromForm();
       try {
         const result = await postApi("mbus/meters", {meters: JSON.stringify(meters)});
         toast(result.message || t("saved", "Saved"));

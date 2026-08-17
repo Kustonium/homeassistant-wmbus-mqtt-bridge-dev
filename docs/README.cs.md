@@ -477,6 +477,10 @@ Pole **Ovladač** v tabulce měřičů nabízí všechny ovladače dodané v akt
 a nadále přijímá vlastní název. `auto` může měřič rozpoznat, ale nezaručuje výběr
 použitelného ovladače pro každou kabelovou odpověď; pokud automatické dekódování
 nevrací hodnotu, vyberte ovladač uvedený v dokumentaci měřiče.
+**Zjistit ovladač** provede jeden diagnostický dotaz a předá přijatý rámec
+analyzátoru v přibaleném `wmbusmeters`. Návrh vyplní pole, ale nikdy se automaticky
+neuloží: zkontrolujte jej a klikněte na **Uložit měřiče**. Pokud analyzátor nemá
+spolehlivý návrh, rozhraní to oznámí místo hádání.
 
 **V Dockeru** namapujte převodník výslovně:
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Nikdy `/dev:/dev`, nikdy

@@ -3551,6 +3551,7 @@ class Handler(BaseHTTPRequestHandler):
             '/api/compare-driver', '/api/save-config', '/api/driver-fields',
             '/api/mbus', '/api/mbus/device', '/api/mbus/meters', '/api/mbus/probe',
             '/api/mbus/console', '/api/mbus/scan', '/api/mbus/poll-one',
+            '/api/mbus/detect-driver',
         )
         if any(path.endswith(suffix) for suffix in api_suffixes):
             return path
@@ -3641,7 +3642,7 @@ class Handler(BaseHTTPRequestHandler):
                                   "found": found, "first": first,
                                   "last": last, "chunk": MBUS_SCAN_MAX})
             return
-        if path.endswith('/api/mbus/poll-one'):
+        if path.endswith('/api/mbus/poll-one') or path.endswith('/api/mbus/detect-driver'):
             opts = read_options()
             opts = opts if isinstance(opts, dict) else {}
             allowed, why = mbus_transmit_allowed()
@@ -3666,6 +3667,15 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 baud = 2400
             state_name, reply_hex = mbus_poll_once(device, int(raw_addr), baud)
+            if path.endswith('/api/mbus/detect-driver'):
+                driver = (_analyze_auto_driver(reply_hex, '')
+                          if state_name == 'frame_long' else '')
+                self._send_json(200, {"ok": True, "state": state_name,
+                                      "reply_hex": reply_hex,
+                                      "address": int(raw_addr),
+                                      "detected": bool(driver),
+                                      "driver": driver})
+                return
             self._send_json(200, {"ok": True, "state": state_name,
                                   "reply_hex": reply_hex, "address": int(raw_addr)})
             return
