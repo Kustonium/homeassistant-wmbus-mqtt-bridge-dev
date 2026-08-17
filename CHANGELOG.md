@@ -1,3 +1,9 @@
+## 1.5.49-dev.258
+
+### Added
+- add bounded bus diagnostics (c1d2f40)
+- show why nothing is arriving on the bus (67bf5c9)
+
 ## 1.5.49-dev.257
 
 ### Added
