@@ -1,3 +1,9 @@
+## 1.5.49-dev.260
+
+### Fixed
+- align engine guidance with process state (9a9b2fe)
+- make the wired tab readable and structured (83ff694)
+
 ## 1.5.49-dev.259
 
 ### Added
