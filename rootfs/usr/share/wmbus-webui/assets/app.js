@@ -3520,7 +3520,7 @@
       <div class="mbus-meter-state">
         <span class="name">p${f.address}</span>
         <span class="detail">${escapeHtml(t("mbus_scan_answered", "answered"))}${f.hex ? ` · <code>${escapeHtml(f.hex.slice(0, 24))}</code>` : ""}</span>
-        <button data-action="mbus-scan-add" data-addr="${f.address}">${escapeHtml(t("mbus_scan_add", "Add"))}</button>
+        <button class="btn" data-action="mbus-scan-add" data-addr="${f.address}">${escapeHtml(t("mbus_scan_add", "Add"))}</button>
       </div>`).join("");
     const summary = scan.done
       ? `<p class="hint">${escapeHtml(
@@ -3530,10 +3530,10 @@
             .replace("{n}", String((scan.found || []).length)))}</p>`
       : "";
     return `
-      <div class="card">
+      <div class="mbus-scan-section">
         <h2>${escapeHtml(t("mbus_scan_title", "Scan primary addresses"))}</h2>
         <p class="hint">${escapeHtml(t("mbus_scan_hint", "The scan transmits one frame per address, so it never starts on its own. Valid primaries are p1–p250; p0 is the factory 'unset' value. Run the bus probe first — it answers 'is anything on this cable' with a single frame."))}</p>
-        <div class="form-grid">
+        <div class="mbus-scan-controls">
           <label>${escapeHtml(t("mbus_scan_from", "From"))}
             <input type="number" id="mbus_scan_first" min="1" max="250" value="${escapeHtml(String(scan.nextFirst ?? 1))}">
           </label>
@@ -3542,7 +3542,7 @@
           </label>
         </div>
         <div class="row-actions">
-          <button data-action="mbus-scan"${mbus.enabled || scan.running ? " disabled" : ""}>${escapeHtml(
+          <button class="btn primary" data-action="mbus-scan"${mbus.enabled || scan.running ? " disabled" : ""}>${escapeHtml(
             scan.running ? t("mbus_scan_running", "Scanning…") : t("mbus_scan_button", "Scan this range"))}</button>
         </div>
         ${mbus.enabled ? `<p class="hint">${escapeHtml(t("mbus_engine_holds_bus", "Turn polling off first — it is the bus master."))}</p>` : ""}
@@ -3581,11 +3581,11 @@
     // the likely reading of the stream, not asserted as a diagnosis.
     const foreign = lines.some((l) => l.kind === "not_mbus" || l.shape === "not_mbus");
     return `
-      <div class="card">
+      <div class="card mbus-console-card">
         <h2>${escapeHtml(t("mbus_console_title", "Bus console"))}</h2>
         <p class="hint">${escapeHtml(t("mbus_console_hint", "Read-only. Frame shapes: 68 LL LL 68 is a long frame, 10 a short one, E5 a bare acknowledgement."))}</p>
         <div class="row-actions">
-          <button data-action="mbus-console-refresh">${escapeHtml(t("mbus_console_refresh", "Refresh"))}</button>
+          <button class="btn" data-action="mbus-console-refresh">${escapeHtml(t("mbus_console_refresh", "Refresh"))}</button>
         </div>
         ${foreign ? `<p class="hint">${escapeHtml(t("mbus_console_foreign", "Bytes are arriving that are not shaped like M-Bus frames. Electricity meters usually speak DLMS/COSEM, which this add-on does not decode."))}</p>` : ""}
         <div class="mbus-console">${body}</div>
@@ -3629,10 +3629,14 @@
       busy_or_error: "mbus_device_busy",
     };
 
-    return `
-      <div class="card banner-untested">
-        <h2>${escapeHtml(t("mbus_title", "M-Bus (wired)"))}</h2>
-        <p>${escapeHtml(t("mbus_subtitle", "Through an M-Bus master converter on a serial port (USB / RS-232 / RS-485)."))}</p>
+    return `<div class="mbus-page">
+      <div class="card banner-untested mbus-hero">
+        <div>
+          <h2>${escapeHtml(t("mbus_title", "M-Bus (wired)"))}</h2>
+          <p>${escapeHtml(t("mbus_subtitle", "Through an M-Bus master converter on a serial port (USB / RS-232 / RS-485)."))}</p>
+        </div>
+        <span class="pill ${mbus.enabled ? "ok" : "muted"}"><span class="dot"></span>${escapeHtml(
+          mbus.enabled ? t("mbus_health_ok", "Traffic healthy") : t("mbus_health_disabled", "Polling off"))}</span>
         <p class="mbus-untested"><strong>${escapeHtml(t("mbus_untested_title", "Not verified on a real bus."))}</strong>
           ${escapeHtml(t("mbus_untested_body", "The author has no wired M-Bus hardware. The protocol was tested against a simulator, your meters were not. If something does not work — or works and you want it to keep working — open an issue. That is the only way this gets fixed."))}
           <a href="https://github.com/Kustonium/homeassistant-wmbus-mqtt-bridge/issues" target="_blank" rel="noopener">${escapeHtml(t("mbus_untested_link", "Report an issue"))}</a>
@@ -3643,10 +3647,10 @@
 
       ${mbusHealthCard(mbus)}
 
-      <div class="card">
+      <div class="card mbus-port-card">
         <h2>${escapeHtml(t("mbus_port_title", "Port"))}</h2>
         <p class="hint">${escapeHtml(t("mbus_port_hint", "The add-on never scans ports — probing transmits frames and can disrupt a Zigbee coordinator."))}</p>
-        <div class="form-grid">
+        <div class="mbus-port-grid">
           <label>${escapeHtml(t("mbus_device_label", "Device"))}
             <select id="mbus_device">
               <option value="">${escapeHtml(t("mbus_device_none", "— not selected —"))}</option>
@@ -3662,28 +3666,32 @@
                 `<option value="${b}"${String(mbus.baudrate) === b ? " selected" : ""}>${b}</option>`).join("")}
             </select>
           </label>
-          <label>${escapeHtml(t("mbus_poll_label", "Default poll interval"))}
-            <input type="text" id="mbus_poll_interval" value="${escapeHtml(mbus.poll_interval || "15m")}">
+          <label>${escapeHtml(t("mbus_parity_note", "Parity is fixed at EVEN — the decoder forces it for M-Bus."))}
+            <span class="mbus-readonly-field">EVEN</span>
           </label>
         </div>
         <p><label><input type="checkbox" id="mbus_donotprobe_all"${mbus.donotprobe_all ? " checked" : ""}>
           ${escapeHtml(t("mbus_donotprobe_label", "Do not probe other ports (donotprobe=all)"))}</label></p>
-        <p class="hint">${escapeHtml(t("mbus_parity_note", "Parity is fixed at EVEN — the decoder forces it for M-Bus."))}</p>
         <p class="hint">${escapeHtml(t("mbus_spec_note", "Written to the decoder as:"))}
           <code>${escapeHtml(`${mbus.bus_alias || "MAIN"}=${mbus.device || "…"}:mbus:${mbus.baudrate || "2400"}`)}</code></p>
         <div class="row-actions">
-          <button data-action="mbus-save-device">${escapeHtml(t("mbus_save_device", "Save port"))}</button>
-          <button data-action="mbus-probe">${escapeHtml(t("mbus_probe_button", "Check whether the bus is alive"))}</button>
+          <button class="btn primary" data-action="mbus-save-device">${escapeHtml(t("mbus_save_device", "Save port"))}</button>
+          <button class="btn" data-action="mbus-probe">${escapeHtml(t("mbus_probe_button", "Check whether the bus is alive"))}</button>
         </div>
         ${probe ? `<p class="hint">${escapeHtml(t(probeKeys[probe.state] || "mbus_probe_unknown", probe.state))}
           ${probe.reply_hex ? `<code>${escapeHtml(probe.reply_hex.slice(0, 40))}</code>` : ""}</p>` : ""}
         <p class="hint">${escapeHtml(t("mbus_probe_hint", "The probe sends one broadcast frame (0xFE). With several meters the replies overlap and come back damaged — that is expected, not a fault."))}</p>
       </div>
 
-      <div class="card">
-        <h2>${escapeHtml(t("mbus_meters_title", "Meters on the bus"))}</h2>
+      <div class="card mbus-meters-card">
+        <div class="mbus-card-head">
+          <h2>${escapeHtml(t("mbus_meters_title", "Meters on the bus"))}</h2>
+          <label class="mbus-default-poll">${escapeHtml(t("mbus_poll_label", "Default poll interval"))}
+            <input type="text" id="mbus_poll_interval" value="${escapeHtml(mbus.poll_interval || "15m")}">
+          </label>
+        </div>
         <p class="hint">${escapeHtml(t("mbus_meters_hint", "Address is p1..p250 (primary) or 8 hex characters (secondary). p0 is the factory 'unset' value and is not a valid address."))}</p>
-        <table class="table">
+        <div class="table-wrap"><table class="table mbus-table">
           <tr><th>${escapeHtml(t("mbus_col_name", "Name"))}</th><th>${escapeHtml(t("mbus_col_address", "Address"))}</th>
               <th>${escapeHtml(t("mbus_col_driver", "Driver"))}</th><th>${escapeHtml(t("mbus_col_interval", "Interval"))}</th><th></th></tr>
           ${meters.map((m, index) => `
@@ -3693,7 +3701,7 @@
               <td><input type="text" class="mbus-m-type" data-i="${index}" value="${escapeHtml(m.type || "auto")}"></td>
               <td><input type="text" class="mbus-m-poll" data-i="${index}" value="${escapeHtml(m.poll_interval || "")}"
                     placeholder="${escapeHtml(mbus.poll_interval || "15m")}"></td>
-              <td><button data-action="mbus-poll-one" data-i="${index}"${
+              <td><div class="actions"><button class="btn" data-action="mbus-poll-one" data-i="${index}"${
                     mbus.enabled || !/^p(?:[1-9]|[1-9]\d|1\d\d|2[0-4]\d|250)$/.test(String(m.address || "")) ? " disabled" : ""}
                     title="${escapeHtml(mbus.enabled
                       ? t("mbus_engine_holds_bus", "Turn polling off first — it is the bus master.")
@@ -3701,28 +3709,28 @@
                           ? t("mbus_poll_primary_only", "Only a primary address (p1–p250) can be polled from here.")
                           : ""))}"
                   >${escapeHtml(t("mbus_poll_once", "Poll once"))}</button>
-                <button data-action="mbus-del-meter" data-i="${index}">${escapeHtml(t("remove", "Remove"))}</button></td>
+                <button class="btn danger" data-action="mbus-del-meter" data-i="${index}">${escapeHtml(t("remove", "Remove"))}</button></div></td>
             </tr>`).join("")}
-        </table>
+        </table></div>
         <div class="row-actions">
-          <button data-action="mbus-add-meter">${escapeHtml(t("mbus_add_meter", "Add meter"))}</button>
-          <button data-action="mbus-save-meters">${escapeHtml(t("mbus_save_meters", "Save meters"))}</button>
+          <button class="btn" data-action="mbus-add-meter">${escapeHtml(t("mbus_add_meter", "Add meter"))}</button>
+          <button class="btn primary" data-action="mbus-save-meters">${escapeHtml(t("mbus_save_meters", "Save meters"))}</button>
         </div>
+        ${mbusScanCard(mbus)}
       </div>
 
-      ${mbusScanCard(mbus)}
       ${mbusConsoleCard(mbus)}
 
-      <div class="card">
+      <div class="card mbus-engine-card">
         <h2>${escapeHtml(t("mbus_engine_title", "Engine"))}</h2>
         <p><label><input type="checkbox" id="mbus_enabled"${mbus.enabled ? " checked" : ""}>
           ${escapeHtml(t("mbus_enabled_label", "Poll the bus (starts a separate wmbusmeters instance)"))}</label></p>
         <p class="hint">${escapeHtml(t("mbus_engine_hint", "Turning this off stops polling; the radio path is never affected."))}</p>
         <div class="row-actions">
-          <button data-action="mbus-save-engine">${escapeHtml(t("mbus_save_engine", "Apply"))}</button>
+          <button class="btn primary" data-action="mbus-save-engine">${escapeHtml(t("mbus_save_engine", "Apply"))}</button>
         </div>
       </div>
-    `;
+    </div>`;
   }
 
   function renderRoute() {
