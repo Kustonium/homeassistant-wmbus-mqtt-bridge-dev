@@ -21,6 +21,7 @@ import re
 import select
 import subprocess
 import time
+import urllib.request
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path

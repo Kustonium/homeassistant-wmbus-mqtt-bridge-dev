@@ -10,6 +10,7 @@ from pathlib import Path
 
 
 WEBUI = Path(__file__).parents[1] / "rootfs" / "usr" / "bin" / "webui.py"
+APP_JS = Path(__file__).parents[1] / "rootfs" / "usr" / "share" / "wmbus-webui" / "assets" / "app.js"
 sys.path.insert(0, str(WEBUI.parent))
 SPEC = importlib.util.spec_from_file_location("wmbus_webui", WEBUI)
 webui = importlib.util.module_from_spec(SPEC)
@@ -17,6 +18,19 @@ SPEC.loader.exec_module(webui)
 
 
 class MBusWebUITest(unittest.TestCase):
+    def test_supervisor_save_dependency_is_available_at_module_load(self):
+        # Saving the wired port can be the first Supervisor operation after
+        # process start.  It must not depend on another code path having
+        # imported urllib.request as a side effect first.
+        self.assertTrue(hasattr(webui, "urllib"))
+        self.assertTrue(hasattr(webui.urllib, "request"))
+
+    def test_wired_device_discovery_bypasses_cache_and_refreshes(self):
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn('fetch("api/mbus", {cache: "no-store"})', source)
+        self.assertIn("async function refreshMbusDevices()", source)
+        self.assertIn("refreshMbusDevices();", source)
+
     def test_wired_runtime_maps_decoded_ids_to_bus_alias(self):
         runtime = {
             "bus_alias": "MAIN",

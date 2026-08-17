@@ -3414,10 +3414,34 @@
     if (state.mbus && !force) return;
     state.mbusLoading = true;
     try {
-      const response = await fetch("api/mbus");
+      // Device nodes can appear after the add-on and WebUI have started.
+      // Never reuse a cached response here: otherwise a newly attached USB
+      // adapter remains invisible until the user performs Ctrl+F5.
+      const response = await fetch("api/mbus", {cache: "no-store"});
       state.mbus = await response.json();
     } catch (_) {
       state.mbus = {error: true};
+    } finally {
+      state.mbusLoading = false;
+      render();
+    }
+  }
+
+  async function refreshMbusDevices() {
+    if (state.mbusLoading || state.route !== "mbus" || !state.mbus) return;
+    state.mbusLoading = true;
+    try {
+      const response = await fetch("api/mbus", {cache: "no-store"});
+      const fresh = await response.json();
+      // Refresh only live discovery/runtime fields. Keeping the form values
+      // from state prevents a background USB refresh from discarding edits the
+      // user has not saved yet.
+      state.mbus.devices = asArray(fresh.devices);
+      state.mbus.access = fresh.access || {};
+      state.mbus.runtime = fresh.runtime || {};
+    } catch (_) {
+      // A transient refresh failure must not replace a usable form with an
+      // error page. The next tick or tab entry retries automatically.
     } finally {
       state.mbusLoading = false;
       render();
@@ -4541,8 +4565,12 @@
     }
   });
 
-  window.addEventListener("hashchange", () => {
+  window.addEventListener("hashchange", async () => {
     state.route = currentRoute();
+    if (state.route === "mbus" && state.mbus) {
+      await loadMbus(true);
+      return;
+    }
     render();
   });
 
@@ -4550,4 +4578,10 @@
   window.setInterval(() => {
     if (!document.hidden && !state.liveConnected) fetchData(currentLang());
   }, 15000);
+  // USB passthrough can change while the page is already open. Poll only the
+  // M-Bus tab and merge only discovery/runtime data, so no full-page reload or
+  // loss of unsaved form input is required.
+  window.setInterval(() => {
+    if (!document.hidden) refreshMbusDevices();
+  }, 5000);
 })();
