@@ -1,3 +1,11 @@
+## 1.5.49-dev.259
+
+### Added
+- add bounded bus diagnostics (c1d2f40)
+
+### Fixed
+- make the wired tab readable and structured (83ff694)
+
 ## 1.5.49-dev.258
 
 ### Added
