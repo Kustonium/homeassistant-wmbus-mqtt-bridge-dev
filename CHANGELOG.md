@@ -1,3 +1,9 @@
+## 1.5.49-dev.264
+
+### Added
+- detect wired meter drivers (6b99fe6)
+- guide engine startup and suggest drivers (31b00a3)
+
 ## 1.5.49-dev.263
 
 ### Added
