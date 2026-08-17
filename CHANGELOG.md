@@ -1,3 +1,11 @@
+## 1.5.49-dev.256
+
+### Added
+- fence off the M-Bus options in the settings form (b24aed1)
+
+### Fixed
+- tell the user what to do when polling cannot start (d81d481)
+
 ## 1.5.49-dev.255
 
 ### Added
