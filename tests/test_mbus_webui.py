@@ -119,6 +119,12 @@ class MBusWebUITest(unittest.TestCase):
         self.assertIn("mbus_scan_data_checksum", source)
         self.assertIn("mbus_scan_data_multiple", source)
 
+    def test_poll_once_waits_for_slow_meter_and_uses_full_diagnosis(self):
+        source = WEBUI.read_text(encoding="utf-8")
+        self.assertIn("wait_s: float = 3.5", source)
+        self.assertIn("received = _mbus_read_until_idle(fd, wait_s)", source)
+        self.assertIn("return mbus_reply_diagnostic(received.hex())", source)
+
     def test_console_classifies_decoder_signatures_and_raw_shapes(self):
         with tempfile.TemporaryDirectory() as directory:
             old_base = webui.BASE

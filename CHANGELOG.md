@@ -179,6 +179,9 @@
   a reply three seconds late for a two-second `pollinterval` is still accepted.
 
 ### Fixed
+- Poll once and driver detection now share the diagnostic scan's adaptive
+  3.5-second reply window. A slow but valid meter no longer times out before its
+  telegram arrives, while ordinary replies still return after 200 ms of bus idle.
 - generic decoded values retain their real JSON field name instead of the
   synthetic key `value`, so Pipeline can derive units such as `°C`, `RH%` or
   `bar`. Current readings are preferred over averages/history: the live wired

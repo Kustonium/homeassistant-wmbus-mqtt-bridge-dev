@@ -388,8 +388,9 @@ Three such actions exist, in increasing order of noise:
   It is capped per request and stops after the reply becomes idle, but retains a
   long window for slow meters. The endpoint reports the range it actually covered,
   because a silently truncated scan reads as "there is nothing else here";
-- **poll once** — a single `REQ_UD2` to one primary address, whose raw reply is
-  shown as hex. Nothing here decodes it; that is the decoder's job, and a second
+- **poll once** — a single `REQ_UD2` to one primary address, using the same
+  adaptive 3.5-second/idle reply window as the scan, whose raw reply is shown as
+  hex. Nothing here decodes it; that is the decoder's job, and a second
   implementation of it is what this project exists to avoid.
 
 Alongside them the tab keeps a **read-only console** over the instance log. Writable

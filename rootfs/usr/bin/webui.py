@@ -1995,7 +1995,7 @@ def mbus_scan_addresses(device: str, first: int, last: int, baudrate: int = 2400
 
 
 def mbus_poll_once(device: str, address: int, baudrate: int = 2400,
-                   wait_s: float = 2.0) -> tuple[str, str]:
+                   wait_s: float = 3.5) -> tuple[str, str]:
     """Ask one address for its data once and return the raw reply as hex.
 
     REQ_UD2 rather than SND_NKE: the point is to see whether a real telegram
@@ -2024,20 +2024,12 @@ def mbus_poll_once(device: str, address: int, baudrate: int = 2400,
             pass
         # REQ_UD2: C=0x5B (request user data, FCB set).
         os.write(fd, bytes([0x10, 0x5B, address, (0x5B + address) & 0xFF, 0x16]))
-        deadline = time.monotonic() + wait_s
-        received = b''
-        while time.monotonic() < deadline:
-            ready, _, _ = select.select([fd], [], [], 0.2)
-            if ready:
-                try:
-                    chunk = os.read(fd, 4096)
-                except OSError:
-                    break
-                if chunk:
-                    received += chunk
+        # Match the diagnostic scan: allow a slow meter to start replying, but
+        # return promptly once an ordinary response has left the bus idle.
+        received = _mbus_read_until_idle(fd, wait_s)
         if not received:
             return 'no_reply', ''
-        return mbus_frame_shape(received.hex()), received.hex()
+        return mbus_reply_diagnostic(received.hex()), received.hex()
     finally:
         os.close(fd)
 
