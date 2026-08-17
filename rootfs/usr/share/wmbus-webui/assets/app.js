@@ -3397,6 +3397,20 @@
     }
   }
 
+  // Fetched separately from /api/mbus and only on demand: the log is the one
+  // part of this tab that keeps growing, and nobody needs it re-sent with every
+  // panel refresh.
+  async function loadMbusConsole() {
+    try {
+      const response = await fetch("api/mbus/console?limit=200");
+      const data = await response.json();
+      state.mbusConsole = {lines: asArray(data.lines)};
+    } catch (_) {
+      state.mbusConsole = {lines: []};
+    }
+    render();
+  }
+
   function mbusAccessBanner(mbus) {
     const access = mbus.access || {};
     // The gate is NOT "no ports listed": Supervisor bind-mounts the host's
@@ -3495,6 +3509,89 @@
       </div>`;
   }
 
+  // Address scan. This is the wired equivalent of the candidate list, which on
+  // a cable does not exist: nothing on a bus transmits on its own, so the only
+  // way to learn an address is to ask for it. It therefore TRANSMITS, which is
+  // why it never starts by itself, is capped per run, and is refused while the
+  // engine holds the bus.
+  function mbusScanCard(mbus) {
+    const scan = state.mbusScan || {};
+    const rows = (scan.found || []).map((f) => `
+      <div class="mbus-meter-state">
+        <span class="name">p${f.address}</span>
+        <span class="detail">${escapeHtml(t("mbus_scan_answered", "answered"))}${f.hex ? ` · <code>${escapeHtml(f.hex.slice(0, 24))}</code>` : ""}</span>
+        <button data-action="mbus-scan-add" data-addr="${f.address}">${escapeHtml(t("mbus_scan_add", "Add"))}</button>
+      </div>`).join("");
+    const summary = scan.done
+      ? `<p class="hint">${escapeHtml(
+          t("mbus_scan_summary", "Scanned p{first}–p{last}: {n} answered.")
+            .replace("{first}", String(scan.first))
+            .replace("{last}", String(scan.last))
+            .replace("{n}", String((scan.found || []).length)))}</p>`
+      : "";
+    return `
+      <div class="card">
+        <h2>${escapeHtml(t("mbus_scan_title", "Scan primary addresses"))}</h2>
+        <p class="hint">${escapeHtml(t("mbus_scan_hint", "The scan transmits one frame per address, so it never starts on its own. Valid primaries are p1–p250; p0 is the factory 'unset' value. Run the bus probe first — it answers 'is anything on this cable' with a single frame."))}</p>
+        <div class="form-grid">
+          <label>${escapeHtml(t("mbus_scan_from", "From"))}
+            <input type="number" id="mbus_scan_first" min="1" max="250" value="${escapeHtml(String(scan.nextFirst ?? 1))}">
+          </label>
+          <label>${escapeHtml(t("mbus_scan_to", "To"))}
+            <input type="number" id="mbus_scan_last" min="1" max="250" value="${escapeHtml(String(scan.nextLast ?? 32))}">
+          </label>
+        </div>
+        <div class="row-actions">
+          <button data-action="mbus-scan"${mbus.enabled || scan.running ? " disabled" : ""}>${escapeHtml(
+            scan.running ? t("mbus_scan_running", "Scanning…") : t("mbus_scan_button", "Scan this range"))}</button>
+        </div>
+        ${mbus.enabled ? `<p class="hint">${escapeHtml(t("mbus_engine_holds_bus", "Turn polling off first — it is the bus master."))}</p>` : ""}
+        ${summary}
+        ${rows}
+      </div>`;
+  }
+
+  // Read-only console. A writable terminal would mean sending arbitrary bytes
+  // into somebody's metering hardware; watching the stream is what actually
+  // answers "why is this address silent" and "is this even M-Bus".
+  const MBUS_LINE_CLASS = {
+    frame: "ok",
+    telegram: "ok",
+    not_mbus: "bad",
+    bus_down: "bad",
+    checksum: "warn",
+    no_reply: "warn",
+    info: "muted",
+  };
+
+  function mbusConsoleCard() {
+    const con = state.mbusConsole || {};
+    const lines = con.lines || [];
+    const body = lines.length
+      ? lines.map((l) => {
+          // The shape outranks the line kind. A logged frame is kind "frame"
+          // whatever it contains, so colouring by kind alone painted a reply
+          // that is not M-Bus at all the same green as a good telegram.
+          const cls = l.shape === "not_mbus" ? "bad" : (MBUS_LINE_CLASS[l.kind] || "muted");
+          const shape = l.shape ? ` [${l.shape}]` : "";
+          return `<div class="mbus-console-line ${cls}">${escapeHtml(l.text + shape)}</div>`;
+        }).join("")
+      : `<div class="mbus-console-line muted">${escapeHtml(t("mbus_console_empty", "Nothing logged yet. The stream fills once polling runs; turn on logtelegrams to see the raw frames."))}</div>`;
+    // Only shown when the classifier actually saw foreign bytes — offered as
+    // the likely reading of the stream, not asserted as a diagnosis.
+    const foreign = lines.some((l) => l.kind === "not_mbus" || l.shape === "not_mbus");
+    return `
+      <div class="card">
+        <h2>${escapeHtml(t("mbus_console_title", "Bus console"))}</h2>
+        <p class="hint">${escapeHtml(t("mbus_console_hint", "Read-only. Frame shapes: 68 LL LL 68 is a long frame, 10 a short one, E5 a bare acknowledgement."))}</p>
+        <div class="row-actions">
+          <button data-action="mbus-console-refresh">${escapeHtml(t("mbus_console_refresh", "Refresh"))}</button>
+        </div>
+        ${foreign ? `<p class="hint">${escapeHtml(t("mbus_console_foreign", "Bytes are arriving that are not shaped like M-Bus frames. Electricity meters usually speak DLMS/COSEM, which this add-on does not decode."))}</p>` : ""}
+        <div class="mbus-console">${body}</div>
+      </div>`;
+  }
+
   function mbusDeviceOption(dev, current) {
     const warnKeys = {
       esp_native_usb: "mbus_warn_esp",
@@ -3572,6 +3669,8 @@
         <p><label><input type="checkbox" id="mbus_donotprobe_all"${mbus.donotprobe_all ? " checked" : ""}>
           ${escapeHtml(t("mbus_donotprobe_label", "Do not probe other ports (donotprobe=all)"))}</label></p>
         <p class="hint">${escapeHtml(t("mbus_parity_note", "Parity is fixed at EVEN — the decoder forces it for M-Bus."))}</p>
+        <p class="hint">${escapeHtml(t("mbus_spec_note", "Written to the decoder as:"))}
+          <code>${escapeHtml(`${mbus.bus_alias || "MAIN"}=${mbus.device || "…"}:mbus:${mbus.baudrate || "2400"}`)}</code></p>
         <div class="row-actions">
           <button data-action="mbus-save-device">${escapeHtml(t("mbus_save_device", "Save port"))}</button>
           <button data-action="mbus-probe">${escapeHtml(t("mbus_probe_button", "Check whether the bus is alive"))}</button>
@@ -3594,7 +3693,15 @@
               <td><input type="text" class="mbus-m-type" data-i="${index}" value="${escapeHtml(m.type || "auto")}"></td>
               <td><input type="text" class="mbus-m-poll" data-i="${index}" value="${escapeHtml(m.poll_interval || "")}"
                     placeholder="${escapeHtml(mbus.poll_interval || "15m")}"></td>
-              <td><button data-action="mbus-del-meter" data-i="${index}">${escapeHtml(t("remove", "Remove"))}</button></td>
+              <td><button data-action="mbus-poll-one" data-i="${index}"${
+                    mbus.enabled || !/^p(?:[1-9]|[1-9]\d|1\d\d|2[0-4]\d|250)$/.test(String(m.address || "")) ? " disabled" : ""}
+                    title="${escapeHtml(mbus.enabled
+                      ? t("mbus_engine_holds_bus", "Turn polling off first — it is the bus master.")
+                      : (!/^p(?:[1-9]|[1-9]\d|1\d\d|2[0-4]\d|250)$/.test(String(m.address || ""))
+                          ? t("mbus_poll_primary_only", "Only a primary address (p1–p250) can be polled from here.")
+                          : ""))}"
+                  >${escapeHtml(t("mbus_poll_once", "Poll once"))}</button>
+                <button data-action="mbus-del-meter" data-i="${index}">${escapeHtml(t("remove", "Remove"))}</button></td>
             </tr>`).join("")}
         </table>
         <div class="row-actions">
@@ -3602,6 +3709,9 @@
           <button data-action="mbus-save-meters">${escapeHtml(t("mbus_save_meters", "Save meters"))}</button>
         </div>
       </div>
+
+      ${mbusScanCard(mbus)}
+      ${mbusConsoleCard(mbus)}
 
       <div class="card">
         <h2>${escapeHtml(t("mbus_engine_title", "Engine"))}</h2>
@@ -3638,6 +3748,12 @@
         if (!state.mbus) {
           loadMbus();
           return shell(`<div class="card"><p>${escapeHtml(t("webui_loading", "Loading..."))}</p></div>`);
+        }
+        // First open fills the console once; after that it refreshes on demand,
+        // so a long log is not re-fetched on every re-render.
+        if (!state.mbusConsole) {
+          state.mbusConsole = {lines: []};
+          loadMbusConsole();
         }
         return shell(mbusPage());
       case "logs":
@@ -3740,6 +3856,64 @@
         toast(error.message, true);
       }
       render();
+      return;
+    }
+
+    if (action === "mbus-scan") {
+      const first = Number(document.getElementById("mbus_scan_first")?.value ?? 1);
+      const last = Number(document.getElementById("mbus_scan_last")?.value ?? 32);
+      state.mbusScan = {running: true, found: [], nextFirst: first, nextLast: last};
+      render();
+      try {
+        const result = await postApi("mbus/scan", {first, last});
+        // The server reports the range it actually swept, which is capped. The
+        // next range is pre-filled from it so continuing the sweep does not
+        // depend on the reader noticing where it stopped.
+        state.mbusScan = {
+          running: false, done: true,
+          found: asArray(result.found),
+          first: result.first, last: result.last,
+          nextFirst: Math.min(250, Number(result.last) + 1),
+          nextLast: Math.min(250, Number(result.last) + Number(result.chunk || 32)),
+        };
+        if (result.state && result.state !== "ok") toast(result.state, true);
+      } catch (error) {
+        state.mbusScan = {running: false, found: [], nextFirst: first, nextLast: last};
+        toast(error.message, true);
+      }
+      render();
+      return;
+    }
+
+    if (action === "mbus-scan-add") {
+      const addr = Number(target.dataset.addr);
+      state.mbus = state.mbus || {};
+      state.mbus.meters = asArray(state.mbus.meters)
+        .concat([{id: `mbus_p${addr}`, address: `p${addr}`, type: "auto"}]);
+      render();
+      return;
+    }
+
+    if (action === "mbus-poll-one") {
+      const index = Number(target.dataset.i);
+      const address = asArray(state.mbus?.meters)[index]?.address || "";
+      try {
+        const result = await postApi("mbus/poll-one", {address});
+        // The raw reply, not a decoded value: decoding is the decoder's job and
+        // a second implementation of it is exactly what this project avoids.
+        const shown = result.reply_hex
+          ? `${result.state} · ${result.reply_hex.slice(0, 60)}`
+          : result.state;
+        toast(`${address}: ${shown}`);
+        await loadMbusConsole();
+      } catch (error) {
+        toast(error.message, true);
+      }
+      return;
+    }
+
+    if (action === "mbus-console-refresh") {
+      await loadMbusConsole();
       return;
     }
 

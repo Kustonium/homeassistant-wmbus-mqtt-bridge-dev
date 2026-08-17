@@ -456,6 +456,14 @@ stroji s Home Assistant je jeden ze sériových portů koordinátor Zigbee. Deko
 správný převodník stejně nepotvrdí — otevře zařízení a ohlásí úspěch — port proto
 vybíráte vy.
 
+Vybranou sběrnici pak můžete výslovně ověřit: **Ověřit, zda sběrnice žije** odešle
+jeden testovací broadcast, **Sken primárních adres** projde jen zadaný rozsah
+(`p1`–`p250`, nejvýše 32 adres na požadavek) a **Dotázat jednou** osloví jednu
+nakonfigurovanou primární adresu. Za běžícího pravidelného dotazování jsou všechny
+tři akce odmítnuty, protože M-Bus má jediný master. Surové odpovědi a chyby dekodéru
+zůstávají viditelné v **Konzoli sběrnice**, která je pouze pro čtení a neumí odesílat
+libovolné bajty.
+
 **V Dockeru** namapujte převodník výslovně:
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Nikdy `/dev:/dev`, nikdy
 `privileged`.

@@ -480,6 +480,14 @@ typischen Home-Assistant-Rechner ist eine der seriellen Schnittstellen ein
 Zigbee-Koordinator. Der Decoder kann einen korrekten Konverter ohnehin nicht
 bestätigen — er öffnet das Gerät und meldet Erfolg — deshalb wählen Sie den Port.
 
+Den ausgewählten Bus können Sie anschließend ausdrücklich prüfen: **Prüfen, ob der
+Bus lebt** sendet genau einen Test-Broadcast, **Primäradressen scannen** durchläuft nur
+den gewählten Bereich (`p1`–`p250`, höchstens 32 je Anfrage), und **Einmal abfragen**
+fragt eine konfigurierte Primäradresse ab. Während die reguläre Abfrage läuft, werden
+alle drei Aktionen abgewiesen, weil M-Bus nur einen Master hat. Rohantworten und
+Decoderfehler bleiben in der schreibgeschützten **Bus-Konsole** sichtbar; beliebige
+Bytes lassen sich dort nicht senden.
+
 **Unter Docker** binden Sie den Konverter explizit ein:
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Niemals `/dev:/dev`, niemals
 `privileged`.

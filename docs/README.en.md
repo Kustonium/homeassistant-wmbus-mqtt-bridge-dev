@@ -469,6 +469,13 @@ typical Home Assistant machine one of the serial ports is a Zigbee coordinator.
 The decoder cannot confirm a correct converter anyway — it only opens the device
 and reports success — so the port is always chosen by you.
 
+The selected bus can then be checked explicitly: **Check whether the bus is alive**
+sends one test broadcast, **Scan primary addresses** walks only the range you choose
+(`p1`–`p250`, at most 32 per request), and **Poll once** requests one configured
+primary address. All three are refused while regular polling is running because
+M-Bus has one master. Their raw replies and decoder errors remain visible in the
+read-only **Bus console**; it never accepts arbitrary bytes to transmit.
+
 **In Docker** map your converter explicitly:
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Never `/dev:/dev`, never
 `privileged`.

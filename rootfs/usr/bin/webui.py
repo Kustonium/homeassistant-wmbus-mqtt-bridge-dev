@@ -1857,6 +1857,212 @@ def mbus_panel_payload() -> dict:
     }
 
 
+def mbus_transmit_allowed() -> tuple[bool, str]:
+    """Guard for every action that puts bytes on the bus.
+
+    M-Bus has one master. While the engine polls it owns that role, and a second
+    transmitter overlapping its frames produces exactly the checksum errors the
+    tab reports as a fault. Opening the tty a second time does not fail - POSIX
+    grants it - so nothing except this check stands between the two.
+    """
+    opts = read_options()
+    opts = opts if isinstance(opts, dict) else {}
+    if opts.get('mbus_enabled'):
+        return False, ("Polling is running and it is the bus master. Turn it off "
+                       "before transmitting from here, or the two will talk over "
+                       "each other.")
+    return True, ""
+
+
+# One address at a time, with a cap: the reply window cannot be skipped, so a
+# full 1..250 sweep would hold an HTTP request for minutes. The UI walks the
+# range in chunks and says how far it got - a silently truncated scan would read
+# as "there is nothing else on this bus".
+MBUS_SCAN_MAX = 32
+
+
+def mbus_scan_range(first: int, last: int) -> tuple[int, int]:
+    """Clamp, order and cap a requested primary-address range."""
+    first = max(1, min(250, first))
+    last = max(1, min(250, last))
+    if last < first:
+        first, last = last, first
+    return first, min(last, first + MBUS_SCAN_MAX - 1)
+
+
+def mbus_scan_addresses(device: str, first: int, last: int, baudrate: int = 2400,
+                        wait_s: float = 0.4) -> tuple[str, list]:
+    """Send SND_NKE to each primary address in turn and note who answers.
+
+    Valid primaries are 1..250. 0 is the factory "unset" value and is not part
+    of a normal address sweep; 251..255 are reserved or broadcast and are never
+    scanned.
+
+    Returns (state, [{address, answered, hex}]). A meter answers a short ACK
+    (0xE5) - measured against a bus simulator, where a nonexistent address stays
+    silent.
+    """
+    if termios is None:
+        return 'busy_or_error', []
+    if not device or not os.path.exists(device):
+        return 'device_missing', []
+    first, last = mbus_scan_range(first, last)
+    try:
+        fd = os.open(device, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+    except PermissionError:
+        return 'denied', []
+    except OSError:
+        return 'busy_or_error', []
+    found = []
+    try:
+        _set_serial_8e1(fd, baudrate)
+        for addr in range(first, last + 1):
+            try:
+                while os.read(fd, 4096):
+                    pass
+            except OSError:
+                pass
+            # SND_NKE: start 0x10, C=0x40, A=addr, checksum, stop 0x16.
+            os.write(fd, bytes([0x10, 0x40, addr, (0x40 + addr) & 0xFF, 0x16]))
+            deadline = time.monotonic() + wait_s
+            received = b''
+            while time.monotonic() < deadline:
+                ready, _, _ = select.select([fd], [], [], 0.1)
+                if ready:
+                    try:
+                        chunk = os.read(fd, 4096)
+                    except OSError:
+                        break
+                    if chunk:
+                        received += chunk
+            if received:
+                found.append({'address': addr, 'answered': True,
+                              'hex': received.hex()})
+    finally:
+        os.close(fd)
+    return 'ok', found
+
+
+def mbus_poll_once(device: str, address: int, baudrate: int = 2400,
+                   wait_s: float = 2.0) -> tuple[str, str]:
+    """Ask one address for its data once and return the raw reply as hex.
+
+    REQ_UD2 rather than SND_NKE: the point is to see whether a real telegram
+    comes back and what it looks like. Nothing here decodes it - that is the
+    decoder's job, and duplicating it would mean a second implementation of the
+    thing this project exists not to reimplement.
+    """
+    if not 1 <= address <= 250:
+        return 'bad_address', ''
+    if termios is None:
+        return 'busy_or_error', ''
+    if not device or not os.path.exists(device):
+        return 'device_missing', ''
+    try:
+        fd = os.open(device, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+    except PermissionError:
+        return 'denied', ''
+    except OSError:
+        return 'busy_or_error', ''
+    try:
+        _set_serial_8e1(fd, baudrate)
+        try:
+            while os.read(fd, 4096):
+                pass
+        except OSError:
+            pass
+        # REQ_UD2: C=0x5B (request user data, FCB set).
+        os.write(fd, bytes([0x10, 0x5B, address, (0x5B + address) & 0xFF, 0x16]))
+        deadline = time.monotonic() + wait_s
+        received = b''
+        while time.monotonic() < deadline:
+            ready, _, _ = select.select([fd], [], [], 0.2)
+            if ready:
+                try:
+                    chunk = os.read(fd, 4096)
+                except OSError:
+                    break
+                if chunk:
+                    received += chunk
+        if not received:
+            return 'no_reply', ''
+        return mbus_frame_shape(received.hex()), received.hex()
+    finally:
+        os.close(fd)
+
+
+def mbus_frame_shape(hex_text: str) -> str:
+    """Classify a reply by the shape of its first bytes, nothing more.
+
+    This is the whole DLMS defence and it is deliberately shallow: a long frame
+    starts 0x68 LL LL 0x68, a short frame 0x10, a bare acknowledgement is 0xE5.
+    Bytes that match none of those are not M-Bus, and saying so costs one line
+    where the alternative is a support thread about an open port with no
+    entities. It does not attempt to say what the traffic *is* - an electricity
+    meter speaking DLMS/COSEM is a guess offered to the reader, not a verdict.
+    """
+    raw = (hex_text or '').strip().lower()
+    if not raw:
+        return 'empty'
+    if raw.startswith('e5'):
+        return 'ack'
+    if raw.startswith('10'):
+        return 'frame_short'
+    if raw.startswith('68') and len(raw) >= 8 and raw[2:4] == raw[4:6] and raw[6:8] == '68':
+        return 'frame_long'
+    return 'not_mbus'
+
+
+# Line kinds the console marks up. The three failure signatures are the
+# decoder's own words - they exist nowhere else, least of all in the JSON.
+MBUS_CONSOLE_MARKERS = (
+    ('no 0x68 byte found', 'not_mbus'),
+    ('expected checksum', 'checksum'),
+    ('did not send a response', 'no_reply'),
+    ('SpecifiedDeviceNotFound', 'bus_down'),
+    ('no bus specified for meter', 'bus_down'),
+)
+
+
+def mbus_console_lines(limit: int = 200) -> list:
+    """Tail the M-Bus instance log, classified, read-only.
+
+    Read-only on purpose. A writable terminal would mean sending arbitrary bytes
+    into somebody's metering hardware - the same class of risk as shell hooks,
+    which is the single deliberate exception this project makes to passing
+    upstream through. Watching is enough to tell a silent address from a wrong
+    protocol; the two bounded actions that do transmit (scan, poll once) are
+    separate, explicit and refuse to run while the engine holds the bus.
+    """
+    path = BASE / "mbus" / "console.log"
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    out = []
+    for line in lines[-max(1, min(1000, limit)):]:
+        kind = 'info'
+        for needle, name in MBUS_CONSOLE_MARKERS:
+            if needle in line:
+                kind = name
+                break
+        else:
+            if line.lstrip().startswith('{') and '"_":"telegram"' in line.replace(' ', ''):
+                kind = 'telegram'
+        # --logtelegrams writes the raw frame as telegram=|<hex>| and this is
+        # the only place it ever appears: the decoder's shell hooks get the
+        # JSON, the id and the name, never the bytes.
+        shape = ''
+        marker = 'telegram=|'
+        if marker in line:
+            tail = line.split(marker, 1)[1]
+            hex_text = tail.split('|', 1)[0].replace('_', '')
+            shape = mbus_frame_shape(hex_text)
+            kind = 'frame'
+        out.append({'text': line[:400], 'kind': kind, 'shape': shape})
+    return out
+
+
 def mbus_runtime_state() -> dict:
     """Traffic-side state, as last written by the bridge.
 
@@ -3294,6 +3500,7 @@ class Handler(BaseHTTPRequestHandler):
             '/api/ignore', '/api/unignore', '/api/factory-reset',
             '/api/compare-driver', '/api/save-config', '/api/driver-fields',
             '/api/mbus', '/api/mbus/device', '/api/mbus/meters', '/api/mbus/probe',
+            '/api/mbus/console', '/api/mbus/scan', '/api/mbus/poll-one',
         )
         if any(path.endswith(suffix) for suffix in api_suffixes):
             return path
@@ -3342,6 +3549,11 @@ class Handler(BaseHTTPRequestHandler):
             # coordinator, and this call transmits.
             opts = read_options()
             opts = opts if isinstance(opts, dict) else {}
+            allowed, why = mbus_transmit_allowed()
+            if not allowed:
+                self._send_json(409, {"ok": False, "state": "engine_running",
+                                      "message": why})
+                return
             device = (params.get('device') or [str(opts.get('mbus_device') or '')])[0].strip()
             try:
                 baud = int(str(opts.get('mbus_baudrate') or '2400'))
@@ -3350,6 +3562,62 @@ class Handler(BaseHTTPRequestHandler):
             state_name, reply_hex = mbus_probe_bus(device, baud)
             self._send_json(200, {"ok": True, "state": state_name,
                                   "reply_hex": reply_hex, "device": device})
+            return
+        if path.endswith('/api/mbus/scan'):
+            opts = read_options()
+            opts = opts if isinstance(opts, dict) else {}
+            allowed, why = mbus_transmit_allowed()
+            if not allowed:
+                self._send_json(409, {"ok": False, "state": "engine_running",
+                                      "message": why})
+                return
+            device = str(opts.get('mbus_device') or '')
+            try:
+                baud = int(str(opts.get('mbus_baudrate') or '2400'))
+            except ValueError:
+                baud = 2400
+            try:
+                first = int((params.get('first') or ['1'])[0])
+                last = int((params.get('last') or ['32'])[0])
+            except ValueError:
+                self._send_json(400, {"ok": False, "message": "first/last must be numbers."})
+                return
+            first, last = mbus_scan_range(first, last)
+            state_name, found = mbus_scan_addresses(device, first, last, baud)
+            # The scanned range is reported back rather than assumed: it is
+            # capped, and a caller that does not know where the sweep stopped
+            # would read a partial result as a complete one.
+            self._send_json(200, {"ok": state_name == 'ok', "state": state_name,
+                                  "found": found, "first": first,
+                                  "last": last, "chunk": MBUS_SCAN_MAX})
+            return
+        if path.endswith('/api/mbus/poll-one'):
+            opts = read_options()
+            opts = opts if isinstance(opts, dict) else {}
+            allowed, why = mbus_transmit_allowed()
+            if not allowed:
+                self._send_json(409, {"ok": False, "state": "engine_running",
+                                      "message": why})
+                return
+            # Primary addresses only, and the range is checked here rather than
+            # left to the poller: "68123456" is a perfectly valid secondary
+            # address made of digits, so isdigit() alone accepted it and passed
+            # 68123456 down as an address. Secondary addressing needs a select
+            # cycle the decoder performs; this button sends one bare REQ_UD2.
+            raw_addr = (params.get('address') or [''])[0].strip().lstrip('pP')
+            if not raw_addr.isdigit() or not 1 <= int(raw_addr) <= 250:
+                self._send_json(400, {"ok": False, "state": "bad_address",
+                                      "message": "Only a primary address (p1..p250) can be polled from here. "
+                                                 "A secondary (8-hex) address needs the selection the decoder does."})
+                return
+            device = str(opts.get('mbus_device') or '')
+            try:
+                baud = int(str(opts.get('mbus_baudrate') or '2400'))
+            except ValueError:
+                baud = 2400
+            state_name, reply_hex = mbus_poll_once(device, int(raw_addr), baud)
+            self._send_json(200, {"ok": True, "state": state_name,
+                                  "reply_hex": reply_hex, "address": int(raw_addr)})
             return
         if path.endswith('/api/remove-meter'):
             meter_id = (params.get('meter_id') or [''])[0].strip()
@@ -3627,6 +3895,13 @@ class Handler(BaseHTTPRequestHandler):
             meter_id = (params.get('meter_id') or [''])[0].strip()
             ok, payload = candidate_issue_report(meter_id)
             self._send_json(200 if ok else 404, payload)
+            return
+        if path.endswith('/api/mbus/console'):
+            try:
+                limit = int((params.get('limit') or ['200'])[0])
+            except ValueError:
+                limit = 200
+            self._send_json(200, {"ok": True, "lines": mbus_console_lines(limit)})
             return
         if path.endswith('/api/mbus'):
             self._send_json(200, mbus_panel_payload())

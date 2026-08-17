@@ -1380,3 +1380,38 @@ tr:last-child td {
 .mbus-meter-state .detail {
   color: var(--muted);
 }
+
+.mbus-console {
+  margin-top: 10px;
+  max-height: 320px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.mbus-console-line {
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text);
+}
+
+.mbus-console-line.muted {
+  color: var(--muted);
+}
+
+.mbus-console-line.ok {
+  color: var(--good);
+}
+
+.mbus-console-line.warn {
+  color: var(--warn);
+}
+
+.mbus-console-line.bad {
+  color: var(--bad);
+}

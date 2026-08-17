@@ -469,6 +469,14 @@ nadawanie, a na typowej maszynie z Home Assistant jeden z portów szeregowych to
 koordynator Zigbee. Dekoder i tak nie potwierdzi właściwego konwertera — otwiera
 urządzenie i melduje sukces — więc port zawsze wskazujesz Ty.
 
+Wybraną magistralę możesz potem sprawdzić jawnie: **Sprawdź, czy magistrala żyje**
+wysyła jeden broadcast testowy, **Skan adresów pierwotnych** przechodzi tylko podany
+zakres (`p1`–`p250`, najwyżej 32 adresy na żądanie), a **Odpytaj raz** pyta jeden
+skonfigurowany adres pierwotny. Wszystkie trzy akcje są odrzucane podczas zwykłego
+odpytywania, bo M-Bus ma jednego mastera. Surowe odpowiedzi i błędy dekodera zostają
+w **Konsoli magistrali**, która jest tylko do odczytu i nie przyjmuje dowolnych bajtów
+do wysłania.
+
 **W Dockerze** zmapuj konwerter jawnie:
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Nigdy `/dev:/dev`, nigdy
 `privileged`.

@@ -360,6 +360,41 @@ asked for it. There is no timeout state here: a reply three seconds late for a
 two-second `pollinterval` is still accepted (measured against a bus simulator), so
 arrival is the only timestamp that means anything.
 
+#### One master, and three ways to look at the wire
+
+M-Bus has a single master. While the engine polls, it *is* that master, and a
+second transmitter overlapping its frames produces exactly the checksum errors the
+tab reports as a fault. Opening the tty a second time does not fail — POSIX allows
+it — so the only thing separating the two is an explicit check, and every action
+that puts bytes on the bus goes through it and is refused with HTTP 409 while
+polling runs.
+
+Three such actions exist, in increasing order of noise:
+
+- the **bus probe** — one broadcast frame (`0xFE`), answering "is anything on this
+  cable at all" without walking 250 addresses;
+- the **address scan** — one frame per address, capped per request. The reply
+  window cannot be skipped, so a full sweep would hold an HTTP request for minutes;
+  the endpoint reports the range it actually covered, because a silently truncated
+  scan reads as "there is nothing else here";
+- **poll once** — a single `REQ_UD2` to one primary address, whose raw reply is
+  shown as hex. Nothing here decodes it; that is the decoder's job, and a second
+  implementation of it is what this project exists to avoid.
+
+Alongside them the tab keeps a **read-only console** over the instance log. Writable
+would mean sending arbitrary bytes into someone's metering hardware — the same class
+of risk as the shell hooks, which are the one deliberate exception this project makes
+to passing upstream through. Reading is enough, because the log is the only place
+where the raw frame ever appears (`--logtelegrams` writes `telegram=|…|`; the shell
+hooks receive the JSON, the id and the name, never the bytes).
+
+Lines are classified by the shape of their first bytes — `68 LL LL 68` long,
+`10` short, `E5` a bare acknowledgement — and anything matching none of them is
+flagged as not M-Bus. That check is deliberately shallow. It exists so that a serial
+port carrying DLMS/COSEM, which this project does not decode, produces one sentence
+instead of one support thread; it says what the traffic is *not*, and offers what it
+probably is as a reading rather than a verdict.
+
 ## 6. Configuration and lifecycle
 
 ### 6.1 Configuration ownership

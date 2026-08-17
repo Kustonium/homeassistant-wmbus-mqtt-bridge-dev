@@ -34,6 +34,12 @@ MBUS_POLL_DEFAULT="15m"
 MBUS_STATUS_FILE=""
 MBUS_METERS_OK=0
 MBUS_METERS_SKIPPED=0
+# The console log is what the read-only bus console in the WebUI reads. It is
+# appended to for the life of the instance, so it needs a ceiling: with
+# logtelegrams on and a short pollinterval it is the only file here that grows
+# without bound.
+MBUS_LOG_MAX_LINES=2000
+MBUS_LINES_SINCE_TRIM=0
 
 # Last id seen per configured meter name. A bus address that starts answering
 # with a different id means two meters share one primary address — the decoder
@@ -114,6 +120,23 @@ mbus_write_status() {
     > "${MBUS_STATUS_FILE}.tmp" 2>/dev/null \
     && mv -f "${MBUS_STATUS_FILE}.tmp" "${MBUS_STATUS_FILE}" 2>/dev/null \
     || true
+}
+
+# Keep the tail, drop the head. Checked every 500 lines rather than per line:
+# the trim costs a read and a rewrite of the whole file, and the console only
+# ever shows the tail anyway.
+mbus_trim_log() {
+  [[ -n "${MBUS_LOG}" && -f "${MBUS_LOG}" ]] || return 0
+  local count
+  count="$(wc -l < "${MBUS_LOG}" 2>/dev/null || echo 0)"
+  (( count > MBUS_LOG_MAX_LINES )) || return 0
+  # Do not rename over MBUS_LOG: tee keeps that file open for the lifetime of
+  # the decoder. Replacing the pathname would leave tee appending to the old,
+  # unlinked inode and the WebUI console would freeze at the trim point.
+  if tail -n "${MBUS_LOG_MAX_LINES}" "${MBUS_LOG}" > "${MBUS_LOG}.tmp" 2>/dev/null; then
+    cp -f "${MBUS_LOG}.tmp" "${MBUS_LOG}" 2>/dev/null || true
+  fi
+  rm -f "${MBUS_LOG}.tmp" 2>/dev/null || true
 }
 
 # Transitions only. Polling runs at minute-scale intervals so this is cheap
@@ -350,6 +373,12 @@ refresh_mbus_meter_files() {
 #                                               indistinguishable from silence)
 mbus_consume_line() {
   local line="$1" id name
+
+  MBUS_LINES_SINCE_TRIM=$(( MBUS_LINES_SINCE_TRIM + 1 ))
+  if (( MBUS_LINES_SINCE_TRIM >= 500 )); then
+    MBUS_LINES_SINCE_TRIM=0
+    mbus_trim_log
+  fi
 
   if [[ "${line}" == \{*\"_\":\"telegram\"* ]]; then
     id="$(normalize_meter_id "$(echo "${line}" | jq -r '.id // empty' 2>/dev/null || true)")"
