@@ -2648,11 +2648,26 @@
           <div style="flex:0 0 auto;text-align:right;">${input}</div>
         </div>`;
     };
+    // The wired M-Bus options are fenced off in their own bordered block. They
+    // belong to a separate engine that most installations never turn on, and
+    // mixing them into the main list invited the wrong reading — that this is
+    // where you configure a radio dongle. The note says what it is not.
+    const mbusOpts = opts.filter((s) => s.key.startsWith("mbus_"));
+    const mainOpts = opts.filter((s) => !s.key.startsWith("mbus_"));
+    const mbusBlock = mbusOpts.length
+      ? `<div style="margin-top:18px;border:1px solid #2b4256;border-radius:8px;padding:12px 14px;background:#0e1a22;">
+           <h3 style="margin:0 0 4px;font-size:14px;color:#cfe3ee;">🔌 ${escapeHtml(t("cfg_mbus_section", "M-Bus (wired) — separate engine"))}</h3>
+           <p style="font-size:11px;color:#9eafba;margin:0 0 10px;">${escapeHtml(t("cfg_mbus_section_note", "Wired M-Bus only — not for radio dongles."))}</p>
+           ${mbusOpts.map(field).join("")}
+         </div>`
+      : "";
+
     return `
       <section class="section">
         <div class="section-head"><h2>⚙️ ${escapeHtml(t("cfg_title", "Configuration"))}</h2></div>
         <p style="font-size:12px;color:#9eafba;margin:0 0 10px;">${escapeHtml(t("cfg_intro", "Edit the add-on options here — the same options as the Home Assistant Configuration tab, with an explanation of each. Core options take effect after an add-on restart."))}</p>
-        ${opts.map(field).join("")}
+        ${mainOpts.map(field).join("")}
+        ${mbusBlock}
         <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
           <button class="btn primary" data-action="save-config">${escapeHtml(t("cfg_save", "Save options"))}</button>
           <span style="font-size:11px;color:#f3c84b;">⚠️ ${escapeHtml(t("cfg_restart_note", "After saving, restart the add-on (top bar) to apply core options."))}</span>
