@@ -1,3 +1,11 @@
+## 1.5.49-dev.267
+
+### Added
+- diagnose replies during address scan (47f43aa)
+
+### Fixed
+- wait for slow driver detection replies (35d8390)
+
 ## 1.5.49-dev.266
 
 ### Added
