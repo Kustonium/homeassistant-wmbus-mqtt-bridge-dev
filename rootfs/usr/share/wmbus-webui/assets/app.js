@@ -3420,6 +3420,81 @@
     return "";
   }
 
+  // Bus health. Access ("can the port be opened") is answered by the banner
+  // above; this answers the other half, which only the bridge can know: does
+  // anything on the wire actually reply, and when it does not, which of the
+  // several causes is it. They share one symptom - nothing arrives - and the
+  // decoder names the cause only in its own log, which is why the state is
+  // carried out through status_mbus.json rather than inferred here.
+  const MBUS_HEALTH = {
+    ok:               {cls: "ok",    key: "mbus_health_ok"},
+    starting:         {cls: "muted", key: "mbus_health_starting"},
+    disabled:         {cls: "muted", key: "mbus_health_disabled"},
+    unknown:          {cls: "muted", key: "mbus_health_unknown"},
+    not_configured:   {cls: "warn",  key: "mbus_health_not_configured"},
+    no_meters:        {cls: "warn",  key: "mbus_health_no_meters"},
+    no_reply:         {cls: "warn",  key: "mbus_health_no_reply"},
+    damaged_frames:   {cls: "warn",  key: "mbus_health_damaged"},
+    not_mbus_traffic: {cls: "bad",   key: "mbus_health_not_mbus"},
+    bus_down:         {cls: "bad",   key: "mbus_health_bus_down"},
+    device_missing:   {cls: "bad",   key: "mbus_health_device_missing"},
+    identity_changed: {cls: "bad",   key: "mbus_health_identity_changed"},
+  };
+
+  function mbusMeterAge(epoch) {
+    const ts = Number(epoch);
+    if (!ts) return t("mbus_never_answered", "never answered");
+    const age = Math.max(0, Math.floor(Date.now() / 1000) - ts);
+    return t("mbus_answered_ago", "last answered {age} ago").replace("{age}", fmtInterval(age));
+  }
+
+  function mbusHealthCard(mbus) {
+    const rt = mbus.runtime || {};
+    const state_ = String(rt.state || "unknown");
+    const meta = MBUS_HEALTH[state_] || MBUS_HEALTH.unknown;
+    const names = Object.keys(rt.meters || {});
+    // Only worth showing once the engine is on: with polling off the state is
+    // "disabled" and the whole card would be a row of dashes.
+    if (!mbus.enabled && state_ !== "identity_changed") return "";
+
+    const rows = names.sort().map((name) => {
+      const m = rt.meters[name] || {};
+      const clash = m.clash_with
+        ? ` <span class="pill bad"><span class="dot"></span>${escapeHtml(
+            t("mbus_clash", "answered with two different ids ({other})").replace("{other}", m.clash_with))}</span>`
+        : "";
+      return `<div class="mbus-meter-state">
+        <span class="name">${escapeHtml(name)}</span>
+        <span class="detail">${escapeHtml(m.id ? `id ${m.id} · ` : "")}${escapeHtml(mbusMeterAge(m.last_ok_epoch))}</span>
+        ${clash}
+      </div>`;
+    }).join("");
+
+    // Every state carries a one-line explanation; an empty string means the
+    // state label already says everything and the paragraph is dropped rather
+    // than rendered blank.
+    const hint = t(meta.key + "_hint", "");
+    const skipped = Number(rt.meters_skipped || 0);
+    const skippedNote = skipped > 0
+      ? `<p class="hint">${escapeHtml(
+          t("mbus_meters_skipped", "{n} configured entr(ies) were rejected and are not polled — see the log.")
+            .replace("{n}", String(skipped)))}</p>`
+      : "";
+
+    return `
+      <div class="card">
+        <h2>${escapeHtml(t("mbus_health_title", "Bus status"))}</h2>
+        <div class="mbus-health-head">
+          <span class="pill ${meta.cls}"><span class="dot"></span>${escapeHtml(t(meta.key, state_))}</span>
+          <span class="detail">${escapeHtml(t("mbus_health_meters", "{n} meter(s) polled")
+            .replace("{n}", String(rt.meters_configured || 0)))}</span>
+        </div>
+        ${hint ? `<p class="hint">${escapeHtml(hint)}</p>` : ""}
+        ${skippedNote}
+        ${rows}
+      </div>`;
+  }
+
   function mbusDeviceOption(dev, current) {
     const warnKeys = {
       esp_native_usb: "mbus_warn_esp",
@@ -3468,6 +3543,8 @@
       </div>
 
       ${mbusAccessBanner(mbus)}
+
+      ${mbusHealthCard(mbus)}
 
       <div class="card">
         <h2>${escapeHtml(t("mbus_port_title", "Port"))}</h2>

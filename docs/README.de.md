@@ -484,6 +484,25 @@ bestätigen — er öffnet das Gerät und meldet Erfolg — deshalb wählen Sie 
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Niemals `/dev:/dev`, niemals
 `privileged`.
 
+**Die Registerkarte sagt, warum nichts ankommt.** Am Bus sehen eine falsche Adresse,
+ein toter Zähler, ein Konverter, der die Leitung nicht speist, und ein Zähler mit
+einem anderen Protokoll von außen gleich aus: Es entstehen keine Entitäten. Die
+Bus-Status-Karte benennt den Fall — pro Zähler, samt dem Zeitpunkt der jeweils
+letzten Antwort:
+
+- *Keine Antwort* — der Port ist offen, der adressierte Zähler schweigt. Adresse,
+  Verkabelung oder ein Konverter, der den Bus nicht speist.
+- *Beschädigte Telegramme* — Prüfsummenfehler, meist zwei Zähler auf derselben
+  Primäradresse. Ein Zähler, der mit zwei verschiedenen IDs antwortet, wird eigens
+  markiert: Der Decoder meldet keinen Konflikt, er gibt einfach beides aus, und Sie
+  bekämen sonst aus einem Eintrag ein zweites Gerät in Home Assistant.
+- *Das ist kein M-Bus-Verkehr* — es fließen Bytes, aber keines hat die Form eines
+  M-Bus-Telegramms. Stromzähler sprechen meist DLMS/COSEM, was dieses Add-on nicht
+  dekodiert.
+- *An diesem Port hängt ein anderes Gerät* — der Port zeigt jetzt auf andere Hardware
+  als die ausgewählte, deshalb wird die Abfrage verweigert, statt in den
+  Zigbee-Koordinator zu funken.
+
 **Nicht an einem echten Bus verifiziert.** Das Protokoll wurde gegen einen Simulator
 getestet, nicht gegen echte Zähler — der Autor besitzt keine drahtgebundene
 M-Bus-Hardware. Funktioniert etwas nicht, melden Sie ein Issue; nur so lässt es sich

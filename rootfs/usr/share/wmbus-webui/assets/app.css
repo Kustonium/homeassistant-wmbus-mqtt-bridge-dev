@@ -1319,3 +1319,64 @@ tr:last-child td {
     padding-bottom: 14px;
   }
 }
+
+/* ── Wired M-Bus tab ──────────────────────────────────────────────────────
+   The banner and health classes were referenced by the M-Bus tab before they
+   existed here, so every one of those messages rendered as unstyled body text
+   - including the "not verified on a real bus" notice, which is the one thing
+   on that page that must not read as decoration. */
+.banner {
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+}
+
+.banner-warn {
+  color: #ffe6a3;
+  background: #3e321c;
+  border-color: #7b5d1e;
+}
+
+.banner-bad {
+  color: #ffd0cc;
+  background: #452321;
+  border-color: #8b3933;
+}
+
+.banner-untested {
+  border-left: 3px solid var(--warn);
+}
+
+.mbus-untested {
+  color: var(--muted);
+}
+
+.mbus-untested strong {
+  color: var(--warn);
+}
+
+.mbus-health-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mbus-meter-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.mbus-meter-state .name {
+  font-weight: 720;
+}
+
+.mbus-meter-state .detail {
+  color: var(--muted);
+}

@@ -20,7 +20,6 @@ import os
 import re
 import select
 import subprocess
-import termios
 import time
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -28,6 +27,17 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
 
 BASE = Path(os.environ.get("WMBUS_BASE", "/data"))
+# POSIX-only, and the only thing that needs it is the wired M-Bus bus probe. It
+# is imported conditionally so the WebUI still starts where the module does not
+# exist: the add-on always runs on Linux, but the documented way to check a UI
+# change is to run this file directly on the maintainer's machine, and an
+# unconditional import made that impossible. The probe endpoint reports the
+# absence instead of the process failing to start at all.
+try:
+    import termios
+except ImportError:  # pragma: no cover - non-POSIX developer machines only
+    termios = None
+
 PORT = int(os.environ.get("WEBUI_PORT", "8099"))
 STATIC_DIR = Path(__file__).resolve().parent.parent / "share" / "wmbus-webui"
 
@@ -101,6 +111,15 @@ STATUS_ESP_METER_SNAPSHOT_JSON = BASE / "status_esp_meter_snapshot.json"
 # frequent "count" trigger (every N telegrams), so the per-ESP % populates in
 # minutes instead of waiting for the 15-min batch. Map keyed dev -> id -> fields.
 STATUS_ESP_METER_WINDOW_JSON = BASE / "status_esp_meter_window.json"
+# Wired M-Bus runtime state, written by bridge-lib/14-mbus.sh. Access ("can the
+# port be opened") is established here in webui.py; this file carries the other
+# half, which only the process reading the decoder's output can know: whether
+# anything actually answers on the bus, and if not, which of the several causes
+# it is. The decoder names them only in its log, and on this path they all share
+# one symptom - nothing arrives.
+# {state, device, bus_alias, meters_configured, meters_skipped, updated,
+#  meters: {"<name>": {id, last_ok_epoch, clash_with}}}
+STATUS_MBUS_JSON = BASE / "status_mbus.json"
 # Meter -> ESP device attribution (bridge.sh, from the RAW topic itself). Used
 # only for the wM-Bus band fallback: combined with that device's listen_mode
 # from status_esp_health.json it gives an approximate band for meters that have
@@ -1743,6 +1762,11 @@ def mbus_probe_bus(device: str, baudrate: int = 2400, wait_s: float = 2.0) -> tu
     Returns (state, hex_of_reply). SND_NKE is used rather than REQ_UD2 because
     the answer is a single byte instead of 62 — less traffic on somebody's bus.
     """
+    if termios is None:
+        # Only reachable on a non-POSIX machine, i.e. never in the add-on or in
+        # the Docker image. Reported rather than raised so the rest of the tab
+        # keeps working while a maintainer runs this file locally.
+        return 'busy_or_error', ''
     if not device or not os.path.exists(device):
         return 'device_missing', ''
     frame = bytes([0x10, 0x40, 0xFE, 0x3E, 0x16])  # CS = (0x40 + 0xFE) & 0xFF
@@ -1829,6 +1853,29 @@ def mbus_panel_payload() -> dict:
         'meters': opts.get('mbus_meters') or [],
         'devices': list_serial_devices(),
         'access': mbus_access_state(configured or None),
+        'runtime': mbus_runtime_state(),
+    }
+
+
+def mbus_runtime_state() -> dict:
+    """Traffic-side state, as last written by the bridge.
+
+    Deliberately not merged with access: the two answer different questions and
+    a stale runtime state must never be able to override a live open() result.
+    A missing file is the normal state before the engine has ever run, and is
+    reported as such rather than as an error.
+    """
+    raw = read_json(STATUS_MBUS_JSON)
+    if not isinstance(raw, dict) or not raw.get('state'):
+        return {'state': 'unknown', 'meters': {}}
+    meters = raw.get('meters')
+    return {
+        'state': str(raw.get('state') or 'unknown'),
+        'bus_alias': str(raw.get('bus_alias') or ''),
+        'meters_configured': int(raw.get('meters_configured') or 0),
+        'meters_skipped': int(raw.get('meters_skipped') or 0),
+        'updated': int(raw.get('updated') or 0),
+        'meters': meters if isinstance(meters, dict) else {},
     }
 
 

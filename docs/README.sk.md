@@ -460,6 +460,23 @@ vyberáte vy.
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Nikdy `/dev:/dev`, nikdy
 `privileged`.
 
+**Záložka povie, prečo nič nechodí.** Na zbernici vyzerajú zlá adresa, mŕtvy merač,
+prevodník, ktorý nenapája linku, a merač hovoriaci iným protokolom zvonku rovnako:
+nevzniknú žiadne entity. Karta stavu zbernice pomenuje, o ktorý prípad ide — po
+meračoch, spolu s okamihom poslednej odpovede každého z nich:
+
+- *Bez odpovede* — port je otvorený, merač na tejto adrese mlčí. Adresa, kabeláž
+  alebo prevodník, ktorý zbernicu nenapája.
+- *Poškodené rámce* — chyby kontrolného súčtu, najčastejšie dva merače na jednej
+  primárnej adrese. Merač odpovedajúci dvoma rôznymi id je zvlášť označený: dekodér
+  žiadny konflikt nehlási, jednoducho vydá obe odpovede, a vy by ste inak z jedného
+  záznamu dostali v Home Assistantovi druhé zariadenie.
+- *Toto nie je prevádzka M-Bus* — bajty tečú, ale žiadny nemá tvar rámca M-Bus.
+  Elektromery zvyčajne hovoria DLMS/COSEM, čo tento doplnok nedekóduje.
+- *Na tomto porte je iné zariadenie* — port teraz ukazuje na iný hardvér než vybraný,
+  takže je dopytovanie odmietnuté namiesto toho, aby mierilo do cudzieho Zigbee
+  koordinátora.
+
 **Neoverené na skutočnej zbernici.** Protokol bol testovaný voči simulátoru, nie voči
 skutočným meračom — autor nemá drôtový M-Bus hardvér. Ak niečo nefunguje, založte
 issue; inak sa to nedá opraviť.

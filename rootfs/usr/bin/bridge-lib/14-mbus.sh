@@ -31,12 +31,17 @@ MBUS_LOG=""
 MBUS_PID=""
 MBUS_BUS_ALIAS="MAIN"
 MBUS_POLL_DEFAULT="15m"
+MBUS_STATUS_FILE=""
+MBUS_METERS_OK=0
+MBUS_METERS_SKIPPED=0
 
 # Last id seen per configured meter name. A bus address that starts answering
 # with a different id means two meters share one primary address — the decoder
 # reports neither problem nor duplicate, it simply emits both telegrams, so the
 # detection has to live here.
 declare -A MBUS_LAST_ID=()
+declare -A MBUS_LAST_OK=()
+declare -A MBUS_CLASH=()
 
 MBUS_TRAFFIC_STATE="unknown"
 
@@ -46,6 +51,79 @@ mbus_init_paths() {
   MBUS_METER_DIR="${MBUS_ETC}/wmbusmeters.d"
   MBUS_CONF_FILE="${MBUS_ETC}/wmbusmeters.conf"
   MBUS_LOG="${MBUS_BASE}/console.log"
+  MBUS_STATUS_FILE="${BASE}/status_mbus.json"
+}
+
+# ------------------------------------------------------------
+# Runtime state file
+# ------------------------------------------------------------
+# Everything below used to be computed and thrown away: the traffic state lives
+# in the pipeline subshell that reads the decoder's output, so the parent shell
+# - and therefore any function the WebUI could call - never sees it. A file is
+# the only channel that crosses that boundary.
+#
+# It matters because the failure modes here share one symptom ("nothing
+# arrives") and the decoder names the cause only in its log. Without this the
+# user with a DLMS/COSEM electricity meter on the wire sees an open port, live
+# bytes and no entities, with nothing anywhere saying why.
+#
+# States:
+#   disabled            engine off
+#   not_configured      armed with no port picked (reachable only through the
+#                       Supervisor options editor - the WebUI refuses it)
+#   device_missing      the configured path is gone
+#   identity_changed    the /dev node now points at different hardware
+#   no_meters           armed, port fine, nothing to poll
+#   starting            running, no telegram yet
+#   ok                  a telegram was accepted
+#   no_reply            polled address stays silent
+#   damaged_frames      checksum errors - damaged frame or an address clash
+#   not_mbus_traffic    bytes flow, none of them shaped like an M-Bus frame
+#   bus_down            the bus/device is not up for the decoder
+mbus_write_status() {
+  local state="$1"
+  [[ -n "${MBUS_STATUS_FILE}" ]] || return 0
+  local meters_json="{}" name
+  # Guarded on the element count rather than on ${!array[@]+...}: under set -u
+  # that form does not expand the keys of an associative array (measured - it
+  # yields nothing while the array holds entries), so the loop silently never
+  # ran and every meter vanished from the status file. Meter names come from
+  # user configuration and may contain spaces, so the keys stay quoted.
+  if (( ${#MBUS_LAST_ID[@]} > 0 )); then
+    for name in "${!MBUS_LAST_ID[@]}"; do
+      meters_json="$(printf '%s' "${meters_json}" | jq -c \
+        --arg n "${name}" \
+        --arg id "${MBUS_LAST_ID[${name}]:-}" \
+        --arg clash "${MBUS_CLASH[${name}]:-}" \
+        --argjson ts "${MBUS_LAST_OK[${name}]:-0}" \
+        '. + {($n): {id: $id, last_ok_epoch: $ts, clash_with: $clash}}' 2>/dev/null \
+        || printf '%s' "${meters_json}")"
+    done
+  fi
+  jq -n \
+    --arg state "${state}" \
+    --arg device "$(mbus_opt mbus_device "")" \
+    --arg alias "${MBUS_BUS_ALIAS}" \
+    --argjson meters "${meters_json}" \
+    --argjson configured "${MBUS_METERS_OK:-0}" \
+    --argjson skipped "${MBUS_METERS_SKIPPED:-0}" \
+    --argjson updated "$(epoch_now)" \
+    '{state: $state, device: $device, bus_alias: $alias,
+      meters_configured: $configured, meters_skipped: $skipped,
+      meters: $meters, updated: $updated}' \
+    > "${MBUS_STATUS_FILE}.tmp" 2>/dev/null \
+    && mv -f "${MBUS_STATUS_FILE}.tmp" "${MBUS_STATUS_FILE}" 2>/dev/null \
+    || true
+}
+
+# Transitions only. Polling runs at minute-scale intervals so this is cheap
+# either way, but rewriting the file per line would repeat the per-frame
+# bookkeeping that is already the throughput ceiling on the radio path.
+mbus_set_state() {
+  local new="$1"
+  [[ "${new}" == "${MBUS_TRAFFIC_STATE}" ]] && return 0
+  MBUS_TRAFFIC_STATE="${new}"
+  mbus_write_status "${new}"
 }
 
 mbus_opt() {
@@ -113,6 +191,7 @@ write_mbus_conf() {
     # engine can be armed from the add-on options page, which has no way to
     # enforce "pick a port first" — that guard exists only in the WebUI.
     warn "M-Bus: polling is enabled but no port is selected -> not starting. Pick a port in the M-Bus tab, or turn mbus_enabled off."
+    mbus_write_status "not_configured"
     return 1
   fi
   if [[ ! "${alias}" =~ ^[A-Za-z0-9_]+$ ]]; then
@@ -121,12 +200,23 @@ write_mbus_conf() {
   fi
   MBUS_BUS_ALIAS="${alias}"
 
+  # Free string in the options schema, so the add-on options page accepts "15"
+  # as readily as "15m" — and a meter file with a malformed pollinterval is
+  # never polled, which looks exactly like a dead meter. Same class of silent
+  # failure as a missing pollinterval, so it is caught here rather than passed
+  # down to the decoder.
+  if [[ ! "${MBUS_POLL_DEFAULT}" =~ ^[0-9]+[smh]$ ]]; then
+    warn "M-Bus: invalid poll interval '${MBUS_POLL_DEFAULT}' -> using 15m. Write it as a number followed by s, m or h (for example 30s, 15m, 1h)."
+    MBUS_POLL_DEFAULT="15m"
+  fi
+
   identity="$(mbus_identity_check "${dev}" "${pinned}")"
   case "${identity}" in
     device_missing)
       # /dev names are not stable across replugs, so this is the expected
       # outcome of moving the converter to another socket, not a defect.
       warn "M-Bus: the configured port ${dev} is gone -> not starting. Re-pick it in the M-Bus tab; serial port names change when USB devices are replugged."
+      mbus_write_status "device_missing"
       return 1
       ;;
     changed)
@@ -134,6 +224,7 @@ write_mbus_conf() {
       # into a Zigbee coordinator or into the user's own ESP bridge.
       err "M-Bus: ${dev} is now a different device than the one you selected -> refusing to poll. Something else took that port; re-pick the converter in the M-Bus tab to confirm."
       status_add_event "error" "M-Bus device identity changed on ${dev}"
+      mbus_write_status "identity_changed"
       return 1
       ;;
     pin_impossible)
@@ -166,11 +257,14 @@ write_mbus_conf() {
 
 refresh_mbus_meter_files() {
   rm -f "${MBUS_METER_DIR}/meter-"* 2>/dev/null || true
-  local n=0 meter_json name addr driver driver_other key poll calc stat calc_lines stat_lines file
+  local n=0 skipped=0 meter_json name addr driver driver_other key poll calc stat calc_lines stat_lines file
+
+  MBUS_METERS_OK=0
+  MBUS_METERS_SKIPPED=0
 
   [[ -f "${OPTIONS_JSON}" ]] || return 0
   jq -e '.mbus_meters and (.mbus_meters|length>0)' "${OPTIONS_JSON}" >/dev/null 2>&1 || {
-    warn "M-Bus: no meters configured -> nothing will be polled"
+    warn "M-Bus: no meters configured -> nothing will be polled. Add a meter with its bus address in the M-Bus tab."
     return 0
   }
 
@@ -188,19 +282,29 @@ refresh_mbus_meter_files() {
     # 0xFB-0xFF are reserved or broadcast. Secondary addressing uses 8 hex.
     if [[ ! "${addr}" =~ ^p([1-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|250)$ && ! "${addr}" =~ ^[0-9A-Fa-f]{8}$ ]]; then
       warn "M-Bus: invalid address '${addr}' for '${name}' -> skipped (expected p1..p250 or 8 hex)"
+      skipped=$((skipped + 1))
       continue
     fi
     if [[ -n "${key}" && "${key}" != "null" && ! "${key}" =~ ^[A-Fa-f0-9]{32}$ ]]; then
       warn "M-Bus: invalid key for '${name}' -> skipped"
+      skipped=$((skipped + 1))
       continue
     fi
     [[ -z "${driver}" || "${driver}" == "null" ]] && driver="auto"
     if [[ "${driver}" == "other" ]]; then
       [[ -n "${driver_other}" && "${driver_other}" != "null" ]] || {
-        warn "M-Bus: type=other but type_other empty for '${name}' -> skipped"; continue; }
+        warn "M-Bus: type=other but type_other empty for '${name}' -> skipped"
+        skipped=$((skipped + 1)); continue; }
       driver="${driver_other}"
     fi
     [[ -z "${poll}" || "${poll}" == "null" ]] && poll="${MBUS_POLL_DEFAULT}"
+    # Not skipped over: falling back to the default keeps the meter polled,
+    # where dropping it would take an otherwise valid meter out of service over
+    # a typo in one field.
+    if [[ ! "${poll}" =~ ^[0-9]+[smh]$ ]]; then
+      warn "M-Bus: invalid poll interval '${poll}' for '${name}' -> using ${MBUS_POLL_DEFAULT}"
+      poll="${MBUS_POLL_DEFAULT}"
+    fi
 
     calc_lines=""
     [[ -n "${calc}" && "${calc}" != "null" ]] && calc_lines="$(build_calculated_field_lines "${calc}" "${name}")"
@@ -226,7 +330,13 @@ refresh_mbus_meter_files() {
     } > "${file}.tmp" && mv -f "${file}.tmp" "${file}"
   done < <(jq -c '.mbus_meters[]?' "${OPTIONS_JSON}")
 
-  log "M-Bus: ${n} meter file(s) written"
+  MBUS_METERS_OK="${n}"
+  MBUS_METERS_SKIPPED="${skipped}"
+  if (( skipped > 0 )); then
+    log "M-Bus: ${n} meter file(s) written, ${skipped} entr(ies) skipped"
+  else
+    log "M-Bus: ${n} meter file(s) written"
+  fi
 }
 
 # ------------------------------------------------------------
@@ -242,7 +352,6 @@ mbus_consume_line() {
   local line="$1" id name
 
   if [[ "${line}" == \{*\"_\":\"telegram\"* ]]; then
-    MBUS_TRAFFIC_STATE="ok"
     id="$(normalize_meter_id "$(echo "${line}" | jq -r '.id // empty' 2>/dev/null || true)")"
     name="$(echo "${line}" | jq -r '.name // empty' 2>/dev/null || true)"
 
@@ -251,8 +360,14 @@ mbus_consume_line() {
       if [[ -n "${prev}" && "${prev}" != "${id}" ]]; then
         warn "M-Bus: '${name}' answered with id=${id} but previously ${prev} -> two meters on one address?"
         status_add_event "warn" "M-Bus address clash on '${name}': ${prev} vs ${id}"
+        MBUS_CLASH["${name}"]="${prev}"
       fi
       MBUS_LAST_ID["${name}"]="${id}"
+      # Counted from ARRIVAL, not from the poll that asked for it: there is no
+      # timeout state on this path — a reply 3 s late for a 2 s pollinterval is
+      # still accepted (measured on the simulator), so "when did we last hear
+      # from it" is the only answer that means anything.
+      MBUS_LAST_OK["${name}"]="$(epoch_now)"
     fi
 
     if [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]]; then
@@ -266,20 +381,27 @@ mbus_consume_line() {
       status_mark_discovery_published
       write_status_json
     fi
+    # Written on every accepted telegram rather than only on the transition
+    # into "ok", because the per-meter timestamps move even when the state does
+    # not. At poll intervals measured in minutes this costs nothing.
+    MBUS_TRAFFIC_STATE="ok"
+    mbus_write_status "ok"
     echo "${line}"
     return
   fi
 
   case "${line}" in
     *"no 0x68 byte found"*)
-      MBUS_TRAFFIC_STATE="not_mbus_traffic" ;;
+      mbus_set_state "not_mbus_traffic" ;;
     *"expected checksum"*)
-      MBUS_TRAFFIC_STATE="damaged_frames" ;;
+      mbus_set_state "damaged_frames" ;;
     *"did not send a response"*)
+      # A named cause outranks plain silence: once the bus is known to carry
+      # foreign or damaged bytes, "no reply" adds nothing and would hide it.
       [[ "${MBUS_TRAFFIC_STATE}" == "not_mbus_traffic" || "${MBUS_TRAFFIC_STATE}" == "damaged_frames" ]] \
-        || MBUS_TRAFFIC_STATE="no_reply" ;;
+        || mbus_set_state "no_reply" ;;
     *"no bus specified for meter"*|*"SpecifiedDeviceNotFound"*)
-      MBUS_TRAFFIC_STATE="bus_down" ;;
+      mbus_set_state "bus_down" ;;
   esac
   echo "${line}"
 }
@@ -291,10 +413,20 @@ start_mbus_instance() {
   mbus_init_paths
   if ! mbus_enabled; then
     log_verbose "[DIAG] M-Bus: disabled"
+    mbus_write_status "disabled"
     return 0
   fi
   write_mbus_conf || return 0
   refresh_mbus_meter_files
+
+  # Armed, port fine, nothing to poll. Distinct from "no_reply": the decoder is
+  # not silent, it was never asked to say anything.
+  if (( MBUS_METERS_OK == 0 )); then
+    MBUS_TRAFFIC_STATE="no_meters"
+  else
+    MBUS_TRAFFIC_STATE="starting"
+  fi
+  mbus_write_status "${MBUS_TRAFFIC_STATE}"
 
   (
     while true; do
@@ -326,16 +458,12 @@ stop_mbus_instance() {
   MBUS_PID=""
 }
 
-# Health for the WebUI panel. Distinguishing these is the whole point: three
-# different causes otherwise share one symptom ("nothing arrives").
-mbus_health() {
-  local dev pinned
-  mbus_enabled || { printf 'disabled'; return; }
-  dev="$(mbus_opt mbus_device "")"
-  [[ -n "${dev}" && "${dev}" != "null" ]] || { printf 'not_configured'; return; }
-  [[ -e "${dev}" ]] || { printf 'device_missing'; return; }
-  pinned="$(mbus_opt mbus_device_serial "")"
-  [[ "$(mbus_identity_check "${dev}" "${pinned}")" == "changed" ]] && { printf 'identity_changed'; return; }
-  [[ -r "${dev}" && -w "${dev}" ]] || { printf 'device_not_openable'; return; }
-  printf '%s' "${MBUS_TRAFFIC_STATE}"
-}
+# There was an mbus_health() here that returned the state as a string. Nothing
+# could ever call it: the traffic state it reported lives in the pipeline
+# subshell reading the decoder's output, so in the parent shell it stayed
+# "unknown" forever, and the WebUI runs in a different process again. The states
+# it computed from the filesystem (device_missing, identity_changed, not
+# openable) are the ones webui.py's mbus_access_state() already establishes by
+# trying to open the port, which is the only thing that proves access. What was
+# genuinely missing is the traffic half, and that now travels through
+# status_mbus.json.

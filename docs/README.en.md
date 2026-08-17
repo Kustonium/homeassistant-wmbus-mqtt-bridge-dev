@@ -473,6 +473,24 @@ and reports success — so the port is always chosen by you.
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Never `/dev:/dev`, never
 `privileged`.
 
+**The tab says why nothing is arriving.** On a bus, a wrong address, a dead meter,
+a converter that does not power the line and a meter speaking a different protocol
+all look the same from the outside: no entities appear. The bus-status card names
+which one it is, per meter, together with the moment each one last answered:
+
+- *No reply* — the port is open, the addressed meter stays silent. Address, wiring,
+  or a converter that does not feed the bus.
+- *Damaged frames* — checksum errors, most often two meters sharing one primary
+  address. A meter answering with two different ids is flagged as such: the decoder
+  reports no conflict, it simply emits both, and you would otherwise get a second
+  device in Home Assistant out of one entry.
+- *This is not M-Bus traffic* — bytes are flowing, none of them shaped like an M-Bus
+  frame. Electricity meters usually speak DLMS/COSEM, which this add-on does not
+  decode.
+- *A different device is on that port* — the port now resolves to other hardware
+  than the one you picked, so polling is refused rather than aimed at somebody's
+  Zigbee coordinator.
+
 **Not verified on a real bus.** The protocol was tested against a simulator, not
 against real meters — the author has no wired M-Bus hardware. If something does not
 work, open an issue; that is the only way it gets fixed.

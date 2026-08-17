@@ -75,6 +75,43 @@
   dongle does not belong here and will not work — radio is received by the ESP and
   arrives over MQTT exactly as before.
 
+- the M-Bus tab now shows a **bus-status card**: what the bus is doing, how many
+  meters are polled and rejected, and per meter the last id seen and when it last
+  answered.
+
+  On a wire, a wrong address, a dead meter, a converter that does not power the
+  line and a meter speaking a different protocol all produce the same symptom —
+  nothing arrives. The decoder does distinguish them, but only in its own log, so
+  the card names the cause: no reply, damaged frames (usually two meters sharing
+  one primary address), traffic that is not M-Bus at all (electricity meters
+  normally speak DLMS/COSEM, which this add-on does not decode), or a port that now
+  resolves to different hardware than the one selected.
+
+  A meter answering with two different ids is flagged as such. The decoder reports
+  no conflict — it simply emits both telegrams — which would otherwise turn one
+  configured entry into a second device in Home Assistant. "Last answered" is
+  counted from the arrival of a telegram, because there is no timeout on this path:
+  a reply three seconds late for a two-second `pollinterval` is still accepted.
+
+### Fixed
+- the wired M-Bus health state was computed and thrown away. It is established in
+  the subshell that reads the decoder's output, so the parent shell never saw it
+  and the WebUI — a different process again — could not reach it at all. The state
+  now travels through `status_mbus.json`, and the function that pretended to return
+  it is gone.
+- the banners in the M-Bus tab were unstyled: the CSS classes they used had never
+  been defined, so every one of those messages rendered as plain body text —
+  including the "not verified on a real bus" notice, which is the one thing on that
+  page that must not read as decoration.
+- a malformed poll interval no longer reaches a meter file. The option is a free
+  string, so the add-on configuration page accepts `15` as readily as `15m`, and a
+  meter that is never polled looks exactly like a dead one. It now falls back to
+  the default with a warning instead of taking an otherwise valid meter out of
+  service.
+- `tests/test_mbus_meter_files.sh` was never run by CI — the test that caught the
+  atomic-write bug during development was not on the static-tests list. It is now,
+  and it covers the status file, the counts and the address clash.
+
 
 ## 1.5.48-dev.251
 

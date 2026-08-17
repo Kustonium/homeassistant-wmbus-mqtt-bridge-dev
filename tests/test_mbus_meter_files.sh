@@ -43,6 +43,7 @@ err()  { printf '%s\n' "$*" >> "${WARN_LOG}"; }
 log() { :; }
 log_verbose() { :; }
 status_add_event() { :; }
+epoch_now() { date +%s; }
 
 BASE="${WORK_DIR}"
 OPTIONS_JSON="${BASE}/options.json"
@@ -185,6 +186,139 @@ if write_mbus_conf; then
   fi
 else
   fail "write_mbus_conf failed for a valid device"
+fi
+
+# 7. Meter counts are reported, not just logged. The WebUI's bus-status card
+# reads them out of status_mbus.json; a rejected entry that is only warned
+# about in the log is indistinguishable, in the UI, from a meter that is being
+# polled and stays silent.
+if [[ "${MBUS_METERS_OK}" -eq 4 && "${MBUS_METERS_SKIPPED}" -eq 2 ]]; then
+  pass "meter counts reported (4 written, 2 rejected)"
+else
+  fail "meter counts wrong: ok=${MBUS_METERS_OK} skipped=${MBUS_METERS_SKIPPED}"
+fi
+
+# 8. A malformed poll interval must not reach a meter file. The options schema
+# takes a free string, so the add-on options page accepts "15" as readily as
+# "15m" - and the decoder then never polls that meter, which looks exactly like
+# a dead one.
+cat > "${OPTIONS_JSON}" <<'EOFJSON'
+{
+  "mbus_enabled": true,
+  "mbus_device": "/dev/null",
+  "mbus_bus_alias": "MAIN",
+  "mbus_baudrate": "2400",
+  "mbus_poll_interval": "15",
+  "mbus_meters": [
+    {"id": "bad_poll", "address": "p3", "type": "piigth", "poll_interval": "soon"}
+  ]
+}
+EOFJSON
+write_mbus_conf >/dev/null 2>&1 || true
+if [[ "${MBUS_POLL_DEFAULT}" == "15m" ]]; then
+  pass "malformed global poll interval falls back to 15m"
+else
+  fail "malformed global poll interval kept as '${MBUS_POLL_DEFAULT}'"
+fi
+refresh_mbus_meter_files
+mapfile -t files2 < <(find "${MBUS_METER_DIR}" -maxdepth 1 -name 'meter-[0-9]*' ! -name '*.tmp' | sort)
+if [[ "${#files2[@]}" -eq 1 ]] && grep -q '^pollinterval=15m$' "${files2[0]}"; then
+  pass "malformed per-meter poll interval falls back instead of dropping the meter"
+else
+  fail "malformed per-meter poll interval not handled: $(grep '^pollinterval=' "${files2[@]}" 2>/dev/null || true)"
+fi
+
+# 9. The runtime status file. Everything the bus-status card knows travels
+# through it: the traffic state lives in the subshell reading the decoder's
+# output, so a function returning it could never be called from anywhere else.
+# It appears when there is something to report - a successful configuration
+# write says nothing about the bus yet, so nothing is written there either.
+if [[ ! -f "${MBUS_STATUS_FILE}" ]]; then
+  pass "no status file before the engine reports anything"
+else
+  fail "status file written before there was any state to report"
+fi
+
+# Armed with no port: reachable only through the add-on options page, which has
+# no way to enforce "pick a port first". The refusal has to be visible in the
+# UI, not only as a line in the log.
+cat > "${OPTIONS_JSON}" <<'EOFJSON'
+{"mbus_enabled": true, "mbus_device": "", "mbus_bus_alias": "MAIN"}
+EOFJSON
+if write_mbus_conf >/dev/null 2>&1; then
+  fail "write_mbus_conf started with no port configured"
+else
+  if [[ "$(jq -r '.state' "${MBUS_STATUS_FILE}")" == "not_configured" ]]; then
+    pass "armed without a port reports not_configured"
+  else
+    fail "armed without a port reported '$(jq -r '.state' "${MBUS_STATUS_FILE}")'"
+  fi
+fi
+if jq -e . "${MBUS_STATUS_FILE}" >/dev/null 2>&1; then
+  pass "status file is valid JSON"
+else
+  fail "status file malformed: ${MBUS_STATUS_FILE}"
+fi
+if ! find "${BASE}" -maxdepth 1 -name 'status_mbus.json.tmp' | grep -q .; then
+  pass "no status_mbus.json.tmp leftover - the atomic write completed"
+else
+  fail "status_mbus.json.tmp left behind"
+fi
+
+# A vanished port is the expected outcome of moving the converter to another
+# USB socket, and must be told apart from a silent bus.
+cat > "${OPTIONS_JSON}" <<'EOFJSON'
+{"mbus_enabled": true, "mbus_device": "/dev/does-not-exist-mbus", "mbus_bus_alias": "MAIN"}
+EOFJSON
+if write_mbus_conf >/dev/null 2>&1; then
+  fail "write_mbus_conf started on a nonexistent device"
+else
+  if [[ "$(jq -r '.state' "${MBUS_STATUS_FILE}")" == "device_missing" ]]; then
+    pass "vanished port reports device_missing"
+  else
+    fail "vanished port reported '$(jq -r '.state' "${MBUS_STATUS_FILE}")'"
+  fi
+fi
+
+# The address clash: one polled address answering with two different ids. The
+# decoder reports neither problem nor duplicate - it simply emits both - so
+# without this the user gets a second device in Home Assistant from one entry.
+normalize_meter_id() { printf '%s' "$1"; }
+emit_discovery_from_json() { :; }
+mqtt_pub() { :; }
+status_mark_discovery_published() { :; }
+write_status_json() { :; }
+# Read by mbus_consume_line() in the sourced module.
+# shellcheck disable=SC2034
+STATE_PREFIX="wmbusmeters"
+# shellcheck disable=SC2034
+STATE_RETAIN="true"
+mbus_consume_line '{"_":"telegram","name":"sim","id":"10000284","total_m3":1.5}' >/dev/null
+mbus_consume_line '{"_":"telegram","name":"sim","id":"77000284","total_m3":9.9}' >/dev/null
+if [[ "$(jq -r '.meters.sim.clash_with' "${MBUS_STATUS_FILE}")" == "10000284" ]]; then
+  pass "address clash recorded against the meter"
+else
+  fail "address clash not recorded: $(jq -c '.meters' "${MBUS_STATUS_FILE}")"
+fi
+if [[ "$(jq -r '.meters.sim.last_ok_epoch' "${MBUS_STATUS_FILE}")" -gt 0 ]]; then
+  pass "last successful reply timestamped from arrival"
+else
+  fail "no last_ok_epoch recorded"
+fi
+if [[ "$(jq -r '.state' "${MBUS_STATUS_FILE}")" == "ok" ]]; then
+  pass "an accepted telegram moves the state to ok"
+else
+  fail "state after a telegram: $(jq -r '.state' "${MBUS_STATUS_FILE}")"
+fi
+
+# A named cause outranks plain silence: once foreign bytes are on the wire,
+# "no reply" would hide the one line that explains the whole symptom.
+mbus_consume_line 'wmbusmeters: no 0x68 byte found' >/dev/null
+mbus_consume_line 'wmbusmeters: meter sim did not send a response!' >/dev/null
+if [[ "$(jq -r '.state' "${MBUS_STATUS_FILE}")" == "not_mbus_traffic" ]]; then
+  pass "foreign traffic is not overwritten by a later silence"
+else
+  fail "state should stay not_mbus_traffic, got $(jq -r '.state' "${MBUS_STATUS_FILE}")"
 fi
 
 echo

@@ -335,6 +335,31 @@ The instance is behind two independent options, both off by default: one control
 whether the tab is shown, the other whether the engine runs. Disabled, it does not
 start and the radio path is untouched.
 
+#### Bus state travels through a file
+
+On this path the failure modes share a single symptom — nothing arrives — and the
+decoder names the cause only in its own log: `no 0x68 byte found` for a foreign
+protocol, `expected checksum 0xNN but got 0xMM` for a damaged frame or two meters
+answering on one address, `did not send a response!` for silence. None of them
+reaches the JSON.
+
+That state is also unreachable from anywhere else in the process tree. It is
+established in the subshell that reads the decoder's output, so the parent shell
+never observes it, and the WebUI is a different process again. The bridge therefore
+writes `status_mbus.json` — current state, the meters configured and rejected, and
+per meter the last id seen and when it last answered — and the WebUI renders it as
+the bus-status card.
+
+The two halves stay separate on purpose. Whether the port can be *opened* is
+answered in `webui.py` by actually opening it, which is the only thing that proves
+access; whether anything *answers* is answered by the bridge. A stale runtime state
+must never be able to override a live `open()` result.
+
+"Last answered" is counted from the arrival of a telegram, not from the poll that
+asked for it. There is no timeout state here: a reply three seconds late for a
+two-second `pollinterval` is still accepted (measured against a bus simulator), so
+arrival is the only timestamp that means anything.
+
 ## 6. Configuration and lifecycle
 
 ### 6.1 Configuration ownership

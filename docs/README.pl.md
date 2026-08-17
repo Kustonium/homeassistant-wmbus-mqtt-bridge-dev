@@ -473,6 +473,24 @@ urządzenie i melduje sukces — więc port zawsze wskazujesz Ty.
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Nigdy `/dev:/dev`, nigdy
 `privileged`.
 
+**Zakładka mówi, dlaczego nic nie przychodzi.** Na magistrali zły adres, martwy
+licznik, konwerter niezasilający linii i licznik mówiący innym protokołem wyglądają
+z zewnątrz tak samo: nie pojawiają się encje. Karta stanu magistrali nazywa, który
+to przypadek — per licznik, razem z chwilą ostatniej odpowiedzi każdego z nich:
+
+- *Brak odpowiedzi* — port jest otwarty, licznik pod tym adresem milczy. Adres,
+  okablowanie albo konwerter, który nie zasila magistrali.
+- *Uszkodzone ramki* — błędy sumy kontrolnej, najczęściej dwa liczniki na jednym
+  adresie pierwotnym. Licznik odpowiadający dwoma różnymi id jest osobno oznaczany:
+  dekoder nie zgłasza konfliktu, po prostu wypuszcza obie odpowiedzi, a Ty inaczej
+  dostaniesz w Home Assistancie drugie urządzenie z jednego wpisu.
+- *To nie jest ruch M-Bus* — bajty płyną, ale żaden nie ma kształtu ramki M-Bus.
+  Liczniki energii elektrycznej zwykle mówią DLMS/COSEM, czego ten dodatek nie
+  dekoduje.
+- *Na tym porcie jest inne urządzenie* — port wskazuje teraz inny sprzęt niż
+  wybrany, więc odpytywanie jest odmawiane, zamiast trafić w czyjś koordynator
+  Zigbee.
+
 **Niesprawdzone na prawdziwej magistrali.** Protokół był testowany na symulatorze,
 nie na prawdziwych licznikach — autor nie ma sprzętu M-Bus po kablu. Jeśli coś nie
 działa, zgłoś issue; to jedyna droga, żeby to naprawić.
