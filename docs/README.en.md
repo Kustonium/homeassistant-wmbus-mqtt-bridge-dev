@@ -442,6 +442,41 @@ which the decoder does not have when telegrams are fed to it as hex.
 
 ---
 
+### Wired M-Bus (serial bus, off by default)
+
+Heat and water meters are often wired rather than radio: an M-Bus master converter
+sits on a two-wire bus and presents itself to the machine as a serial port
+(USB, RS-232 or RS-485). The add-on can poll such a bus itself.
+
+Everything downstream is the same as for radio — same drivers, units, Discovery,
+calculated and constant fields. Only the transport differs: meters are polled
+instead of listened to, and they are addressed rather than discovered.
+
+**Two switches, both off by default.** `mbus_tab_visible` only shows the tab;
+`mbus_enabled` starts the engine. With both off nothing changes for you.
+
+| Option | Meaning |
+|---|---|
+| `mbus_device` | serial port; prefer a `/dev/serial/by-id/…` path |
+| `mbus_bus_alias` | bus name in the meter configuration (`MAIN`) |
+| `mbus_baudrate` | 300–9600, usually 2400 |
+| `mbus_poll_interval` | default interval written into every meter without its own |
+| `mbus_donotprobe_all` | leave on — see the warning below |
+| `mbus_meters[]` | `id`, `address` (`p1`..`p250` or 8 hex), `type`, `key`, `poll_interval` |
+
+**The add-on never scans ports, deliberately.** Probing means transmitting, and on a
+typical Home Assistant machine one of the serial ports is a Zigbee coordinator.
+The decoder cannot confirm a correct converter anyway — it only opens the device
+and reports success — so the port is always chosen by you.
+
+**In Docker** map your converter explicitly:
+`devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Never `/dev:/dev`, never
+`privileged`.
+
+**Not verified on a real bus.** The protocol was tested against a simulator, not
+against real meters — the author has no wired M-Bus hardware. If something does not
+work, open an issue; that is the only way it gets fixed.
+
 ## 9. Interface language
 
 5 languages (en/pl/de/cs/sk). Selection: `?lang=en` in the URL → cookie

@@ -429,6 +429,41 @@ zariadenie, ktoré dekodér nemá, keď mu telegramy podávate ako HEX.
 
 ---
 
+### Drôtový M-Bus (sériová zbernica, predvolene vypnuté)
+
+Merače tepla a vody často vedú káblom, nie rádiom: prevodník M-Bus master sedí na
+dvojdrôtovej zbernici a v systéme sa hlási ako sériový port (USB, RS-232 alebo
+RS-485). Doplnok vie takúto zbernicu sám dopytovať.
+
+Všetko nadväzujúce zostáva rovnaké ako pri rádiu — tie isté ovládače, jednotky,
+Discovery, počítané aj konštantné polia. Líši sa len transport: merače sa dopytujú
+namiesto počúvania a adresujú namiesto objavovania.
+
+**Dva prepínače, oba predvolene vypnuté.** `mbus_tab_visible` iba zobrazí záložku,
+`mbus_enabled` spustí engine. Pri oboch vypnutých sa pre vás nič nemení.
+
+| Voľba | Význam |
+|---|---|
+| `mbus_device` | sériový port; najlepšie cesta `/dev/serial/by-id/…` |
+| `mbus_bus_alias` | názov zbernice v konfigurácii meračov (`MAIN`) |
+| `mbus_baudrate` | 300–9600, zvyčajne 2400 |
+| `mbus_poll_interval` | predvolený interval zapísaný každému meraču bez vlastného |
+| `mbus_donotprobe_all` | nechajte zapnuté — pozri varovanie nižšie |
+| `mbus_meters[]` | `id`, `address` (`p1`..`p250` alebo 8 hex), `type`, `key`, `poll_interval` |
+
+**Doplnok zámerne nikdy neskenuje porty.** Sondovanie znamená vysielanie a na typickom
+stroji s Home Assistant je jeden zo sériových portov koordinátor Zigbee. Dekodér
+správny prevodník aj tak nepotvrdí — otvorí zariadenie a ohlási úspech — port preto
+vyberáte vy.
+
+**V Dockeri** namapujte prevodník výslovne:
+`devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Nikdy `/dev:/dev`, nikdy
+`privileged`.
+
+**Neoverené na skutočnej zbernici.** Protokol bol testovaný voči simulátoru, nie voči
+skutočným meračom — autor nemá drôtový M-Bus hardvér. Ak niečo nefunguje, založte
+issue; inak sa to nedá opraviť.
+
 ## 9. Jazyk rozhrania
 
 5 jazykov (en/pl/de/cs/sk). Výber: `?lang=sk` v URL → cookie `wmbus_lang` →

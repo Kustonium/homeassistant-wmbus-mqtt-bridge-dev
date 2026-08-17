@@ -2,6 +2,45 @@
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
+### Added
+- wired M-Bus: the add-on can now poll meters on a serial bus itself, as a third
+  wmbusmeters instance next to DECODE and LISTEN. Everything downstream is
+  unchanged — the same drivers, units, Discovery and calculated/constant fields —
+  because the entity layer never asked where a decoded telegram came from.
+
+  Two independent gates, both off by default: one shows the tab, the other starts
+  the engine. With them off the add-on behaves exactly as before, and a machine
+  with no bus sees no change at all.
+
+  What the tab does differently from a naive port picker, and why:
+  - it **never scans ports**. `detectMBUS` in the decoder only opens a device and
+    declares success, so scanning cannot confirm the right one — while on a typical
+    Home Assistant machine one of those ports is a Zigbee coordinator, and M-Bus
+    polling transmits. `donotprobe=all` is on by default;
+  - it stores the **serial number** of the chosen port, not just its path. A `/dev`
+    node is reused: after replugging boards, `ttyACM0` pointed at different hardware
+    within minutes while every health check still read "ok". If the identity no
+    longer matches, polling refuses to start;
+  - it prefers `by-id`, but **falls back to `by-path`** when two identical adapters
+    claim the same `by-id` link. That link then names one of them and there is no
+    way to tell which — measured with two CH340 cables;
+  - it warns about devices people genuinely mistake for a converter: an RTL-SDR, a
+    DVB-T tuner, a Zigbee coordinator, and the user's own ESP bridge, which appears
+    in the list right next to the real thing;
+  - `rssi_dbm` is stripped on this path. The decoder emits it as `0` on a wire,
+    which would create a "0 dBm signal strength" entity for a meter with no radio;
+  - one **bus probe** (broadcast `0xFE`) answers "is anything on this cable at all"
+    without scanning 250 addresses. With several meters the replies overlap and come
+    back damaged — that is what a broadcast does, and the UI says so rather than
+    reporting a healthy bus as broken.
+
+  The tab states plainly that it is **not verified on a real bus**: the protocol was
+  tested against an ESP8266 M-Bus slave simulator across silence, late replies,
+  foreign protocol, damaged frames, two meters on one address and a full port
+  loss/recovery cycle — but not against anyone's actual meters. Reporting an issue
+  is the only thing that changes that, and the tab asks for it.
+
+
 ## 1.5.48-dev.251
 
 ### Added

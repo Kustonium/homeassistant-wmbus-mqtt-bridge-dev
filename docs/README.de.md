@@ -453,6 +453,42 @@ Hex übergeben werden.
 
 ---
 
+### Drahtgebundener M-Bus (serieller Bus, standardmäßig aus)
+
+Wärme- und Wasserzähler laufen oft über Kabel statt Funk: ein M-Bus-Master-Konverter
+sitzt an einem Zweidrahtbus und meldet sich am Rechner als serielle Schnittstelle
+(USB, RS-232 oder RS-485). Das Add-on kann einen solchen Bus selbst abfragen.
+
+Alles Nachgelagerte bleibt wie beim Funk — dieselben Treiber, Einheiten, Discovery,
+berechnete und konstante Felder. Nur der Transport unterscheidet sich: Zähler werden
+abgefragt statt mitgehört und adressiert statt erkannt.
+
+**Zwei Schalter, beide standardmäßig aus.** `mbus_tab_visible` zeigt nur den Tab,
+`mbus_enabled` startet die Engine. Sind beide aus, ändert sich für Sie nichts.
+
+| Option | Bedeutung |
+|---|---|
+| `mbus_device` | serielle Schnittstelle; bevorzugt ein `/dev/serial/by-id/…`-Pfad |
+| `mbus_bus_alias` | Busname in der Zählerkonfiguration (`MAIN`) |
+| `mbus_baudrate` | 300–9600, meist 2400 |
+| `mbus_poll_interval` | Standardintervall für jeden Zähler ohne eigenes |
+| `mbus_donotprobe_all` | eingeschaltet lassen — siehe Warnung unten |
+| `mbus_meters[]` | `id`, `address` (`p1`..`p250` oder 8 Hex), `type`, `key`, `poll_interval` |
+
+**Das Add-on scannt bewusst niemals Ports.** Sondieren heißt Senden, und auf einem
+typischen Home-Assistant-Rechner ist eine der seriellen Schnittstellen ein
+Zigbee-Koordinator. Der Decoder kann einen korrekten Konverter ohnehin nicht
+bestätigen — er öffnet das Gerät und meldet Erfolg — deshalb wählen Sie den Port.
+
+**Unter Docker** binden Sie den Konverter explizit ein:
+`devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Niemals `/dev:/dev`, niemals
+`privileged`.
+
+**Nicht an einem echten Bus verifiziert.** Das Protokoll wurde gegen einen Simulator
+getestet, nicht gegen echte Zähler — der Autor besitzt keine drahtgebundene
+M-Bus-Hardware. Funktioniert etwas nicht, melden Sie ein Issue; nur so lässt es sich
+beheben.
+
 ## 9. Sprache der Oberfläche
 
 5 Sprachen (en/pl/de/cs/sk). Auswahl: `?lang=de` in der URL → Cookie `wmbus_lang`

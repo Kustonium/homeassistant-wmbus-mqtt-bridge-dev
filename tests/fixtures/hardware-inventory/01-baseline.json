@@ -1,0 +1,297 @@
+{
+  "_fixture": "01-baseline",
+  "_description": "SkyConnect (zajety przez integracje) + CH340 bez numeru seryjnego + 4x ttyS",
+  "_source": "GET /hardware/info (Supervisor) z zywej instancji HAOS, 2026-08-16",
+  "_anonymised": "numery seryjne i MAC-i podmienione; struktura unikalnosci i KOLIZJI zachowana",
+  "devices": [
+    {
+      "dev_path": "/dev/bus/usb/001/001",
+      "subsystem": "usb",
+      "by_id": null,
+      "attributes": {
+        "DEVTYPE": "usb_device",
+        "ID_BUS": "usb",
+        "ID_MODEL": "xHCI_Host_Controller",
+        "ID_MODEL_ID": "0002",
+        "ID_PATH": "pci-SERIAL000",
+        "ID_SERIAL_SHORT": "SERIAL000",
+        "ID_USB_INTERFACES": ":090000:",
+        "ID_VENDOR": "Linux_6.18.39-haos_xhci-hcd",
+        "ID_VENDOR_ID": "1d6b"
+      }
+    },
+    {
+      "dev_path": "/dev/bus/usb/001/002",
+      "subsystem": "usb",
+      "by_id": null,
+      "attributes": {
+        "DEVTYPE": "usb_device",
+        "ID_BUS": "usb",
+        "ID_MODEL": "Bluetooth_Radio",
+        "ID_MODEL_ID": "8771",
+        "ID_PATH": "pci-SERIAL000-usb-0:1",
+        "ID_SERIAL_SHORT": "SERIAL001",
+        "ID_USB_INTERFACES": ":e00101:",
+        "ID_VENDOR": "Realtek",
+        "ID_VENDOR_ID": "0bda"
+      }
+    },
+    {
+      "dev_path": "/dev/bus/usb/001/003",
+      "subsystem": "usb",
+      "by_id": null,
+      "attributes": {
+        "DEVTYPE": "usb_device",
+        "ID_BUS": "usb",
+        "ID_MODEL": "SkyConnect_v1.0",
+        "ID_MODEL_ID": "ea60",
+        "ID_PATH": "pci-SERIAL000-usb-0:3",
+        "ID_SERIAL_SHORT": "SERIAL002",
+        "ID_USB_INTERFACES": ":ff0000:",
+        "ID_VENDOR": "Nabu_Casa",
+        "ID_VENDOR_ID": "10c4"
+      }
+    },
+    {
+      "dev_path": "/dev/ttyUSB0",
+      "subsystem": "tty",
+      "by_id": "/dev/serial/by-id/usb-Nabu_Casa_SkyConnect_v1.0_SERIAL002-if00-port0",
+      "attributes": {
+        "DEVLINKS": "/dev/serial/by-id/usb-Nabu_Casa_SkyConnect_v1.0_SERIAL002-if00-port0 /dev/serial/by-path/pci-SERIAL000-usb-0:3:1.0-port0 /dev/serial/by-path/pci-SERIAL000-usbv2-0:3:1.0-port0",
+        "ID_BUS": "usb",
+        "ID_MODEL": "SkyConnect_v1.0",
+        "ID_MODEL_ID": "ea60",
+        "ID_PATH": "pci-SERIAL000-usb-0:3:1.0",
+        "ID_SERIAL_SHORT": "SERIAL002",
+        "ID_USB_INTERFACES": ":ff0000:",
+        "ID_VENDOR": "Nabu_Casa",
+        "ID_VENDOR_ID": "10c4"
+      }
+    },
+    {
+      "dev_path": "/dev/bus/usb/001/004",
+      "subsystem": "usb",
+      "by_id": null,
+      "attributes": {
+        "DEVTYPE": "usb_device",
+        "ID_BUS": "usb",
+        "ID_MODEL": "Bluetooth_Radio",
+        "ID_MODEL_ID": "b85b",
+        "ID_PATH": "pci-SERIAL000-usb-0:5",
+        "ID_SERIAL_SHORT": "SERIAL003",
+        "ID_USB_INTERFACES": ":e00101:",
+        "ID_VENDOR": "Realtek",
+        "ID_VENDOR_ID": "0bda"
+      }
+    },
+    {
+      "dev_path": "/dev/bus/usb/001/005",
+      "subsystem": "usb",
+      "by_id": null,
+      "attributes": {
+        "DEVTYPE": "usb_device",
+        "ID_BUS": "usb",
+        "ID_MODEL": "USB_Audio_and_HID",
+        "ID_MODEL_ID": "1573",
+        "ID_PATH": "pci-SERIAL000-usb-0:6",
+        "ID_SERIAL_SHORT": "SERIAL004",
+        "ID_USB_INTERFACES": ":010100:010200:030000:",
+        "ID_VENDOR": "CSCTEK",
+        "ID_VENDOR_ID": "0573"
+      }
+    },
+    {
+      "dev_path": "/dev/bus/usb/001/006",
+      "subsystem": "usb",
+      "by_id": null,
+      "attributes": {
+        "DEVTYPE": "usb_device",
+        "ID_BUS": "usb",
+        "ID_MODEL": "USB_Serial",
+        "ID_MODEL_ID": "7523",
+        "ID_PATH": "pci-SERIAL000-usb-0:7",
+        "ID_USB_INTERFACES": ":ff0102:",
+        "ID_VENDOR": "1a86",
+        "ID_VENDOR_ID": "1a86"
+      }
+    },
+    {
+      "dev_path": "/dev/ttyUSB1",
+      "subsystem": "tty",
+      "by_id": "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0",
+      "attributes": {
+        "DEVLINKS": "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0 /dev/serial/by-path/pci-SERIAL000-usb-0:7:1.0-port0 /dev/serial/by-path/pci-SERIAL000-usbv2-0:7:1.0-port0",
+        "ID_BUS": "usb",
+        "ID_MODEL": "USB_Serial",
+        "ID_MODEL_ID": "7523",
+        "ID_PATH": "pci-SERIAL000-usb-0:7:1.0",
+        "ID_USB_INTERFACES": ":ff0102:",
+        "ID_VENDOR": "1a86",
+        "ID_VENDOR_ID": "1a86"
+      }
+    },
+    {
+      "dev_path": "/dev/bus/usb/001/007",
+      "subsystem": "usb",
+      "by_id": null,
+      "attributes": {
+        "DEVTYPE": "usb_device",
+        "ID_BUS": "usb",
+        "ID_MODEL": "fd01",
+        "ID_MODEL_ID": "fd01",
+        "ID_PATH": "pci-SERIAL000-usb-0:8",
+        "ID_USB_INTERFACES": ":030100:030000:",
+        "ID_VENDOR": "04d9",
+        "ID_VENDOR_ID": "04d9"
+      }
+    },
+    {
+      "dev_path": "/dev/bus/usb/002/001",
+      "subsystem": "usb",
+      "by_id": null,
+      "attributes": {
+        "DEVTYPE": "usb_device",
+        "ID_BUS": "usb",
+        "ID_MODEL": "xHCI_Host_Controller",
+        "ID_MODEL_ID": "0003",
+        "ID_PATH": "pci-SERIAL000",
+        "ID_SERIAL_SHORT": "SERIAL000",
+        "ID_USB_INTERFACES": ":090000:",
+        "ID_VENDOR": "Linux_6.18.39-haos_xhci-hcd",
+        "ID_VENDOR_ID": "1d6b"
+      }
+    },
+    {
+      "dev_path": "/dev/nvme0n1",
+      "subsystem": "block",
+      "by_id": "/dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005",
+      "attributes": {
+        "DEVLINKS": "/dev/disk/by-diskseq/12 /dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005 /dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005_1 /dev/disk/by-id/nvme-nvme.1cc1-324a31343230303232303830-414441544120535838323030504e50-00000001 /dev/disk/by-path/pci-0000:01:00.0-nvme-1",
+        "DEVTYPE": "disk",
+        "ID_MODEL": "ADATA SX8200PNP",
+        "ID_PATH": "pci-0000:01:00.0-nvme-1",
+        "ID_SERIAL_SHORT": "SERIAL005"
+      }
+    },
+    {
+      "dev_path": "/dev/nvme0n1p1",
+      "subsystem": "block",
+      "by_id": "/dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005-part1",
+      "attributes": {
+        "DEVLINKS": "/dev/disk/by-diskseq/12-part1 /dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005-part1 /dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005_1-part1 /dev/disk/by-id/nvme-nvme.1cc1-324a31343230303232303830-414441544120535838323030504e50-00000001-part1 /dev/disk/by-label/hassos-boot /dev/disk/by-partlabel/hassos-boot /dev/disk/by-partuuid/b3dd0952-733c-4c88-8cba-cab9b8b4377f /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-label/hassos-boot /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partlabel/hassos-boot /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partnum/1 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partuuid/b3dd0952-733c-4c88-8cba-cab9b8b4377f /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-uuid/75DA-27C2 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part1 /dev/disk/by-uuid/75DA-27C2",
+        "DEVTYPE": "partition",
+        "ID_MODEL": "ADATA SX8200PNP",
+        "ID_PATH": "pci-0000:01:00.0-nvme-1",
+        "ID_SERIAL_SHORT": "SERIAL005"
+      }
+    },
+    {
+      "dev_path": "/dev/nvme0n1p2",
+      "subsystem": "block",
+      "by_id": "/dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005-part2",
+      "attributes": {
+        "DEVLINKS": "/dev/disk/by-diskseq/12-part2 /dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005-part2 /dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005_1-part2 /dev/disk/by-id/nvme-nvme.1cc1-324a31343230303232303830-414441544120535838323030504e50-00000001-part2 /dev/disk/by-partlabel/hassos-kernel0 /dev/disk/by-partuuid/26700fc6-b0bc-4ccf-9837-ea1a4cba3e65 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partlabel/hassos-kernel0 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partnum/2 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partuuid/26700fc6-b0bc-4ccf-9837-ea1a4cba3e65 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part2",
+        "DEVTYPE": "partition",
+        "ID_MODEL": "ADATA SX8200PNP",
+        "ID_PATH": "pci-0000:01:00.0-nvme-1",
+        "ID_SERIAL_SHORT": "SERIAL005"
+      }
+    },
+    {
+      "dev_path": "/dev/nvme0n1p3",
+      "subsystem": "block",
+      "by_id": "/dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005-part3",
+      "attributes": {
+        "DEVLINKS": "/dev/disk/by-diskseq/12-part3 /dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005-part3 /dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005_1-part3 /dev/disk/by-id/nvme-nvme.1cc1-324a31343230303232303830-414441544120535838323030504e50-00000001-part3 /dev/disk/by-partlabel/hassos-system0 /dev/disk/by-partuuid/8d3d53e3-6d49-4c38-8349-aff6859e82fd /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partlabel/hassos-system0 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partnum/3 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partuuid/8d3d53e3-6d49-4c38-8349-aff6859e82fd /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-uuid/317e054f-f08a-4ad7-b084-b49dab7430b0 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part3 /dev/disk/by-uuid/317e054f-f08a-4ad7-b084-b49dab7430b0",
+        "DEVTYPE": "partition",
+        "ID_MODEL": "ADATA SX8200PNP",
+        "ID_PATH": "pci-0000:01:00.0-nvme-1",
+        "ID_SERIAL_SHORT": "SERIAL005"
+      }
+    },
+    {
+      "dev_path": "/dev/nvme0n1p4",
+      "subsystem": "block",
+      "by_id": "/dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005-part4",
+      "attributes": {
+        "DEVLINKS": "/dev/disk/by-diskseq/12-part4 /dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005-part4 /dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005_1-part4 /dev/disk/by-id/nvme-nvme.1cc1-324a31343230303232303830-414441544120535838323030504e50-00000001-part4 /dev/disk/by-partlabel/hassos-kernel1 /dev/disk/by-partuuid/fc02a4f0-5350-406f-93a2-56cbed636b5f /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partlabel/hassos-kernel1 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partnum/4 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partuuid/fc02a4f0-5350-406f-93a2-56cbed636b5f /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part4",
+        "DEVTYPE": "partition",
+        "ID_MODEL": "ADATA SX8200PNP",
+        "ID_PATH": "pci-0000:01:00.0-nvme-1",
+        "ID_SERIAL_SHORT": "SERIAL005"
+      }
+    },
+    {
+      "dev_path": "/dev/nvme0n1p5",
+      "subsystem": "block",
+      "by_id": "/dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005-part5",
+      "attributes": {
+        "DEVLINKS": "/dev/disk/by-diskseq/12-part5 /dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005-part5 /dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005_1-part5 /dev/disk/by-id/nvme-nvme.1cc1-324a31343230303232303830-414441544120535838323030504e50-00000001-part5 /dev/disk/by-partlabel/hassos-system1 /dev/disk/by-partuuid/a3ec664e-32ce-4665-95ea-7ae90ce9aa20 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partlabel/hassos-system1 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partnum/5 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partuuid/a3ec664e-32ce-4665-95ea-7ae90ce9aa20 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-uuid/893f2cd4-5098-452a-b201-760befcb0992 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part5 /dev/disk/by-uuid/893f2cd4-5098-452a-b201-760befcb0992",
+        "DEVTYPE": "partition",
+        "ID_MODEL": "ADATA SX8200PNP",
+        "ID_PATH": "pci-0000:01:00.0-nvme-1",
+        "ID_SERIAL_SHORT": "SERIAL005"
+      }
+    },
+    {
+      "dev_path": "/dev/nvme0n1p6",
+      "subsystem": "block",
+      "by_id": "/dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005-part6",
+      "attributes": {
+        "DEVLINKS": "/dev/disk/by-diskseq/12-part6 /dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005-part6 /dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005_1-part6 /dev/disk/by-id/nvme-nvme.1cc1-324a31343230303232303830-414441544120535838323030504e50-00000001-part6 /dev/disk/by-partlabel/hassos-bootstate /dev/disk/by-partuuid/33236519-7f32-4dff-8002-3390b62c309d /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partlabel/hassos-bootstate /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partnum/6 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partuuid/33236519-7f32-4dff-8002-3390b62c309d /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part6",
+        "DEVTYPE": "partition",
+        "ID_MODEL": "ADATA SX8200PNP",
+        "ID_PATH": "pci-0000:01:00.0-nvme-1",
+        "ID_SERIAL_SHORT": "SERIAL005"
+      }
+    },
+    {
+      "dev_path": "/dev/nvme0n1p7",
+      "subsystem": "block",
+      "by_id": "/dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005-part7",
+      "attributes": {
+        "DEVLINKS": "/dev/disk/by-diskseq/12-part7 /dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005-part7 /dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005_1-part7 /dev/disk/by-id/nvme-nvme.1cc1-324a31343230303232303830-414441544120535838323030504e50-00000001-part7 /dev/disk/by-label/hassos-overlay /dev/disk/by-partlabel/hassos-overlay /dev/disk/by-partuuid/f1326040-5236-40eb-b683-aaa100a9afcf /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-label/hassos-overlay /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partlabel/hassos-overlay /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partnum/7 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partuuid/f1326040-5236-40eb-b683-aaa100a9afcf /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-uuid/f20712e6-e70b-4e4d-8d6f-062f78b165d9 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part7 /dev/disk/by-uuid/f20712e6-e70b-4e4d-8d6f-062f78b165d9",
+        "DEVTYPE": "partition",
+        "ID_MODEL": "ADATA SX8200PNP",
+        "ID_PATH": "pci-0000:01:00.0-nvme-1",
+        "ID_SERIAL_SHORT": "SERIAL005"
+      }
+    },
+    {
+      "dev_path": "/dev/nvme0n1p8",
+      "subsystem": "block",
+      "by_id": "/dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005-part8",
+      "attributes": {
+        "DEVLINKS": "/dev/disk/by-diskseq/12-part8 /dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005-part8 /dev/disk/by-id/nvme-ADATA_SX8200PNP_SERIAL005_1-part8 /dev/disk/by-id/nvme-nvme.1cc1-324a31343230303232303830-414441544120535838323030504e50-00000001-part8 /dev/disk/by-label/hassos-data /dev/disk/by-partlabel/hassos-data /dev/disk/by-partuuid/a52a4597-fa3a-4851-aefd-2fbe9f849079 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-label/hassos-data /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partlabel/hassos-data /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partnum/8 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-partuuid/a52a4597-fa3a-4851-aefd-2fbe9f849079 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part/by-uuid/5cb2cdc3-da4d-463a-97a2-d5fa9789cca5 /dev/disk/by-path/pci-0000:01:00.0-nvme-1-part8 /dev/disk/by-uuid/5cb2cdc3-da4d-463a-97a2-d5fa9789cca5",
+        "DEVTYPE": "partition",
+        "ID_MODEL": "ADATA SX8200PNP",
+        "ID_PATH": "pci-0000:01:00.0-nvme-1",
+        "ID_SERIAL_SHORT": "SERIAL005"
+      }
+    },
+    {
+      "dev_path": "/dev/ttyS0",
+      "subsystem": "tty",
+      "by_id": null,
+      "attributes": {}
+    },
+    {
+      "dev_path": "/dev/ttyS1",
+      "subsystem": "tty",
+      "by_id": null,
+      "attributes": {}
+    },
+    {
+      "dev_path": "/dev/ttyS2",
+      "subsystem": "tty",
+      "by_id": null,
+      "attributes": {}
+    },
+    {
+      "dev_path": "/dev/ttyS3",
+      "subsystem": "tty",
+      "by_id": null,
+      "attributes": {}
+    }
+  ]
+}

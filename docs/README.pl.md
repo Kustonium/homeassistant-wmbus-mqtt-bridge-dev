@@ -441,6 +441,42 @@ HEX.
 
 ---
 
+### M-Bus przewodowy (magistrala szeregowa, domyślnie wyłączony)
+
+Liczniki ciepła i wody często idą kablem, nie radiem: konwerter M-Bus master siedzi
+na dwużyłowej magistrali i pokazuje się w systemie jako port szeregowy (USB, RS-232
+albo RS-485). Dodatek potrafi taką magistralę odpytywać sam.
+
+Wszystko dalej jest takie samo jak przy radiu — te same drivery, jednostki,
+Discovery, pola liczone i stałe. Różni się tylko transport: liczniki się odpytuje
+zamiast nasłuchiwać, i adresuje zamiast wykrywać.
+
+**Dwa przełączniki, oba domyślnie wyłączone.** `mbus_tab_visible` tylko pokazuje
+zakładkę, `mbus_enabled` uruchamia silnik. Przy obu wyłączonych nic się dla Ciebie
+nie zmienia.
+
+| Opcja | Znaczenie |
+|---|---|
+| `mbus_device` | port szeregowy; najlepiej ścieżka `/dev/serial/by-id/…` |
+| `mbus_bus_alias` | nazwa magistrali w konfiguracji liczników (`MAIN`) |
+| `mbus_baudrate` | 300–9600, zwykle 2400 |
+| `mbus_poll_interval` | domyślny interwał wpisywany każdemu licznikowi bez własnego |
+| `mbus_donotprobe_all` | zostaw włączone — patrz ostrzeżenie niżej |
+| `mbus_meters[]` | `id`, `address` (`p1`..`p250` albo 8 hex), `type`, `key`, `poll_interval` |
+
+**Dodatek nigdy nie skanuje portów, i to jest świadome.** Sondowanie oznacza
+nadawanie, a na typowej maszynie z Home Assistant jeden z portów szeregowych to
+koordynator Zigbee. Dekoder i tak nie potwierdzi właściwego konwertera — otwiera
+urządzenie i melduje sukces — więc port zawsze wskazujesz Ty.
+
+**W Dockerze** zmapuj konwerter jawnie:
+`devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Nigdy `/dev:/dev`, nigdy
+`privileged`.
+
+**Niesprawdzone na prawdziwej magistrali.** Protokół był testowany na symulatorze,
+nie na prawdziwych licznikach — autor nie ma sprzętu M-Bus po kablu. Jeśli coś nie
+działa, zgłoś issue; to jedyna droga, żeby to naprawić.
+
 ## 9. Język interfejsu
 
 5 języków (en/pl/de/cs/sk). Wybór: `?lang=pl` w URL → cookie `wmbus_lang` →

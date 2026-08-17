@@ -298,10 +298,42 @@ depends on a Docker restart policy; without one it acts as a stop.
 | `11-listen.sh` | parallel pure-LISTEN process |
 | `12-pipeline.sh` | MQTT publication and pipeline helpers |
 | `13-esp.sh` | ESP, broker, and Home Assistant background subscribers |
+| `14-mbus.sh` | wired M-Bus: third wmbusmeters instance polling a serial bus |
 
 The main script also owns a heartbeat ticker and the restart loop around the
 DECODE pipeline. Background subscribers and LISTEN are long-lived workers, not
 children that should be replaced on every meter change.
+
+### 5.4 Wired M-Bus: a third instance, not a second transport
+
+DECODE and LISTEN are both fed through `stdin:hex` — frames arrive over MQTT and
+the bridge pipes them in. The wired M-Bus instance is structurally different: it
+opens a serial port and *polls*, so it drives itself and owns its own lifecycle.
+
+It reuses the entity layer unchanged. Decoded JSON goes to the same
+`emit_discovery_from_json()` as a radio telegram, because that consumer never asks
+where a line came from. The meter id in the JSON is built by the decoder from the
+address inside the frame, not from the polling address, so it passes the same
+`^[0-9A-Fa-f]{8}$` gate and produces entities the normal way.
+
+Three consequences of the transport that are not visible from the radio path:
+
+- **`pollinterval` belongs in each meter file, never in `wmbusmeters.conf`.** The
+  global parser does not know the key and answers `No such key: pollinterval`
+  without failing, and `--pollinterval` cannot be combined with `--useconfig`. A
+  meter file without it is never polled, and a meter that is never polled is
+  indistinguishable from a dead one.
+- **The supervisor must not restart on a missing port.** The decoder reports
+  `SpecifiedDeviceNotFound`, waits, and reconnects by itself; restarting would only
+  discard that wait. The loop here restarts on process exit only.
+- **`rssi_dbm` is stripped on this path.** The decoder emits it as `0` on a wire,
+  which would otherwise become a "0 dBm signal strength" entity for a meter that
+  has no radio at all. `device` is kept — on a bus it carries the port alias and is
+  meaningful.
+
+The instance is behind two independent options, both off by default: one controls
+whether the tab is shown, the other whether the engine runs. Disabled, it does not
+start and the radio path is untouched.
 
 ## 6. Configuration and lifecycle
 

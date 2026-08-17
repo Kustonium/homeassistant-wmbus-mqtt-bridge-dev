@@ -12,12 +12,16 @@ Interactive Home Assistant add-on dashboard:
 from __future__ import annotations
 
 import fnmatch
+import glob
 import html
 import json
 import mimetypes
 import os
 import re
+import select
 import subprocess
+import termios
+import time
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -1536,6 +1540,404 @@ def save_config_options(values: dict) -> tuple[bool, str]:
     return True, msg
 
 
+# ============================================================
+# Wired M-Bus: serial port discovery, identity, bus probe
+# ============================================================
+# Everything here was shaped by measurements on real hardware, and two
+# comfortable assumptions died in the process:
+#
+#   1. "by-id is always safer than the raw path" — false. Two identical CH340
+#      cables produce the SAME /dev/serial/by-id link; udev lists it for both
+#      devices and only one symlink can exist, so the path is ambiguous rather
+#      than stable. /dev/serial/by-path distinguishes them because it encodes
+#      the physical USB socket.
+#   2. "the USB interface class tells a port from a non-port" — false. A CP2102N
+#      (SkyConnect), a PL2303 and a DVB-T tuner all report :ff0000: and only the
+#      first two have a tty. The only reliable criterion is the existence of a
+#      tty node, which is what the listing below is based on.
+#
+# Supervisor bind-mounts the host's whole /dev into every add-on unconditionally,
+# so ports are visible even without `uart: true`. Visibility proves nothing;
+# only opening the port the user picked does.
+
+SERIAL_BY_ID = Path('/dev/serial/by-id')
+SERIAL_BY_PATH = Path('/dev/serial/by-path')
+SERIAL_GLOBS = ('/dev/ttyUSB*', '/dev/ttyACM*', '/dev/ttyAMA*', '/dev/ttyS*')
+
+# Devices people genuinely mistake for an M-Bus converter. Matching is on
+# VID:PID where the device has its own USB controller, and on the product
+# string where it does not — a CP210x or CH340 VID:PID identifies the bridge
+# chip, not the device behind it.
+_KNOWN_NON_MBUS = {
+    '0bda:2838': 'rtl_sdr', '0bda:2832': 'rtl_sdr',
+    '0bda:2834': 'rtl_sdr', '0bda:2839': 'rtl_sdr',
+    '048d:9135': 'dvbt_tuner',
+    '303a:1001': 'esp_native_usb',
+}
+_KNOWN_NON_MBUS_PRODUCT = (
+    ('espressif_usb_jtag', 'esp_native_usb'),
+    ('skyconnect', 'zigbee_coordinator'),
+    ('conbee', 'zigbee_coordinator'),
+    ('sonoff_zigbee', 'zigbee_coordinator'),
+    ('im871a', 'wmbus_radio'), ('amb8465', 'wmbus_radio'),
+    ('iu891a', 'wmbus_radio'), ('rc1180', 'wmbus_radio'),
+)
+
+
+def _sysfs_usb_ids(node: str) -> tuple[str, str]:
+    """Walk up from /sys/class/tty/<node> until idVendor/idProduct appear."""
+    base = Path('/sys/class/tty') / node / 'device'
+    try:
+        cur = base.resolve()
+    except OSError:
+        return '', ''
+    for _ in range(6):
+        vid = cur / 'idVendor'
+        pid = cur / 'idProduct'
+        if vid.is_file() and pid.is_file():
+            try:
+                return vid.read_text().strip(), pid.read_text().strip()
+            except OSError:
+                return '', ''
+        if cur.parent == cur:
+            break
+        cur = cur.parent
+    return '', ''
+
+
+def _links_for(real: str, directory: Path) -> list[str]:
+    if not directory.is_dir():
+        return []
+    out = []
+    try:
+        for link in sorted(directory.iterdir()):
+            try:
+                if os.path.realpath(link) == real:
+                    out.append(str(link))
+            except OSError:
+                continue
+    except OSError:
+        return []
+    return out
+
+
+def _classify_device(by_id: str, vid: str, pid: str) -> str:
+    if vid and pid:
+        hit = _KNOWN_NON_MBUS.get(f'{vid.lower()}:{pid.lower()}')
+        if hit:
+            return hit
+    low = (by_id or '').lower()
+    for needle, kind in _KNOWN_NON_MBUS_PRODUCT:
+        if needle in low:
+            return kind
+    return ''
+
+
+def list_serial_devices() -> list[dict]:
+    """Enumerate serial ports. Never opens anything.
+
+    Probing is not an option: detectMBUS in wmbusmeters only opens the device
+    and declares success, and on a typical HA box /dev/ttyUSB0 is a Zigbee
+    coordinator — talking M-Bus into it breaks somebody's network.
+    """
+    devices: list[dict] = []
+    for pattern in SERIAL_GLOBS:
+        for path in sorted(glob.glob(pattern)):
+            try:
+                real = os.path.realpath(path)
+            except OSError:
+                continue
+            node = real.rsplit('/', 1)[-1]
+            by_id_links = _links_for(real, SERIAL_BY_ID)
+            by_path_links = _links_for(real, SERIAL_BY_PATH)
+            vid, pid = _sysfs_usb_ids(node)
+            by_id = by_id_links[0] if by_id_links else ''
+            devices.append({
+                'dev_path': path,
+                'by_id': by_id,
+                'by_path': by_path_links[0] if by_path_links else '',
+                'vid_pid': f'{vid}:{pid}' if vid and pid else '',
+                'serial': _tty_serial(node),
+                'warning': _classify_device(by_id, vid, pid),
+                # Motherboard serial ports have no USB identity and no by-id.
+                # They are legitimate M-Bus candidates (an RS-232 converter
+                # plugs straight into one), so they are listed — but the picker
+                # should rank them below USB devices instead of hiding them.
+                'kind': 'usb' if (vid and pid) else 'onboard',
+            })
+
+    # A by-id string claimed by more than one device is worse than no by-id:
+    # it looks like a stable identifier and is not.
+    counts: dict[str, int] = {}
+    for dev in devices:
+        if dev['by_id']:
+            counts[dev['by_id']] = counts.get(dev['by_id'], 0) + 1
+    for dev in devices:
+        dev['by_id_ambiguous'] = bool(dev['by_id']) and counts[dev['by_id']] > 1
+        dev['path'], dev['path_reason'] = _stable_path_for(dev)
+    return devices
+
+
+def _stable_path_for(dev: dict) -> tuple[str, str]:
+    if dev['by_id'] and not dev['by_id_ambiguous']:
+        return dev['by_id'], 'by_id_unique'
+    if dev['by_path']:
+        return dev['by_path'], 'by_id_ambiguous' if dev['by_id'] else 'no_serial'
+    return dev['dev_path'], 'unstable_only'
+
+
+def _tty_serial(node: str) -> str:
+    base = Path('/sys/class/tty') / node / 'device'
+    try:
+        cur = base.resolve()
+    except OSError:
+        return ''
+    for _ in range(6):
+        candidate = cur / 'serial'
+        if candidate.is_file():
+            try:
+                return candidate.read_text().strip()
+            except OSError:
+                return ''
+        if cur.parent == cur:
+            break
+        cur = cur.parent
+    return ''
+
+
+def mbus_access_state(configured: str | None) -> dict:
+    """Visibility is not access — see the section header."""
+    state_out = {
+        'any_port_listed': bool(list_serial_devices()),
+        'by_id_available': SERIAL_BY_ID.is_dir(),
+        'mode': 'addon' if os.environ.get('SUPERVISOR_TOKEN') else 'docker',
+        'openable': None,
+    }
+    if not configured:
+        return state_out
+    if not os.path.exists(configured):
+        state_out['openable'] = 'device_missing'
+        return state_out
+    try:
+        fd = os.open(configured, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+        os.close(fd)
+        state_out['openable'] = 'ok'
+    except PermissionError:
+        state_out['openable'] = 'denied'
+    except OSError:
+        state_out['openable'] = 'busy_or_error'
+    return state_out
+
+
+def mbus_probe_bus(device: str, baudrate: int = 2400, wait_s: float = 2.0) -> tuple[str, str]:
+    """Send SND_NKE to the test broadcast 0xFE and report whether anything answers.
+
+    0xFE is the broadcast every meter replies to (0xFF, used by the decoder's
+    own deviceReset, expects no reply at all). One request replaces scanning
+    250 addresses, which at multi-second poll intervals takes hours.
+
+    With more than one meter the replies overlap electrically and come back
+    damaged — that is NOT a fault, it is what 0xFE does, and the UI has to say
+    so or a healthy bus reads as broken.
+
+    Returns (state, hex_of_reply). SND_NKE is used rather than REQ_UD2 because
+    the answer is a single byte instead of 62 — less traffic on somebody's bus.
+    """
+    if not device or not os.path.exists(device):
+        return 'device_missing', ''
+    frame = bytes([0x10, 0x40, 0xFE, 0x3E, 0x16])  # CS = (0x40 + 0xFE) & 0xFF
+    try:
+        fd = os.open(device, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+    except PermissionError:
+        return 'denied', ''
+    except OSError:
+        return 'busy_or_error', ''
+    try:
+        _set_serial_8e1(fd, baudrate)
+        try:
+            while os.read(fd, 4096):
+                pass
+        except OSError:
+            pass
+        os.write(fd, frame)
+        deadline = time.monotonic() + wait_s
+        received = b''
+        while time.monotonic() < deadline:
+            ready, _, _ = select.select([fd], [], [], 0.2)
+            if ready:
+                try:
+                    chunk = os.read(fd, 4096)
+                except OSError:
+                    break
+                if chunk:
+                    received += chunk
+        if not received:
+            return 'bus_silent', ''
+        if received[:1] == b'\xE5' or received[:1] == b'\x68' or received[:1] == b'\x10':
+            return 'bus_alive_clean', received.hex()
+        return 'bus_alive_garbled', received.hex()
+    finally:
+        os.close(fd)
+
+
+def _set_serial_8e1(fd: int, baudrate: int) -> None:
+    """2400 8E1 — even parity is what the decoder forces for the mbus device
+    type (createSerialDeviceTTY(..., PARITY::EVEN, "mbus"))."""
+    speeds = {300: termios.B300, 600: termios.B600, 1200: termios.B1200,
+              2400: termios.B2400, 4800: termios.B4800, 9600: termios.B9600}
+    speed = speeds.get(int(baudrate), termios.B2400)
+    attrs = termios.tcgetattr(fd)
+    iflag, oflag, cflag, lflag, ispeed, ospeed, cc = attrs
+    cflag = (cflag & ~termios.CSIZE) | termios.CS8
+    cflag |= termios.PARENB
+    cflag &= ~termios.PARODD
+    cflag &= ~termios.CSTOPB
+    cflag &= ~termios.CRTSCTS
+    cflag |= (termios.CLOCAL | termios.CREAD)
+    # HUPCL off: on boards with an auto-reset circuit, dropping DTR on close
+    # reboots the device and its ROM loader then spits bytes at 74880 baud into
+    # what we are about to read as 2400.
+    cflag &= ~termios.HUPCL
+    iflag = 0
+    oflag = 0
+    lflag = 0
+    cc = list(cc)
+    cc[termios.VMIN] = 0
+    cc[termios.VTIME] = 0
+    termios.tcsetattr(fd, termios.TCSANOW,
+                      [iflag, oflag, cflag, lflag, speed, speed, cc])
+    termios.tcflush(fd, termios.TCIOFLUSH)
+
+
+def mbus_panel_payload() -> dict:
+    """Everything the M-Bus tab needs in one call."""
+    opts = read_options()
+    opts = opts if isinstance(opts, dict) else {}
+    configured = str(opts.get('mbus_device') or '')
+    return {
+        'tab_visible': bool(opts.get('mbus_tab_visible')),
+        'enabled': bool(opts.get('mbus_enabled')),
+        'device': configured,
+        'device_serial': str(opts.get('mbus_device_serial') or ''),
+        'bus_alias': str(opts.get('mbus_bus_alias') or 'MAIN'),
+        'baudrate': str(opts.get('mbus_baudrate') or '2400'),
+        'poll_interval': str(opts.get('mbus_poll_interval') or '15m'),
+        'donotprobe_all': bool(opts.get('mbus_donotprobe_all', True)),
+        'loglevel': str(opts.get('mbus_loglevel') or 'normal'),
+        'logtelegrams': bool(opts.get('mbus_logtelegrams')),
+        'ignoreduplicates': bool(opts.get('mbus_ignoreduplicates')),
+        'meters': opts.get('mbus_meters') or [],
+        'devices': list_serial_devices(),
+        'access': mbus_access_state(configured or None),
+    }
+
+
+def save_options_patch(patch: dict) -> tuple[bool, str]:
+    """Merge `patch` into options.json — Supervisor first, file as fallback.
+
+    Same order as every other write in this file: Supervisor is the owner of
+    options.json under HA, and writing the file alone would be silently
+    overwritten on the next Supervisor save.
+    """
+    options = read_options()
+    options = options if isinstance(options, dict) else {}
+    options.update(patch)
+
+    token = os.environ.get("SUPERVISOR_TOKEN", "")
+    if token:
+        try:
+            payload = json.dumps({"options": options}, ensure_ascii=False).encode("utf-8")
+            req = urllib.request.Request(
+                "http://supervisor/addons/self/options",
+                data=payload,
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status in (200, 201):
+                    write_json_atomic(OPTIONS_JSON, options)
+                    return True, "Saved. Restart the add-on to apply."
+                body = resp.read().decode("utf-8", errors="replace")
+                return False, f"Supervisor API HTTP {resp.status}: {body[:200]}"
+        except Exception as exc:
+            webui_add_event("error", f"Supervisor API M-Bus save failed: {exc}")
+            return False, f"Supervisor API failed: {exc}"
+
+    write_json_atomic(OPTIONS_JSON, options)
+    return True, "Saved (file only — no SUPERVISOR_TOKEN). Restart to apply."
+
+
+def mbus_save_device(device: str, alias: str, baudrate: str, poll_interval: str,
+                     donotprobe: bool, enabled: bool | None = None) -> tuple[bool, str]:
+    """Store the picked port together with its serial number.
+
+    Pinning the serial is what stops the add-on from politely polling whatever
+    ends up on that /dev node next — measured: ttyACM0 pointed at a different
+    board minutes after a replug, and every health check still read "ok".
+    """
+    if device and not os.path.exists(device):
+        return False, f"{device}: no such device."
+    if alias and not re.fullmatch(r'[A-Za-z0-9_]+', alias):
+        return False, "Bus alias must be [A-Za-z0-9_]."
+    if baudrate not in ('300', '600', '1200', '2400', '4800', '9600'):
+        return False, f"Unsupported baud rate '{baudrate}'."
+    if not re.fullmatch(r'\d+[smh]', poll_interval or ''):
+        return False, "Poll interval must look like 15m, 30s or 1h."
+
+    serial = ''
+    if device:
+        node = os.path.realpath(device).rsplit('/', 1)[-1]
+        serial = _tty_serial(node)
+    patch = {
+        'mbus_device': device,
+        'mbus_device_serial': serial,   # empty for CH340/PL2303 — no serial exists
+        'mbus_bus_alias': alias or 'MAIN',
+        'mbus_baudrate': baudrate,
+        'mbus_poll_interval': poll_interval,
+        'mbus_donotprobe_all': bool(donotprobe),
+    }
+    if enabled is not None:
+        # Refuse to arm the engine without a port: it would start, find nothing
+        # and log a failure the user cannot act on.
+        if enabled and not device:
+            return False, "Pick a port before enabling polling."
+        patch['mbus_enabled'] = bool(enabled)
+    return save_options_patch(patch)
+
+
+def mbus_save_meters(meters: list) -> tuple[bool, str]:
+    cleaned = []
+    for entry in meters:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get('id') or '').strip()
+        address = str(entry.get('address') or '').strip()
+        if not name:
+            return False, "Every meter needs a name."
+        # p1..p250 (0 is the factory 'unset' value, 0xFB-0xFF are reserved or
+        # broadcast) or an 8-hex secondary address.
+        if not (re.fullmatch(r'p([1-9]|[1-9]\d|1\d\d|2[0-4]\d|250)', address)
+                or re.fullmatch(r'[0-9A-Fa-f]{8}', address)):
+            return False, f"{name}: address must be p1..p250 or 8 hex characters."
+        key = str(entry.get('key') or '').strip()
+        if key and not re.fullmatch(r'[0-9A-Fa-f]{32}', key):
+            return False, f"{name}: key must be 32 hex characters."
+        poll = str(entry.get('poll_interval') or '').strip()
+        if poll and not re.fullmatch(r'\d+[smh]', poll):
+            return False, f"{name}: poll interval must look like 15m."
+        cleaned.append({k: v for k, v in {
+            'id': name,
+            'address': address,
+            'type': str(entry.get('type') or 'auto').strip(),
+            'type_other': str(entry.get('type_other') or '').strip() or None,
+            'key': key or None,
+            'poll_interval': poll or None,
+            'calculated_fields': str(entry.get('calculated_fields') or '').strip() or None,
+            'static_fields': str(entry.get('static_fields') or '').strip() or None,
+        }.items() if v is not None})
+    return save_options_patch({'mbus_meters': cleaned})
+
+
 def restart_addon_via_supervisor() -> tuple[bool, str]:
     """Restart the whole addon via HA Supervisor API.
 
@@ -2839,6 +3241,7 @@ class Handler(BaseHTTPRequestHandler):
             '/api/preview-candidate', '/api/cancel-preview',
             '/api/ignore', '/api/unignore', '/api/factory-reset',
             '/api/compare-driver', '/api/save-config', '/api/driver-fields',
+            '/api/mbus', '/api/mbus/device', '/api/mbus/meters', '/api/mbus/probe',
         )
         if any(path.endswith(suffix) for suffix in api_suffixes):
             return path
@@ -2855,6 +3258,47 @@ class Handler(BaseHTTPRequestHandler):
         params = self._read_params()
         lang = detect_lang(self.headers, params)
         self._wmbus_lang = lang
+        if path.endswith('/api/mbus/device'):
+            ok, msg = mbus_save_device(
+                (params.get('device') or [''])[0].strip(),
+                (params.get('bus_alias') or ['MAIN'])[0].strip(),
+                (params.get('baudrate') or ['2400'])[0].strip(),
+                (params.get('poll_interval') or ['15m'])[0].strip(),
+                (params.get('donotprobe_all') or ['true'])[0].strip().lower()
+                in ('true', '1', 'on', 'yes'),
+                (params['mbus_enabled'][0].strip().lower() in ('true', '1', 'on', 'yes')
+                 if 'mbus_enabled' in params else None),
+            )
+            self._send_json(200 if ok else 400, {"ok": ok, "message": msg})
+            return
+        if path.endswith('/api/mbus/meters'):
+            raw = (params.get('meters') or ['[]'])[0]
+            try:
+                meters = json.loads(raw)
+            except ValueError:
+                self._send_json(400, {"ok": False, "message": "meters: invalid JSON."})
+                return
+            if not isinstance(meters, list):
+                self._send_json(400, {"ok": False, "message": "meters: expected a list."})
+                return
+            ok, msg = mbus_save_meters(meters)
+            self._send_json(200 if ok else 400, {"ok": ok, "message": msg})
+            return
+        if path.endswith('/api/mbus/probe'):
+            # Deliberately probes only the port the user picked. Never the
+            # listed ones: on a typical HA box one of them is a Zigbee
+            # coordinator, and this call transmits.
+            opts = read_options()
+            opts = opts if isinstance(opts, dict) else {}
+            device = (params.get('device') or [str(opts.get('mbus_device') or '')])[0].strip()
+            try:
+                baud = int(str(opts.get('mbus_baudrate') or '2400'))
+            except ValueError:
+                baud = 2400
+            state_name, reply_hex = mbus_probe_bus(device, baud)
+            self._send_json(200, {"ok": True, "state": state_name,
+                                  "reply_hex": reply_hex, "device": device})
+            return
         if path.endswith('/api/remove-meter'):
             meter_id = (params.get('meter_id') or [''])[0].strip()
             # NB: remove_meter_from_options already emits the appropriate
@@ -3131,6 +3575,9 @@ class Handler(BaseHTTPRequestHandler):
             meter_id = (params.get('meter_id') or [''])[0].strip()
             ok, payload = candidate_issue_report(meter_id)
             self._send_json(200 if ok else 404, payload)
+            return
+        if path.endswith('/api/mbus'):
+            self._send_json(200, mbus_panel_payload())
             return
         if path.endswith('/api/driver-fields'):
             driver = (params.get('driver') or [''])[0].strip()
