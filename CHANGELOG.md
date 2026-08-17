@@ -1,3 +1,11 @@
+## 1.5.49-dev.263
+
+### Added
+- guide engine startup and suggest drivers (31b00a3)
+
+### Fixed
+- refresh USB ports and repair option saving (966825d)
+
 ## 1.5.49-dev.262
 
 ### Added
