@@ -497,6 +497,9 @@ ramkę do analizatora we wbudowanym `wmbusmeters`. Sugestia wypełnia pole, ale
 nigdy nie zapisuje się automatycznie: sprawdź ją i kliknij **Zapisz liczniki**.
 Jeżeli analizator nie ma wiarygodnej sugestii, interfejs mówi o tym wprost zamiast
 zgadywać.
+Pipeline wyprowadza jednostkę z rzeczywistej nazwy zdekodowanego pola (na przykład
+`_c` → `°C`, `_rh` → `RH%`), także dla driverów bez sumarycznego odczytu, które
+korzystają z ogólnego numerycznego fallbacku.
 
 **W Dockerze** zmapuj konwerter jawnie:
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Nigdy `/dev:/dev`, nigdy
@@ -514,8 +517,11 @@ to przypadek — per licznik, razem z chwilą ostatniej odpowiedzi każdego z ni
   dekoder nie zgłasza konfliktu, po prostu wypuszcza obie odpowiedzi, a Ty inaczej
   dostaniesz w Home Assistancie drugie urządzenie z jednego wpisu.
 - *To nie jest ruch M-Bus* — bajty płyną, ale żaden nie ma kształtu ramki M-Bus.
-  Liczniki energii elektrycznej zwykle mówią DLMS/COSEM, czego ten dodatek nie
-  dekoduje.
+  Typowe liczniki energii elektrycznej operatora (OSD) z portem optycznym albo
+  RS-485 używają DLMS/COSEM (IEC 62056), inne Modbus RTU/TCP. Ten dodatek nie
+  dekoduje żadnego z tych protokołów. Nie wyklucza to prawdziwego licznika energii
+  z interfejsem M-Bus zgodnym z EN 13757, jeśli wmbusmeters ma dla niego driver.
+  Samo złącze RS-485 nie oznacza M-Bus.
 - *Na tym porcie jest inne urządzenie* — port wskazuje teraz inny sprzęt niż
   wybrany, więc odpytywanie jest odmawiane, zamiast trafić w czyjś koordynator
   Zigbee.

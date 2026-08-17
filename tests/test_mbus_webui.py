@@ -3,6 +3,7 @@
 
 import importlib.util
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -10,8 +11,10 @@ from unittest import mock
 from pathlib import Path
 
 
-WEBUI = Path(__file__).parents[1] / "rootfs" / "usr" / "bin" / "webui.py"
+ROOT = Path(__file__).parents[1]
+WEBUI = ROOT / "rootfs" / "usr" / "bin" / "webui.py"
 APP_JS = Path(__file__).parents[1] / "rootfs" / "usr" / "share" / "wmbus-webui" / "assets" / "app.js"
+METER_LIB = Path(__file__).parents[1] / "rootfs" / "usr" / "bin" / "bridge-lib" / "07-meters.sh"
 sys.path.insert(0, str(WEBUI.parent))
 SPEC = importlib.util.spec_from_file_location("wmbus_webui", WEBUI)
 webui = importlib.util.module_from_spec(SPEC)
@@ -56,6 +59,36 @@ class MBusWebUITest(unittest.TestCase):
             },
         }
         self.assertEqual(webui.mbus_source_map(runtime), {"10000284": "MAIN"})
+
+    def test_generic_numeric_fallback_preserves_field_name_for_units(self):
+        source = METER_LIB.read_text(encoding="utf-8")
+        self.assertIn("[.key, .value] | @tsv", source)
+        self.assertNotIn('value_key="value"', source)
+        self.assertIn("average|last_|previous|history", source)
+
+    def test_mbus_simulator_real_driver_frames_are_well_formed(self):
+        sketch = (ROOT / "tests" / "tools" / "mbus_slave_sim" /
+                  "mbus_slave_sim.ino").read_text(encoding="utf-8")
+        for name, expected_length in (("FRAME_WATER", 92),
+                                      ("FRAME_ELECTRICITY", 106)):
+            match = re.search(
+                rf"static const uint8_t {name}\[\] = \{{(.*?)\}};",
+                sketch,
+                re.DOTALL,
+            )
+            self.assertIsNotNone(match, name)
+            frame = bytes(int(value, 16) for value in
+                          re.findall(r"0x([0-9A-Fa-f]{2})", match.group(1)))
+            self.assertEqual(len(frame), expected_length)
+            self.assertEqual(frame[:4], bytes((0x68, frame[1], frame[1], 0x68)))
+            self.assertEqual(frame[1] + 6, len(frame))
+            self.assertEqual(frame[-1], 0x16)
+            self.assertEqual(sum(frame[4:-2]) & 0xFF, frame[-2])
+
+        self.assertIn("case ADDR_WATER:", sketch)
+        self.assertIn("sendTemplateFrame(addr, FRAME_WATER", sketch)
+        self.assertIn("case ADDR_ELECTRICITY:", sketch)
+        self.assertIn("sendTemplateFrame(addr, FRAME_ELECTRICITY", sketch)
 
     def test_frame_shapes(self):
         cases = {

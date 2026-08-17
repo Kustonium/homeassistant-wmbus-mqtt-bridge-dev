@@ -21,7 +21,12 @@ configuration:
       through an M-Bus master converter that appears as a serial port (USB, RS-232
       or RS-485). This is NOT for radio. An RTL-SDR, a DVB-T stick or a wM-Bus radio
       dongle will not work here and is not meant to — radio is received by the ESP
-      and arrives over MQTT, exactly as before. This switch only shows the M-Bus tab
+      and arrives over MQTT, exactly as before. This is also NOT support for typical
+      utility electricity meters with an optical port or RS-485 that speak
+      DLMS/COSEM (IEC 62056), nor for Modbus RTU/TCP meters; this add-on decodes
+      neither protocol. A genuine EN 13757 M-Bus electricity meter may work when
+      wmbusmeters has its driver. An RS-485 connector alone does not mean M-Bus.
+      This switch only shows the M-Bus tab
       in the WebUI; it starts nothing. Leave it off if you have no wired bus.
       Not verified on a real bus — the author has no such hardware. Please open an
       issue if something does not work.

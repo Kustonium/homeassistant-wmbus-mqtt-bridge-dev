@@ -481,6 +481,9 @@ hodnotu, vyberte ovládač uvedený v dokumentácii merača.
 analyzátoru v pribalenom `wmbusmeters`. Návrh vyplní pole, ale nikdy sa automaticky
 neuloží: skontrolujte ho a kliknite na **Uložiť merače**. Ak analyzátor nemá
 spoľahlivý návrh, rozhranie to oznámi namiesto hádania.
+Pipeline odvodzuje zobrazenú jednotku zo skutočného názvu dekódovaného poľa
+(napríklad `_c` → `°C`, `_rh` → `RH%`), aj pri ovládačoch bez kumulatívneho odpočtu,
+ktoré používajú všeobecný číselný fallback.
 
 **V Dockeri** namapujte prevodník výslovne:
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Nikdy `/dev:/dev`, nikdy
@@ -498,7 +501,10 @@ meračoch, spolu s okamihom poslednej odpovede každého z nich:
   žiadny konflikt nehlási, jednoducho vydá obe odpovede, a vy by ste inak z jedného
   záznamu dostali v Home Assistantovi druhé zariadenie.
 - *Toto nie je prevádzka M-Bus* — bajty tečú, ale žiadny nemá tvar rámca M-Bus.
-  Elektromery zvyčajne hovoria DLMS/COSEM, čo tento doplnok nedekóduje.
+  Bežné elektromery distribútora s optickým portom alebo RS-485 používajú
+  DLMS/COSEM (IEC 62056), iné Modbus RTU/TCP. Tento doplnok nedekóduje žiadny
+  z týchto protokolov. Skutočný elektromer M-Bus podľa EN 13757 však môže fungovať,
+  ak preň wmbusmeters obsahuje ovládač. Samotný konektor RS-485 neznamená M-Bus.
 - *Na tomto porte je iné zariadenie* — port teraz ukazuje na iný hardvér než vybraný,
   takže je dopytovanie odmietnuté namiesto toho, aby mierilo do cudzieho Zigbee
   koordinátora.

@@ -494,6 +494,9 @@ documented driver when automatic decoding produces no values.
 the analyzer in the bundled `wmbusmeters`. A suggestion fills the field but is
 never saved automatically: review it and click **Save meters**. If the analyzer
 cannot make a reliable suggestion, the UI says so instead of guessing.
+Pipeline derives the displayed unit from the actual decoded field name (for
+example `_c` → `°C` and `_rh` → `RH%`), including drivers whose telegram has no
+cumulative meter reading and therefore uses a generic numeric fallback.
 
 **In Docker** map your converter explicitly:
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Never `/dev:/dev`, never
@@ -511,8 +514,10 @@ which one it is, per meter, together with the moment each one last answered:
   reports no conflict, it simply emits both, and you would otherwise get a second
   device in Home Assistant out of one entry.
 - *This is not M-Bus traffic* — bytes are flowing, none of them shaped like an M-Bus
-  frame. Electricity meters usually speak DLMS/COSEM, which this add-on does not
-  decode.
+  frame. Typical utility electricity meters with an optical port or RS-485 speak
+  DLMS/COSEM (IEC 62056); others use Modbus RTU/TCP. This add-on decodes neither
+  protocol. This does not exclude a genuine EN 13757 M-Bus electricity meter for
+  which wmbusmeters has a driver. An RS-485 connector alone does not mean M-Bus.
 - *A different device is on that port* — the port now resolves to other hardware
   than the one you picked, so polling is refused rather than aimed at somebody's
   Zigbee coordinator.

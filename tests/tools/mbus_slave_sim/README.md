@@ -51,6 +51,8 @@ Expected on `p1`: JSON with `temperature_c: 23.02` and `id: 10000284`.
 | `p5` | answers `E5` only | indistinguishable from silence, by design |
 | `p6` | two frames, different ids | two meters on one address — the decoder reports neither problem |
 | `p7` | frame with a broken checksum | `expected checksum 0xNN but got 0xMM` |
+| `p8` | real `aptmbusna` water frame | driver detection and decoded volume/flow units |
+| `p9` | real `nemo` electricity frame | driver detection and decoded three-phase energy/power units |
 | `0xFE` | answers the test broadcast | bus-liveness probe |
 | others | silence | address scan |
 
@@ -64,6 +66,12 @@ reconnects on its own) and resetting the board, whose ROM loader emits bytes at
 (`tests/test_libmbus_secondary_address.sh`, wmbusmeters v3.0.0 `ac4f295`) and is not
 invented. Verified: `L=56`, `C=0x08` (RSP_UD), `CI=0x72`, checksum `0x03`. The address
 and id are patched at runtime and the checksum recomputed.
+
+`FRAME_WATER` (`p8`) and `FRAME_ELECTRICITY` (`p9`) are complete wired M-Bus
+frames copied from the official upstream `wmbusmeters` driver fixtures
+(`aptmbusna.xmq` and `nemo.xmq`). Only the primary address and checksum are patched
+at runtime. They deliberately exercise different drivers and physical quantities;
+they are not synthetic variants of the `piigth` temperature telegram.
 
 The transport header carries `84 02 00 10` = **id 10000284**, which matters for the
 whole design: polling primary address `p1` returns the meter's **own** identifier, and

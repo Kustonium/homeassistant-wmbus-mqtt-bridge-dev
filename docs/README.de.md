@@ -509,6 +509,9 @@ Rahmen an den Analysator des mitgelieferten `wmbusmeters`. Ein Vorschlag füllt 
 Feld, wird aber nie automatisch gespeichert: Prüfen Sie ihn und klicken Sie auf
 **Zähler speichern**. Kann der Analysator keinen verlässlichen Vorschlag machen,
 meldet die Oberfläche dies ausdrücklich, statt zu raten.
+Pipeline leitet die angezeigte Einheit aus dem tatsächlichen Namen des dekodierten
+Feldes ab (zum Beispiel `_c` → `°C`, `_rh` → `RH%`), auch bei Treibern ohne
+kumulativen Zählerstand, die den allgemeinen numerischen Fallback verwenden.
 
 **Unter Docker** binden Sie den Konverter explizit ein:
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Niemals `/dev:/dev`, niemals
@@ -527,8 +530,11 @@ letzten Antwort:
   markiert: Der Decoder meldet keinen Konflikt, er gibt einfach beides aus, und Sie
   bekämen sonst aus einem Eintrag ein zweites Gerät in Home Assistant.
 - *Das ist kein M-Bus-Verkehr* — es fließen Bytes, aber keines hat die Form eines
-  M-Bus-Telegramms. Stromzähler sprechen meist DLMS/COSEM, was dieses Add-on nicht
-  dekodiert.
+  M-Bus-Telegramms. Typische Stromzähler des Versorgers mit optischer Schnittstelle
+  oder RS-485 sprechen DLMS/COSEM (IEC 62056), andere Modbus RTU/TCP. Dieses Add-on
+  dekodiert keines dieser Protokolle. Ein echter EN-13757-M-Bus-Stromzähler kann
+  dennoch funktionieren, wenn wmbusmeters einen passenden Treiber besitzt. Ein
+  RS-485-Anschluss allein bedeutet nicht M-Bus.
 - *An diesem Port hängt ein anderes Gerät* — der Port zeigt jetzt auf andere Hardware
   als die ausgewählte, deshalb wird die Abfrage verweigert, statt in den
   Zigbee-Koordinator zu funken.

@@ -22,6 +22,12 @@ configuration:
       port szeregowy (USB, RS-232 albo RS-485). To NIE jest do radia. RTL-SDR,
       patyczek DVB-T ani radiowy dongiel wM-Bus tu nie zadziałają i nie mają
       zadziałać — radio odbiera ESP i przysyła przez MQTT, dokładnie jak dotąd.
+      To także NIE jest obsługa typowych liczników energii elektrycznej operatora
+      (OSD) z portem optycznym albo RS-485, które używają DLMS/COSEM (IEC 62056).
+      Nie obsługuje też liczników Modbus RTU/TCP; żadnego z tych protokołów nie
+      dekoduje. Prawdziwy licznik energii z interfejsem M-Bus
+      zgodnym z EN 13757 może działać, jeśli wmbusmeters ma odpowiedni driver.
+      Samo złącze RS-485 nie oznacza M-Bus.
       Ten przełącznik tylko pokazuje zakładkę M-Bus w WebUI, niczego nie uruchamia.
       Zostaw wyłączony, jeśli nie masz magistrali po kablu.
       Niesprawdzone na prawdziwej magistrali — autor nie ma takiego sprzętu.

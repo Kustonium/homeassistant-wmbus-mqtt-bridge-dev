@@ -27,7 +27,7 @@ I18N: dict[str, dict[str, str]] = {
         "nav_esp_logs": "ESP LOGS",
         # --- Settings form: wired M-Bus block ---
         "cfg_mbus_section": "M-Bus (wired) — separate engine",
-        "cfg_mbus_section_note": "Wired M-Bus only: meters on a two-wire bus behind an M-Bus master converter that shows up as a serial port. NOT for radio — an RTL-SDR, a DVB-T stick or a wM-Bus radio dongle will not work here. Radio is received by the ESP and arrives over MQTT, as before. Ports and meters are configured in the M-Bus tab; these are the raw stored values.",
+        "cfg_mbus_section_note": "Wired M-Bus only: meters on a two-wire bus behind an M-Bus master converter that shows up as a serial port. NOT for radio — an RTL-SDR, a DVB-T stick or a wM-Bus radio dongle will not work here. NOT for typical utility electricity meters (optical port or RS-485) that speak DLMS/COSEM (IEC 62056), and NOT for Modbus RTU/TCP meters; this add-on decodes neither protocol. A genuine EN 13757 M-Bus electricity meter may work when wmbusmeters has its driver. An RS-485 connector alone does not mean M-Bus. Radio is received by the ESP and arrives over MQTT, as before. Ports and meters are configured in the M-Bus tab; these are the raw stored values.",
         "cfg_desc_mbus_tab_visible": "Shows the M-Bus tab in this WebUI. Starts nothing.",
         "cfg_desc_mbus_enabled": "Starts a separate wmbusmeters instance polling the bus. Needs a port; without one it refuses to start and says so in the log.",
         "cfg_desc_mbus_device": "Serial port of the converter. Pick it in the M-Bus tab — the list warns about devices that are not converters.",
@@ -730,7 +730,7 @@ I18N: dict[str, dict[str, str]] = {
         "nav_esp_logs": "LOGI ESP",
         # --- Settings form: wired M-Bus block ---
         "cfg_mbus_section": "M-Bus (przewodowy) — osobny silnik",
-        "cfg_mbus_section_note": "Tylko M-Bus po kablu: liczniki na dwużyłowej magistrali za konwerterem M-Bus master, który pokazuje się jako port szeregowy. NIE do radia — RTL-SDR, patyczek DVB-T ani radiowy dongiel wM-Bus tu nie zadziałają. Radio odbiera ESP i przysyła przez MQTT, jak dotąd. Porty i liczniki ustawia się w zakładce M-Bus; tu są surowe zapisane wartości.",
+        "cfg_mbus_section_note": "Tylko M-Bus po kablu: liczniki na dwużyłowej magistrali za konwerterem M-Bus master, który pokazuje się jako port szeregowy. NIE do radia — RTL-SDR, patyczek DVB-T ani radiowy dongiel wM-Bus tu nie zadziałają. NIE do typowych liczników energii elektrycznej operatora (OSD) z portem optycznym albo RS-485, które używają DLMS/COSEM (IEC 62056), ani do liczników Modbus RTU/TCP — ten dodatek nie dekoduje żadnego z tych protokołów. Prawdziwy licznik energii z interfejsem M-Bus zgodnym z EN 13757 może działać, jeżeli wmbusmeters ma odpowiedni driver. Samo złącze RS-485 nie oznacza M-Bus. Radio odbiera ESP i przysyła przez MQTT, jak dotąd. Porty i liczniki ustawia się w zakładce M-Bus; tu są surowe zapisane wartości.",
         "cfg_desc_mbus_tab_visible": "Pokazuje zakładkę M-Bus w tym WebUI. Niczego nie uruchamia.",
         "cfg_desc_mbus_enabled": "Uruchamia osobną instancję wmbusmeters odpytującą magistralę. Wymaga portu; bez niego nie wystartuje i napisze o tym w logu.",
         "cfg_desc_mbus_device": "Port szeregowy konwertera. Wybierz go w zakładce M-Bus — lista ostrzega przed urządzeniami, które konwerterem nie są.",
@@ -1432,7 +1432,7 @@ I18N: dict[str, dict[str, str]] = {
         "nav_esp_logs": "ESP-LOGS",
         # --- Settings form: wired M-Bus block ---
         "cfg_mbus_section": "M-Bus (drahtgebunden) — separate Engine",
-        "cfg_mbus_section_note": "Nur drahtgebundener M-Bus: Zähler an einem Zweidrahtbus hinter einem M-Bus-Master-Konverter, der als serielle Schnittstelle erscheint. NICHT für Funk — ein RTL-SDR, ein DVB-T-Stick oder ein wM-Bus-Funkdongle funktioniert hier nicht. Funk empfängt der ESP und liefert ihn über MQTT, wie bisher. Ports und Zähler werden im M-Bus-Tab konfiguriert; hier stehen die gespeicherten Rohwerte.",
+        "cfg_mbus_section_note": "Nur drahtgebundener M-Bus: Zähler an einem Zweidrahtbus hinter einem M-Bus-Master-Konverter, der als serielle Schnittstelle erscheint. NICHT für Funk — ein RTL-SDR, ein DVB-T-Stick oder ein wM-Bus-Funkdongle funktioniert hier nicht. NICHT für typische Stromzähler des Versorgers mit optischer Schnittstelle oder RS-485, die DLMS/COSEM (IEC 62056) sprechen, und NICHT für Modbus-RTU/TCP-Zähler; dieses Add-on dekodiert keines dieser Protokolle. Ein echter EN-13757-M-Bus-Stromzähler kann funktionieren, wenn wmbusmeters einen passenden Treiber besitzt. Ein RS-485-Anschluss allein bedeutet nicht M-Bus. Funk empfängt der ESP und liefert ihn über MQTT, wie bisher. Ports und Zähler werden im M-Bus-Tab konfiguriert; hier stehen die gespeicherten Rohwerte.",
         "cfg_desc_mbus_tab_visible": "Zeigt den M-Bus-Tab in dieser WebUI. Startet nichts.",
         "cfg_desc_mbus_enabled": "Startet eine separate wmbusmeters-Instanz für den Bus. Ohne gewählten Port startet sie nicht und meldet das im Log.",
         "cfg_desc_mbus_device": "Serielle Schnittstelle des Konverters. Im M-Bus-Tab auswählen — die Liste warnt vor Geräten, die keine Konverter sind.",
@@ -2134,7 +2134,7 @@ I18N: dict[str, dict[str, str]] = {
         "nav_esp_logs": "LOGY ESP",
         # --- Settings form: wired M-Bus block ---
         "cfg_mbus_section": "M-Bus (drátový) — samostatný engine",
-        "cfg_mbus_section_note": "Pouze drátový M-Bus: měřiče na dvoudrátové sběrnici za převodníkem M-Bus master, který se hlásí jako sériový port. NE pro rádio — RTL-SDR, DVB-T stick ani rádiový dongle wM-Bus zde fungovat nebudou. Rádio přijímá ESP a posílá přes MQTT jako dosud. Porty a měřiče se nastavují v záložce M-Bus; zde jsou uložené surové hodnoty.",
+        "cfg_mbus_section_note": "Pouze drátový M-Bus: měřiče na dvoudrátové sběrnici za převodníkem M-Bus master, který se hlásí jako sériový port. NE pro rádio — RTL-SDR, DVB-T stick ani rádiový dongle wM-Bus zde fungovat nebudou. NE pro běžné elektroměry distributora s optickým portem nebo RS-485, které používají DLMS/COSEM (IEC 62056), ani pro měřiče Modbus RTU/TCP; tento doplněk nedekóduje žádný z těchto protokolů. Skutečný elektroměr M-Bus podle EN 13757 může fungovat, pokud pro něj wmbusmeters obsahuje ovladač. Samotný konektor RS-485 neznamená M-Bus. Rádio přijímá ESP a posílá přes MQTT jako dosud. Porty a měřiče se nastavují v záložce M-Bus; zde jsou uložené surové hodnoty.",
         "cfg_desc_mbus_tab_visible": "Zobrazí záložku M-Bus v tomto WebUI. Nic nespouští.",
         "cfg_desc_mbus_enabled": "Spustí samostatnou instanci wmbusmeters dotazující sběrnici. Bez portu nenastartuje a napíše to do logu.",
         "cfg_desc_mbus_device": "Sériový port převodníku. Vyberte jej v záložce M-Bus — seznam varuje před zařízeními, která převodníkem nejsou.",
@@ -2836,7 +2836,7 @@ I18N: dict[str, dict[str, str]] = {
         "nav_esp_logs": "LOGY ESP",
         # --- Settings form: wired M-Bus block ---
         "cfg_mbus_section": "M-Bus (drôtový) — samostatný engine",
-        "cfg_mbus_section_note": "Iba drôtový M-Bus: merače na dvojdrôtovej zbernici za prevodníkom M-Bus master, ktorý sa hlási ako sériový port. NIE pre rádio — RTL-SDR, DVB-T stick ani rádiový dongle wM-Bus tu fungovať nebudú. Rádio prijíma ESP a posiela cez MQTT ako doteraz. Porty a merače sa nastavujú v záložke M-Bus; tu sú uložené surové hodnoty.",
+        "cfg_mbus_section_note": "Iba drôtový M-Bus: merače na dvojdrôtovej zbernici za prevodníkom M-Bus master, ktorý sa hlási ako sériový port. NIE pre rádio — RTL-SDR, DVB-T stick ani rádiový dongle wM-Bus tu fungovať nebudú. NIE pre bežné elektromery distribútora s optickým portom alebo RS-485, ktoré používajú DLMS/COSEM (IEC 62056), ani pre merače Modbus RTU/TCP; tento doplnok nedekóduje žiadny z týchto protokolov. Skutočný elektromer M-Bus podľa EN 13757 môže fungovať, ak preň wmbusmeters obsahuje ovládač. Samotný konektor RS-485 neznamená M-Bus. Rádio prijíma ESP a posiela cez MQTT ako doteraz. Porty a merače sa nastavujú v záložke M-Bus; tu sú uložené surové hodnoty.",
         "cfg_desc_mbus_tab_visible": "Zobrazí záložku M-Bus v tomto WebUI. Nič nespúšťa.",
         "cfg_desc_mbus_enabled": "Spustí samostatnú inštanciu wmbusmeters dopytujúcu zbernicu. Bez portu nenaštartuje a napíše to do logu.",
         "cfg_desc_mbus_device": "Sériový port prevodníka. Vyberte ho v záložke M-Bus — zoznam varuje pred zariadeniami, ktoré prevodníkom nie sú.",

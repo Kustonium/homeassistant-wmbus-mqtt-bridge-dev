@@ -93,6 +93,10 @@
 - wired meters can request a driver suggestion from the analyzer in the bundled
   `wmbusmeters`. Detection performs one bounded diagnostic poll, fills the field
   for review and never saves a guess automatically.
+- the ESP8266 wired M-Bus simulator now exposes real upstream `aptmbusna` water
+  and `nemo` electricity telegrams on primary addresses p8 and p9. This verifies
+  driver detection and distinct volume, flow, energy and power units instead of
+  exercising only the original synthetic temperature reply.
 - wired M-Bus: the add-on can now poll meters on a serial bus itself, as a third
   wmbusmeters instance next to DECODE and LISTEN. Everything downstream is
   unchanged — the same drivers, units, Discovery and calculated/constant fields —
@@ -155,6 +159,15 @@
   a reply three seconds late for a two-second `pollinterval` is still accepted.
 
 ### Fixed
+- generic decoded values retain their real JSON field name instead of the
+  synthetic key `value`, so Pipeline can derive units such as `°C`, `RH%` or
+  `bar`. Current readings are preferred over averages/history: the live wired
+  `piigth` test now selects `temperature_c=23.02` instead of the earlier
+  `average_temperature_1h_c=23.52`, and displays `23.02 °C`.
+- wired M-Bus guidance now distinguishes unsupported utility electricity meters
+  using DLMS/COSEM (IEC 62056) or Modbus RTU/TCP from genuine EN 13757 M-Bus
+  electricity meters, and warns that an RS-485 connector alone does not identify
+  the protocol; the earlier blanket wording was too broad.
 - the wired meter form no longer leaves users to type a driver name blindly. It
   suggests the driver catalog baked from the exact `wmbusmeters` build in the
   image, while preserving `auto` and custom names. Catalog entries are
