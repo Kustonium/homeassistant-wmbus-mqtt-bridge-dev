@@ -1,3 +1,11 @@
+## 1.5.49-dev.254
+
+### Added
+- poll wired M-Bus meters from a serial bus (7fef93b)
+
+### Fixed
+- make the tab reachable and label every option (e9ed9bf)
+
 ## 1.5.49-dev.253
 
 ### Added
