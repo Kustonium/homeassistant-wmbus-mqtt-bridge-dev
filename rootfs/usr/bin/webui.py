@@ -1869,8 +1869,18 @@ def mbus_transmit_allowed() -> tuple[bool, str]:
     opts = opts if isinstance(opts, dict) else {}
     if opts.get('mbus_enabled'):
         return False, ("Polling is running and it is the bus master. Turn it off "
-                       "before transmitting from here, or the two will talk over "
-                       "each other.")
+                       "and restart the add-on before transmitting from here, or "
+                       "the two will talk over each other.")
+    # Saving mbus_enabled=false changes options.json immediately, but the wired
+    # decoder is a long-lived bridge child and only stops on add-on/container
+    # restart. Do not mistake the newly saved option for the actual process
+    # state: status remains non-disabled until the restarted bridge writes the
+    # disabled transition.
+    runtime_state = mbus_runtime_state().get('state', 'unknown')
+    if runtime_state not in ('unknown', 'disabled'):
+        return False, ("Polling was disabled in the settings, but the previous "
+                       "bus-master process may still be running. Restart the add-on "
+                       "before transmitting from here.")
     return True, ""
 
 

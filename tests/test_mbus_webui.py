@@ -57,7 +57,9 @@ class MBusWebUITest(unittest.TestCase):
     def test_transmit_guard_follows_engine_option(self):
         with tempfile.TemporaryDirectory() as directory:
             old_options = webui.OPTIONS_JSON
+            old_status = webui.STATUS_MBUS_JSON
             webui.OPTIONS_JSON = Path(directory) / "options.json"
+            webui.STATUS_MBUS_JSON = Path(directory) / "status_mbus.json"
             try:
                 webui.OPTIONS_JSON.write_text(json.dumps({"mbus_enabled": False}))
                 self.assertEqual(webui.mbus_transmit_allowed(), (True, ""))
@@ -65,8 +67,28 @@ class MBusWebUITest(unittest.TestCase):
                 allowed, reason = webui.mbus_transmit_allowed()
             finally:
                 webui.OPTIONS_JSON = old_options
+                webui.STATUS_MBUS_JSON = old_status
         self.assertFalse(allowed)
         self.assertIn("bus master", reason)
+
+    def test_transmit_guard_waits_for_restart_after_disabling_engine(self):
+        with tempfile.TemporaryDirectory() as directory:
+            old_options = webui.OPTIONS_JSON
+            old_status = webui.STATUS_MBUS_JSON
+            webui.OPTIONS_JSON = Path(directory) / "options.json"
+            webui.STATUS_MBUS_JSON = Path(directory) / "status_mbus.json"
+            try:
+                webui.OPTIONS_JSON.write_text(json.dumps({"mbus_enabled": False}))
+                webui.STATUS_MBUS_JSON.write_text(json.dumps({"state": "no_reply"}))
+                allowed_before, reason = webui.mbus_transmit_allowed()
+                webui.STATUS_MBUS_JSON.write_text(json.dumps({"state": "disabled"}))
+                allowed_after = webui.mbus_transmit_allowed()
+            finally:
+                webui.OPTIONS_JSON = old_options
+                webui.STATUS_MBUS_JSON = old_status
+        self.assertFalse(allowed_before)
+        self.assertIn("Restart", reason)
+        self.assertEqual(allowed_after, (True, ""))
 
     def test_poll_once_rejects_factory_and_reserved_addresses_before_io(self):
         for address in (0, 251, 68123456):

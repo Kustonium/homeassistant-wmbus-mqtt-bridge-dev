@@ -3723,9 +3723,20 @@
 
       <div class="card mbus-engine-card">
         <h2>${escapeHtml(t("mbus_engine_title", "Engine"))}</h2>
-        <p><label><input type="checkbox" id="mbus_enabled"${mbus.enabled ? " checked" : ""}>
-          ${escapeHtml(t("mbus_enabled_label", "Poll the bus (starts a separate wmbusmeters instance)"))}</label></p>
-        <p class="hint">${escapeHtml(t("mbus_engine_hint", "Turning this off stops polling; the radio path is never affected."))}</p>
+        <div class="mbus-engine-guide">
+          <div class="mbus-engine-mode on">
+            <strong>${escapeHtml(t("mbus_engine_on_title", "For normal operation: ON"))}</strong>
+            <span>${escapeHtml(t("mbus_engine_on_body", "After saving the port and at least one meter, turn the engine on. It polls meters continuously and publishes their readings."))}</span>
+          </div>
+          <div class="mbus-engine-mode off">
+            <strong>${escapeHtml(t("mbus_engine_off_title", "For setup and tests: OFF"))}</strong>
+            <span>${escapeHtml(t("mbus_engine_off_body", "Keep it off while probing, scanning or using Poll once. Those actions are blocked while the engine is the bus master."))}</span>
+          </div>
+        </div>
+        <label class="mbus-engine-switch"><input type="checkbox" id="mbus_enabled"${mbus.enabled ? " checked" : ""}>
+          <span>${escapeHtml(t("mbus_enabled_label", "Enable continuous automatic bus polling"))}</span></label>
+        <p class="mbus-engine-restart">${escapeHtml(t("mbus_engine_restart_note", "After changing this switch, restart the add-on/container. Apply only saves the option; the engine actually starts or stops during restart."))}</p>
+        <p class="hint">${escapeHtml(t("mbus_engine_hint", "This controls only wired M-Bus. The radio path is never stopped."))}</p>
         <div class="row-actions">
           <button class="btn primary" data-action="mbus-save-engine">${escapeHtml(t("mbus_save_engine", "Apply"))}</button>
         </div>
