@@ -1,3 +1,8 @@
+## 1.5.51-dev.271
+
+### Added
+- decode Tauron/KPL meters via a self-retiring patch to the pinned decoder (3eae103)
+
 ## 1.5.51-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
