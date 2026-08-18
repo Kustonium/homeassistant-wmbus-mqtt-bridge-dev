@@ -1,2 +1,13 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# The patch and its applier are consumed inside the Linux build container
+# (Dockerfile: COPY patches/ -> git apply). A CRLF checkout on Windows would make
+# `git apply` reject the patch and `bash` choke on the script, so pin them to LF
+# regardless of the developer's platform. Shell scripts run in the add-on's
+# Alpine image for the same reason.
+# `-whitespace` because a unified diff represents a blank context line as a single
+# space, which `git diff --check` reports as trailing whitespace. That is a
+# property of the diff format, not a defect in the patch.
+*.patch text eol=lf -whitespace
+*.sh text eol=lf
