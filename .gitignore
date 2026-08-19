@@ -13,3 +13,16 @@ docs/CLAUDE_HANDOFF.md
 # sent upstream. Untracked by convention (CLAUDE.md section 10) but never ignored,
 # so a single `git add -A` would have published all of it.
 wmbusmeters-issues-roadmap.md
+
+# Working notes shared between the maintainer and his AI assistants: design
+# sketches, measurements, and reasoning that did not make it into docs/. They are
+# drafts, they contradict each other across revisions, and some of them quote
+# third parties - none of that belongs in a public repository. Keep such files
+# here rather than merely untracked, so `git add -A` cannot publish them.
+RS485-MBUS-TAB-DESIGN-2026-08-16.md
+RS485-MBUS-CODE-SKETCH-2026-08-16.md
+
+# Convention for future notes of that kind: name them *.local.md, or put them
+# under notes/, and they are covered without touching this file again.
+*.local.md
+notes/
