@@ -1,3 +1,7 @@
+## 1.5.52-dev
+
+<!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
+
 ## 1.5.51-dev.271
 
 ### Added
