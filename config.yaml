@@ -1,6 +1,6 @@
 name: "wMBus MQTT Bridge Dev"
 description: "[DEV] wM-Bus over MQTT (RAW HEX) + optional wired M-Bus -> wmbusmeters -> Home Assistant Discovery"
-version: "1.5.52-dev.274"
+version: "1.5.52-dev.275"
 slug: "wmbus_mqtt_bridge_dev"
 stage: experimental
 image: "ghcr.io/kustonium/{arch}-addon-wmbus_mqtt_bridge-dev"
