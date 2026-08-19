@@ -1,3 +1,8 @@
+## 1.5.52-dev.274
+
+### Fixed
+- recognise upstream's own KPL handling by its real name (8e81126)
+
 ## 1.5.52-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
