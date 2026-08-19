@@ -9,3 +9,7 @@ _bmad/
 _bmad\
 _bmad-output/
 docs/CLAUDE_HANDOFF.md
+# Local roadmap: task status, competitive notes and drafts of reports not yet
+# sent upstream. Untracked by convention (CLAUDE.md section 10) but never ignored,
+# so a single `git add -A` would have published all of it.
+wmbusmeters-issues-roadmap.md
