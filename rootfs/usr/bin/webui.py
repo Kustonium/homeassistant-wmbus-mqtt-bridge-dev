@@ -135,6 +135,7 @@ STATUS_ESP_METER_RECEPTION_FILE = BASE / "status_esp_meter_reception.tsv"
 # for a meter, these replace /telegram-derived counts for that meter.
 STATUS_ESP_RX_RECEPTION_FILE = BASE / "status_esp_rx_reception.tsv"
 STATUS_ESP_RX_SEQUENCE_FILE = BASE / "status_esp_rx_sequence.tsv"
+ESP_RF_RX_HISTORY_FILE = BASE / "esp_rf_rx_history.jsonl"
 # ESP events TSV and per-event detail files (written by bridge.sh event subscriber)
 STATUS_ESP_EVENTS_FILE = BASE / "status_esp_events.tsv"
 STATUS_ESP_SUGGESTION_FILE = BASE / "status_esp_suggestion.json"
@@ -645,6 +646,60 @@ def read_tsv(path: Path, fields: list[str], limit: int | None = None, reverse: b
         if limit and len(rows) >= limit:
             break
     return rows
+
+
+def esp_rx_api_payload(limit: int = 1000, since: int = 0, until: int = 0) -> dict:
+    """Return bounded, secret-free structured RX evidence for the opt-in API."""
+    from collections import deque
+
+    limit = max(1, min(int(limit), 10000))
+    since = max(0, int(since))
+    until = max(0, int(until))
+    reception = read_tsv(
+        STATUS_ESP_RX_RECEPTION_FILE,
+        ["meter_id", "source", "first_seen", "last_seen", "count", "last_topic"],
+    )
+    sequence = read_tsv(
+        STATUS_ESP_RX_SEQUENCE_FILE,
+        ["source", "boot_id", "last_seq", "missing", "out_of_order", "last_seen"],
+    )
+    history: deque[dict] = deque(maxlen=limit)
+    invalid_lines = 0
+    try:
+        with ESP_RF_RX_HISTORY_FILE.open("r", encoding="utf-8", errors="replace") as stream:
+            for line in stream:
+                try:
+                    event = json.loads(line)
+                except (TypeError, ValueError):
+                    invalid_lines += 1
+                    continue
+                if not isinstance(event, dict):
+                    invalid_lines += 1
+                    continue
+                event_time = safe_int(event.get("bridge_rx_time", 0))
+                if since and event_time < since:
+                    continue
+                if until and event_time >= until:
+                    continue
+                # Explicit allow-list: additions to the internal history do not
+                # silently widen this external contract.
+                history.append({key: event.get(key) for key in (
+                    "bridge_rx_time", "source", "schema", "boot_id", "seq",
+                    "rx_task_wakeup_us", "meter_id", "mode", "rssi_dbm",
+                    "frame_crc32", "frame_length",
+                )})
+    except OSError:
+        pass
+    return {
+        "ok": True,
+        "schema": 1,
+        "generated_at": int(time.time()),
+        "filters": {"since": since, "until": until, "limit": limit},
+        "reception": reception,
+        "sequence": sequence,
+        "history": list(history),
+        "history_invalid_lines": invalid_lines,
+    }
 
 
 def write_lines_atomic(path: Path, lines: list[str]) -> None:
@@ -3647,6 +3702,7 @@ class Handler(BaseHTTPRequestHandler):
             '/api/preview-candidate', '/api/cancel-preview',
             '/api/ignore', '/api/unignore', '/api/factory-reset',
             '/api/compare-driver', '/api/save-config', '/api/driver-fields',
+            '/api/esp-rx',
             '/api/mbus', '/api/mbus/device', '/api/mbus/meters', '/api/mbus/probe',
             '/api/mbus/console', '/api/mbus/scan', '/api/mbus/poll-one',
             '/api/mbus/detect-driver',
@@ -4049,6 +4105,20 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path.endswith('/api/status'):
             self._send(200, json.dumps(state(), ensure_ascii=False, indent=2).encode('utf-8'), 'application/json; charset=utf-8')
+            return
+        if path.endswith('/api/esp-rx'):
+            options = read_options()
+            if not isinstance(options, dict) or not bool(options.get('esp_rx_api_enabled', False)):
+                self._send_json(404, {"ok": False, "message": "ESP RX API is disabled."})
+                return
+            try:
+                limit = int((params.get('limit') or ['1000'])[0])
+                since = int((params.get('since') or ['0'])[0])
+                until = int((params.get('until') or ['0'])[0])
+            except ValueError:
+                self._send_json(400, {"ok": False, "message": "limit, since and until must be integers."})
+                return
+            self._send_json(200, esp_rx_api_payload(limit=limit, since=since, until=until))
             return
         if path.endswith('/api/candidate-report'):
             meter_id = (params.get('meter_id') or [''])[0].strip()

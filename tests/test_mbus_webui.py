@@ -6,7 +6,9 @@ import json
 import re
 import sys
 import tempfile
+import threading
 import unittest
+import urllib.error
 from unittest import mock
 from pathlib import Path
 
@@ -22,6 +24,83 @@ SPEC.loader.exec_module(webui)
 
 
 class MBusWebUITest(unittest.TestCase):
+    def test_esp_rx_api_is_opt_in_and_exports_only_allowlisted_fields(self):
+        source = WEBUI.read_text(encoding="utf-8")
+        self.assertIn("esp_rx_api_enabled", source)
+        self.assertIn("ESP RX API is disabled.", source)
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            old_reception = webui.STATUS_ESP_RX_RECEPTION_FILE
+            old_sequence = webui.STATUS_ESP_RX_SEQUENCE_FILE
+            old_history = webui.ESP_RF_RX_HISTORY_FILE
+            webui.STATUS_ESP_RX_RECEPTION_FILE = base / "reception.tsv"
+            webui.STATUS_ESP_RX_SEQUENCE_FILE = base / "sequence.tsv"
+            webui.ESP_RF_RX_HISTORY_FILE = base / "history.jsonl"
+            try:
+                webui.STATUS_ESP_RX_RECEPTION_FILE.write_text(
+                    "00089907\tlr1121\t100\t200\t43\twmbus/lr1121/rx\n",
+                    encoding="utf-8",
+                )
+                webui.STATUS_ESP_RX_SEQUENCE_FILE.write_text(
+                    "lr1121\t00382BF2\t69\t0\t0\t200\n", encoding="utf-8"
+                )
+                events = [
+                    {"bridge_rx_time": stamp, "source": "lr1121", "schema": 1,
+                     "boot_id": "00382BF2", "seq": stamp, "meter_id": "00089907",
+                     "mode": "T1", "rssi_dbm": -54, "frame_crc32": "1234ABCD",
+                     "frame_length": 10, "raw": "SECRET", "key": "SECRET"}
+                    for stamp in (100, 150, 200)
+                ]
+                webui.ESP_RF_RX_HISTORY_FILE.write_text(
+                    "\n".join(json.dumps(event) for event in events) + "\n",
+                    encoding="utf-8",
+                )
+                payload = webui.esp_rx_api_payload(limit=1, since=120, until=201)
+            finally:
+                webui.STATUS_ESP_RX_RECEPTION_FILE = old_reception
+                webui.STATUS_ESP_RX_SEQUENCE_FILE = old_sequence
+                webui.ESP_RF_RX_HISTORY_FILE = old_history
+        self.assertEqual(payload["reception"][0]["count"], "43")
+        self.assertEqual(payload["sequence"][0]["missing"], "0")
+        self.assertEqual([event["seq"] for event in payload["history"]], [200])
+        self.assertNotIn("raw", payload["history"][0])
+        self.assertNotIn("key", payload["history"][0])
+
+    def test_esp_rx_api_http_gate_and_parameter_validation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            old_options = webui.OPTIONS_JSON
+            old_history = webui.ESP_RF_RX_HISTORY_FILE
+            webui.OPTIONS_JSON = Path(directory) / "options.json"
+            webui.ESP_RF_RX_HISTORY_FILE = Path(directory) / "history.jsonl"
+            server = webui.ThreadingHTTPServer(("127.0.0.1", 0), webui.Handler)
+            worker = threading.Thread(target=server.serve_forever, daemon=True)
+            worker.start()
+            url = f"http://127.0.0.1:{server.server_port}/api/esp-rx"
+            try:
+                webui.OPTIONS_JSON.write_text(
+                    json.dumps({"esp_rx_api_enabled": False}), encoding="utf-8"
+                )
+                with self.assertRaises(urllib.error.HTTPError) as disabled:
+                    webui.urllib.request.urlopen(url)
+                self.assertEqual(disabled.exception.code, 404)
+                disabled.exception.close()
+
+                webui.OPTIONS_JSON.write_text(
+                    json.dumps({"esp_rx_api_enabled": True}), encoding="utf-8"
+                )
+                with webui.urllib.request.urlopen(url + "?limit=5") as response:
+                    self.assertEqual(json.load(response)["filters"]["limit"], 5)
+                with self.assertRaises(urllib.error.HTTPError) as malformed:
+                    webui.urllib.request.urlopen(url + "?since=tomorrow")
+                self.assertEqual(malformed.exception.code, 400)
+                malformed.exception.close()
+            finally:
+                server.shutdown()
+                server.server_close()
+                worker.join(timeout=2)
+                webui.OPTIONS_JSON = old_options
+                webui.ESP_RF_RX_HISTORY_FILE = old_history
+
     def test_supervisor_save_dependency_is_available_at_module_load(self):
         # Saving the wired port can be the first Supervisor operation after
         # process start.  It must not depend on another code path having

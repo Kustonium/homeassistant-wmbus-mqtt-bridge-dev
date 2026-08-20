@@ -631,6 +631,15 @@ also appended to a bounded history without RAW payload or AES material. Sequence
 gaps demonstrate a missing event somewhere on the ESP-to-subscriber path; they
 do not by themselves identify MQTT, networking, or the subscriber as the cause.
 
+The add-on option `esp_rx_api_enabled` is an independent, default-off export
+gate. When enabled, the authenticated Ingress WebUI exposes `GET /api/esp-rx`
+with the structured reception summary, source sequence state, and bounded
+history. Query parameters `limit` (1–10000), `since`, and `until` (UTC epoch;
+`until` exclusive) bound the response. The endpoint uses an explicit field
+allow-list and never returns RAW telegrams, AES keys, or MQTT credentials;
+when disabled it returns HTTP 404. Collection and the normal GUI are unaffected
+by this switch.
+
 The RSSI topic is the one case where a measurement has to travel out of band:
 the RAW topic carries bare hexadecimal, so the decoder never sees a signal
 level and cannot report one. The bridge caches the value per meter *and* per
