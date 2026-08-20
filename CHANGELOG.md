@@ -1,3 +1,9 @@
+## 1.5.52-dev.276
+
+### Added
+- consume structured ESP RX metadata (951912d)
+- track per-meter reception by ESP source (0e61a25)
+
 ## 1.5.52-dev.275
 
 ### Added
