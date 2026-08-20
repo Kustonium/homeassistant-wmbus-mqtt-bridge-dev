@@ -485,12 +485,24 @@
         const label = shortEsp(e.esp);
         const c = Number(e.count) || 0;
         const cur = byLabel.get(label);
-        if (!cur || c > cur.count) byLabel.set(label, {pct: Number(e.pct), count: c});
+        if (!cur || c > cur.count) byLabel.set(label, {
+          pct: e.pct == null ? null : Number(e.pct),
+          count: c,
+          firstSeen: Number(e.first_seen) || 0,
+          lastSeen: Number(e.last_seen) || 0,
+          countSource: String(e.count_source || ""),
+        });
       });
       const fmtTel = (n) => n >= 1000 ? `${Math.round(n / 100) / 10}k` : String(n);
-      rxHtml = Array.from(byLabel.entries()).map(([label, v]) =>
-        `<span title="${escapeHtml(t("reception_pct_per_esp", "reception % on this ESP"))}: ${escapeHtml(label)}" style="${pill}${rxPctStyle(v.pct)}">📶 ${escapeHtml(label)} ${v.pct}%${v.count > 0 ? ` · ${fmtTel(v.count)}` : ""}</span>`
-      ).join("");
+      rxHtml = Array.from(byLabel.entries()).map(([label, v]) => {
+        if (v.countSource === "bridge_session") {
+          const first = v.firstSeen ? new Date(v.firstSeen * 1000).toLocaleString() : "-";
+          const last = v.lastSeen ? new Date(v.lastSeen * 1000).toLocaleString() : "-";
+          const title = `${t("bridge_session_count", "telegrams observed by the bridge in this session")}: ${v.count}\n${t("first_received", "first received")}: ${first}\n${t("last_received", "last received")}: ${last}`;
+          return `<span title="${escapeHtml(title)}" style="${pill}background:#12354a;color:#65c7f2;cursor:help;">📶 ${escapeHtml(label)} · ${fmtTel(v.count)}</span>`;
+        }
+        return `<span title="${escapeHtml(t("reception_pct_per_esp", "reception % on this ESP"))}: ${escapeHtml(label)}" style="${pill}${rxPctStyle(v.pct)}">📶 ${escapeHtml(label)} ${v.pct}%${v.count > 0 ? ` · ${fmtTel(v.count)}` : ""}</span>`;
+      }).join("");
     } else if (bestPct >= 0) {
       rxHtml = `<span title="${escapeHtml(t("reception_pct_title", "reception % over the diagnostic window"))}" style="${pill}${rxPctStyle(bestPct)}">📶 ${bestPct}%</span>`;
     }

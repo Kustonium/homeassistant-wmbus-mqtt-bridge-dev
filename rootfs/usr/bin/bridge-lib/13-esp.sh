@@ -312,6 +312,8 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 
   if [[ "${_RT_DEV_POS}" -ge 0 ]]; then
     log "ESP-device tracker: device name at topic segment ${_RT_DEV_POS} of '${RAW_TOPIC}'"
+    _rx_history_since_trim=0
+    _trim_esp_rx_history "${ESP_RX_HISTORY_FILE}" 100000 90000 || true
     # Last device recorded per meter id, kept in this subshell only. The TSV is
     # written ONLY when a meter's device changes (or is seen for the first time),
     # so a steady multi-meter installation does zero extra disk writes per
@@ -348,6 +350,17 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
             && mv "${_md_tmp}" "${STATUS_ESP_METER_DEVICE_FILE}" 2>/dev/null \
             || true
         fi
+        if [[ "${_md_id}" =~ ^[0-9A-F]{8}$ ]]; then
+          _upsert_esp_meter_reception \
+            "${STATUS_ESP_METER_RECEPTION_FILE}" "${_md_id}" "${_dev}" "${_now}" "${_tg_topic}" || true
+          _append_esp_rx_history \
+            "${ESP_RX_HISTORY_FILE}" "${_now}" "${_dev}" "${_md_id}" "${_tg_topic}" || true
+          _rx_history_since_trim=$((_rx_history_since_trim + 1))
+          if (( _rx_history_since_trim >= 1000 )); then
+            _trim_esp_rx_history "${ESP_RX_HISTORY_FILE}" 100000 90000 || true
+            _rx_history_since_trim=0
+          fi
+        fi
 
         _tmp="${STATUS_ESP_TELEGRAM_DEVICES_FILE}.tmp"
         # Upsert the row for this device — increment count if exists,
@@ -366,7 +379,7 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
           && mv "${_tmp}" "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" 2>/dev/null \
           || true
       done < <(
-        ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" "${SUB_EXTRA[@]}" -t "${RAW_TOPIC}" -F '%t\t%p' -W 180 2>/dev/null
+        ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" "${SUB_EXTRA[@]}" -t "${RAW_TOPIC}" -F '%t\t%p' 2>/dev/null
       )
       _sub_reconnect_sleep "${_sub_t0}"
     done

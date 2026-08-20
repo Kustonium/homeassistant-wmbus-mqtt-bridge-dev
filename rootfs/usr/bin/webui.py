@@ -127,6 +127,10 @@ STATUS_MBUS_JSON = BASE / "status_mbus.json"
 # no per-meter diagnostic topic (no highlight_meters on the ESP).
 # Format: meter_id<TAB>device_name<TAB>last_seen_epoch
 STATUS_ESP_METER_DEVICE_FILE = BASE / "status_esp_meter_device.tsv"
+# Session-scoped, bridge-observed reception counts. These rows all start at the
+# same bridge start and therefore replace ESP-self-referential diagnostic counts
+# when available.
+STATUS_ESP_METER_RECEPTION_FILE = BASE / "status_esp_meter_reception.tsv"
 # ESP events TSV and per-event detail files (written by bridge.sh event subscriber)
 STATUS_ESP_EVENTS_FILE = BASE / "status_esp_events.tsv"
 STATUS_ESP_SUGGESTION_FILE = BASE / "status_esp_suggestion.json"
@@ -2511,6 +2515,31 @@ def state(include_ignored: bool = False) -> dict:
                 if _wcur is None or _wct >= _wcur["count"]:
                     _wper[_wdev] = {"pct": _wpct, "count": _wct}
 
+    # Prefer counts observed directly by this bridge from RAW_TOPIC. They share
+    # one session start across all ESPs, unlike diagnostic count_total values
+    # whose denominators reset independently with each board. Diagnostic
+    # percentages remain only as a fallback for installations upgraded before
+    # the first new RAW telegram arrives.
+    _bridge_reception: dict[str, dict[str, dict]] = {}
+    for _rrow in read_tsv(
+        STATUS_ESP_METER_RECEPTION_FILE,
+        ["id", "device", "first_seen", "last_seen", "count", "last_topic"],
+    ):
+        _rmid = normalize_meter_id(_rrow.get("id"))
+        _rdev = str(_rrow.get("device") or "").strip()
+        _rcount = safe_int(_rrow.get("count", 0))
+        if not _rmid or not _rdev or _rcount <= 0:
+            continue
+        _bridge_reception.setdefault(_rmid, {})[_rdev] = {
+            "pct": None,
+            "count": _rcount,
+            "first_seen": safe_int(_rrow.get("first_seen", 0)),
+            "last_seen": safe_int(_rrow.get("last_seen", 0)),
+            "count_source": "bridge_session",
+        }
+    for _rmid, _rper in _bridge_reception.items():
+        reception_by_esp[_rmid] = _rper
+
     # wM-Bus band (T1/C1/S1) per meter, from two sources with different accuracy.
     #
     # EXACT — the ESP publishes the link mode it actually decoded the telegram
@@ -2593,9 +2622,9 @@ def state(include_ignored: bool = False) -> dict:
         if not _per:
             return []
         # Sort most-reading first: by telegram count, then %, then name.
-        return [{"esp": k, "pct": v["pct"], "count": v["count"]}
+        return [{"esp": k, **v}
                 for k, v in sorted(_per.items(),
-                                   key=lambda kv: (-kv[1]["count"], -kv[1]["pct"], kv[0]))]
+                                   key=lambda kv: (-kv[1]["count"], kv[0]))]
 
     for c in candidates:
         c["ignored"] = "true" if c.get("id") in ignored else "false"

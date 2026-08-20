@@ -30,6 +30,71 @@ _tsv_remove_id() {
   ) 9>"${file}.lock"
 }
 
+# Session-scoped reception totals keyed by meter id + ESP device.
+# Format: id<TAB>device<TAB>first_seen_epoch<TAB>last_seen_epoch<TAB>count<TAB>last_topic
+_upsert_esp_meter_reception() {
+  local file="$1" id="$2" device="$3" now="$4" topic="$5"
+  (
+    flock -x 9
+    [[ -f "${file}" ]] || : > "${file}"
+    local _tmp
+    _tmp="$(mktemp "${file}.tmp.XXXXXX")" || return 1
+    if ! awk -F $'\t' -v OFS=$'\t' \
+      -v id="${id}" -v device="${device}" -v now="${now}" -v topic="${topic}" '
+        BEGIN { updated = 0 }
+        $1 == id && $2 == device {
+          first = ($3 ~ /^[0-9]+$/ && $3 > 0) ? $3 : now
+          count = ($5 ~ /^[0-9]+$/) ? $5 + 1 : 1
+          print id, device, first, now, count, topic
+          updated = 1
+          next
+        }
+        { print }
+        END { if (!updated) print id, device, now, now, 1, topic }
+      ' "${file}" > "${_tmp}"; then
+      rm -f "${_tmp}"
+      return 1
+    fi
+    mv "${_tmp}" "${file}" 2>/dev/null || { rm -f "${_tmp}"; true; }
+  ) 9>"${file}.lock"
+}
+
+# Persistent, bounded event history. The payload deliberately contains no RAW
+# telegram and no AES material: only data needed to answer when a given ESP
+# received a given meter. Appends and rotations share one lock.
+_append_esp_rx_history() {
+  local file="$1" now="$2" device="$3" id="$4" topic="$5"
+  local line
+  line="$(jq -cn \
+    --argjson time "${now}" --arg source "${device}" --arg meter_id "${id}" --arg topic "${topic}" \
+    '{time:$time,source:$source,meter_id:$meter_id,topic:$topic}')" || return 1
+  (
+    flock -x 9
+    printf '%s\n' "${line}" >> "${file}"
+  ) 9>"${file}.lock"
+}
+
+_trim_esp_rx_history() {
+  local file="$1" max_lines="$2" keep_lines="$3"
+  [[ -f "${file}" ]] || return 0
+  (
+    flock -x 9
+    local lines _tmp
+    lines="$(wc -l < "${file}" 2>/dev/null || echo 0)"
+    [[ "${lines}" =~ ^[0-9]+$ ]] || lines=0
+    (( lines > max_lines )) || return 0
+    _tmp="$(mktemp "${file}.tmp.XXXXXX")" || return 1
+    if ! tail -n "${keep_lines}" "${file}" > "${_tmp}"; then
+      rm -f "${_tmp}"
+      return 1
+    fi
+    if ! mv "${_tmp}" "${file}"; then
+      rm -f "${_tmp}"
+      return 1
+    fi
+  ) 9>"${file}.lock"
+}
+
 _upsert_candidate_row() {
   local _id="$1" _driver="$2" _type="$3" _last_seen="$4" _seen_count="$5"
   local _avg_interval_s="$6" _seen_15m="$7" _seen_60m="$8" _manufacturer="${9:-}"

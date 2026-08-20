@@ -160,6 +160,13 @@ STATUS_ESP_TELEGRAM_DEVICES_FILE="${BASE}/status_esp_telegram_devices.tsv"
 # telegram. Exact per-meter "mode" from the diag topics always wins.
 # Format: meter_id<TAB>device_name<TAB>last_seen_epoch
 STATUS_ESP_METER_DEVICE_FILE="${BASE}/status_esp_meter_device.tsv"
+# Per-meter, per-ESP counts measured by this bridge session from RAW_TOPIC.
+# Unlike ESP diagnostic percentages, every row has the same bridge-session
+# denominator. Format: id<TAB>device<TAB>first_seen<TAB>last_seen<TAB>count<TAB>last_topic
+STATUS_ESP_METER_RECEPTION_FILE="${BASE}/status_esp_meter_reception.tsv"
+# Persistent bounded event history used to recover the exact first/last receive
+# time after the session state has been reset. JSONL contains no RAW payload.
+ESP_RX_HISTORY_FILE="${BASE}/esp_rx_history.jsonl"
 SEARCH_MATCHES_FILE="${BASE}/search_matches.tsv"
 SEARCH_STATUS_FILE="${BASE}/search_status.json"
 # discovery_published flag — file-backed (see write_status_json). The raw-counter
@@ -210,7 +217,7 @@ RAW_RATE_CUR_MIN_COUNT=0
 # shellcheck disable=SC2034
 RAW_RATE_PREV_MIN_COUNT=0
 
-touch "${STATUS_METERS_FILE}" "${STATUS_CANDIDATES_FILE}" "${STATUS_EVENTS_FILE}" "${STATUS_SEEN_FILE}" "${STATUS_LAST_RAW_FILE}" "${STATUS_RECENT_RAW_FILE}" "${STATUS_CANDIDATE_ANALYSIS_FILE}" "${STATUS_CANDIDATE_RAW_FILE}" "${STATUS_METER_LAST_JSON_FILE}" "${STATUS_METER_KEY_PROBLEM_FILE}" "${STATUS_RATE_HISTORY_FILE}" "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" "${STATUS_ESP_METER_DEVICE_FILE}" "${SEARCH_MATCHES_FILE}" "${SEARCH_STATUS_FILE}" "${STATUS_CANDIDATE_PREVIEW_STATE_FILE}" "${STATUS_BROKER_ERROR_FILE}"
+touch "${STATUS_METERS_FILE}" "${STATUS_CANDIDATES_FILE}" "${STATUS_EVENTS_FILE}" "${STATUS_SEEN_FILE}" "${STATUS_LAST_RAW_FILE}" "${STATUS_RECENT_RAW_FILE}" "${STATUS_CANDIDATE_ANALYSIS_FILE}" "${STATUS_CANDIDATE_RAW_FILE}" "${STATUS_METER_LAST_JSON_FILE}" "${STATUS_METER_KEY_PROBLEM_FILE}" "${STATUS_RATE_HISTORY_FILE}" "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" "${STATUS_ESP_METER_DEVICE_FILE}" "${STATUS_ESP_METER_RECEPTION_FILE}" "${ESP_RX_HISTORY_FILE}" "${SEARCH_MATCHES_FILE}" "${SEARCH_STATUS_FILE}" "${STATUS_CANDIDATE_PREVIEW_STATE_FILE}" "${STATUS_BROKER_ERROR_FILE}"
 printf '0\n' > "${STATUS_OFFICIAL_METERS_COUNT_FILE}" 2>/dev/null || true
 # Remove any orphaned pending-reload marker left by a hard stop during deferred sleep.
 rm -rf "${BASE}/.reload_listen_pending" 2>/dev/null || true
@@ -220,6 +227,7 @@ rm -rf "${BASE}/.preview_attempts" 2>/dev/null || true
 mkdir -p "${BASE}/.preview_attempts" 2>/dev/null || true
 : > "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" 2>/dev/null || true
 : > "${STATUS_ESP_METER_DEVICE_FILE}" 2>/dev/null || true
+: > "${STATUS_ESP_METER_RECEPTION_FILE}" 2>/dev/null || true
 # HA presence is session-scoped to the current broker. Clear stale state so a
 # previous run's "online" cannot mask a now-foreign broker until the retained
 # birth message (if any) re-arrives on subscribe.
