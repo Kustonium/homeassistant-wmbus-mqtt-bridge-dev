@@ -1,3 +1,9 @@
+## 1.5.52-dev.277
+
+### Added
+- expose opt-in ESP RX evidence API (a0fecfc)
+- consume structured ESP RX metadata (951912d)
+
 ## 1.5.52-dev.276
 
 ### Added
