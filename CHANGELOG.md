@@ -1,3 +1,11 @@
+## 1.5.52-dev.275
+
+### Added
+- track per-meter reception by ESP source (0e61a25)
+
+### Fixed
+- recognise upstream's own KPL handling by its real name (8e81126)
+
 ## 1.5.52-dev.274
 
 ### Fixed
