@@ -389,6 +389,51 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 ) &
 ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 
+# Structured per-frame RF metadata. New firmware publishes this in addition to
+# the unchanged /telegram HEX stream. It is deliberately a separate subscriber:
+# a malformed or absent /rx topic can never interrupt the decoder pipeline or
+# the legacy tracker used by older firmware.
+(
+  _rx_meta_since_trim=0
+  _trim_esp_rx_history "${ESP_RF_RX_HISTORY_FILE}" 100000 90000 || true
+  while true; do
+    _sub_t0="$(epoch_now)"
+    while IFS=$'\t' read -r _rx_meta_topic _rx_meta_payload; do
+      [[ -n "${_rx_meta_topic}" && -n "${_rx_meta_payload}" ]] || continue
+      _rx_meta_norm="$(_normalize_esp_rx_payload <<< "${_rx_meta_payload}" || true)"
+      [[ -n "${_rx_meta_norm}" ]] || continue
+
+      IFS='/' read -ra _RX_META_PARTS <<< "${_rx_meta_topic}"
+      _rx_meta_dev="${_RX_META_PARTS[1]:-}"
+      [[ -n "${_rx_meta_dev}" ]] || continue
+      _rx_meta_id="$(jq -r '.meter_id' <<< "${_rx_meta_norm}")"
+      _rx_meta_boot="$(jq -r '.boot_id' <<< "${_rx_meta_norm}")"
+      _rx_meta_seq="$(jq -r '.seq' <<< "${_rx_meta_norm}")"
+      _rx_meta_now="$(epoch_now)"
+
+      _upsert_esp_meter_reception \
+        "${STATUS_ESP_RX_RECEPTION_FILE}" "${_rx_meta_id}" "${_rx_meta_dev}" \
+        "${_rx_meta_now}" "${_rx_meta_topic}" || true
+      _append_esp_rf_rx_history \
+        "${ESP_RF_RX_HISTORY_FILE}" "${_rx_meta_now}" "${_rx_meta_dev}" "${_rx_meta_norm}" || true
+      _upsert_esp_rx_sequence \
+        "${STATUS_ESP_RX_SEQUENCE_FILE}" "${_rx_meta_dev}" "${_rx_meta_boot}" \
+        "${_rx_meta_seq}" "${_rx_meta_now}" || true
+
+      _rx_meta_since_trim=$((_rx_meta_since_trim + 1))
+      if (( _rx_meta_since_trim >= 1000 )); then
+        _trim_esp_rx_history "${ESP_RF_RX_HISTORY_FILE}" 100000 90000 || true
+        _rx_meta_since_trim=0
+      fi
+    done < <(
+      ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" "${SUB_EXTRA[@]}" \
+        -t 'wmbus/+/rx' -F '%t\t%p' 2>/dev/null
+    )
+    _sub_reconnect_sleep "${_sub_t0}"
+  done
+) &
+ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
+
 # Background subscriber for all ESP diagnostic events.
 # Subscribes to bare diag topic (dropped/truncated/rx_path) and all subtopics.
 # Writes TSV: epoch<TAB>evtype<TAB>topic<TAB>payload  (rolling 200 lines).

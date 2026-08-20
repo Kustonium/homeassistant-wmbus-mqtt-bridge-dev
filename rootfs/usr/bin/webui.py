@@ -131,6 +131,10 @@ STATUS_ESP_METER_DEVICE_FILE = BASE / "status_esp_meter_device.tsv"
 # same bridge start and therefore replace ESP-self-referential diagnostic counts
 # when available.
 STATUS_ESP_METER_RECEPTION_FILE = BASE / "status_esp_meter_reception.tsv"
+# Same session view populated from structured ESP RF metadata. When rows exist
+# for a meter, these replace /telegram-derived counts for that meter.
+STATUS_ESP_RX_RECEPTION_FILE = BASE / "status_esp_rx_reception.tsv"
+STATUS_ESP_RX_SEQUENCE_FILE = BASE / "status_esp_rx_sequence.tsv"
 # ESP events TSV and per-event detail files (written by bridge.sh event subscriber)
 STATUS_ESP_EVENTS_FILE = BASE / "status_esp_events.tsv"
 STATUS_ESP_SUGGESTION_FILE = BASE / "status_esp_suggestion.json"
@@ -2538,6 +2542,39 @@ def state(include_ignored: bool = False) -> dict:
             "count_source": "bridge_session",
         }
     for _rmid, _rper in _bridge_reception.items():
+        reception_by_esp[_rmid] = _rper
+
+    _esp_rx_sequence = {
+        str(row.get("source") or ""): row
+        for row in read_tsv(
+            STATUS_ESP_RX_SEQUENCE_FILE,
+            ["source", "boot_id", "last_seq", "missing", "out_of_order", "last_seen"],
+        )
+        if str(row.get("source") or "")
+    }
+    _esp_rx_reception: dict[str, dict[str, dict]] = {}
+    for _rrow in read_tsv(
+        STATUS_ESP_RX_RECEPTION_FILE,
+        ["id", "device", "first_seen", "last_seen", "count", "last_topic"],
+    ):
+        _rmid = normalize_meter_id(_rrow.get("id"))
+        _rdev = str(_rrow.get("device") or "").strip()
+        _rcount = safe_int(_rrow.get("count", 0))
+        if not _rmid or not _rdev or _rcount <= 0:
+            continue
+        _seq = _esp_rx_sequence.get(_rdev, {})
+        _esp_rx_reception.setdefault(_rmid, {})[_rdev] = {
+            "pct": None,
+            "count": _rcount,
+            "first_seen": safe_int(_rrow.get("first_seen", 0)),
+            "last_seen": safe_int(_rrow.get("last_seen", 0)),
+            "count_source": "esp_rx",
+            "last_seq": safe_int(_seq.get("last_seq", 0)),
+            "missing": safe_int(_seq.get("missing", 0)),
+            "out_of_order": safe_int(_seq.get("out_of_order", 0)),
+            "boot_id": str(_seq.get("boot_id") or ""),
+        }
+    for _rmid, _rper in _esp_rx_reception.items():
         reception_by_esp[_rmid] = _rper
 
     # wM-Bus band (T1/C1/S1) per meter, from two sources with different accuracy.

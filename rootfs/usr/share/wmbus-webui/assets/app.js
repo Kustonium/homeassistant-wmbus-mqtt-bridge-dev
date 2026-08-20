@@ -491,14 +491,24 @@
           firstSeen: Number(e.first_seen) || 0,
           lastSeen: Number(e.last_seen) || 0,
           countSource: String(e.count_source || ""),
+          lastSeq: Number(e.last_seq) || 0,
+          missing: Number(e.missing) || 0,
+          outOfOrder: Number(e.out_of_order) || 0,
+          bootId: String(e.boot_id || ""),
         });
       });
       const fmtTel = (n) => n >= 1000 ? `${Math.round(n / 100) / 10}k` : String(n);
       rxHtml = Array.from(byLabel.entries()).map(([label, v]) => {
-        if (v.countSource === "bridge_session") {
+        if (v.countSource === "bridge_session" || v.countSource === "esp_rx") {
           const first = v.firstSeen ? new Date(v.firstSeen * 1000).toLocaleString() : "-";
           const last = v.lastSeen ? new Date(v.lastSeen * 1000).toLocaleString() : "-";
-          const title = `${t("bridge_session_count", "telegrams observed by the bridge in this session")}: ${v.count}\n${t("first_received", "first received")}: ${first}\n${t("last_received", "last received")}: ${last}`;
+          const countLabel = v.countSource === "esp_rx"
+            ? t("esp_rx_session_count", "validated ESP RF receptions in this session")
+            : t("bridge_session_count", "telegrams observed by the bridge in this session");
+          const continuity = v.countSource === "esp_rx"
+            ? `\nseq: ${v.lastSeq} · ${t("missing_rx_events", "missing RX events")}: ${v.missing} · ${t("out_of_order_rx_events", "out of order")}: ${v.outOfOrder}\nboot_id: ${v.bootId}`
+            : "";
+          const title = `${countLabel}: ${v.count}\n${t("first_received", "first received")}: ${first}\n${t("last_received", "last received")}: ${last}${continuity}`;
           return `<span title="${escapeHtml(title)}" style="${pill}background:#12354a;color:#65c7f2;cursor:help;">📶 ${escapeHtml(label)} · ${fmtTel(v.count)}</span>`;
         }
         return `<span title="${escapeHtml(t("reception_pct_per_esp", "reception % on this ESP"))}: ${escapeHtml(label)}" style="${pill}${rxPctStyle(v.pct)}">📶 ${escapeHtml(label)} ${v.pct}%${v.count > 0 ? ` · ${fmtTel(v.count)}` : ""}</span>`;
