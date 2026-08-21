@@ -1,3 +1,9 @@
+## 1.5.52-dev.278
+
+### Added
+- download retained ESP RX history (2ad37f2)
+- expose opt-in ESP RX evidence API (a0fecfc)
+
 ## 1.5.52-dev.277
 
 ### Added
