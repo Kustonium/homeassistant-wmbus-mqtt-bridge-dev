@@ -648,11 +648,12 @@ def read_tsv(path: Path, fields: list[str], limit: int | None = None, reverse: b
     return rows
 
 
-def esp_rx_api_payload(limit: int = 1000, since: int = 0, until: int = 0) -> dict:
+def esp_rx_api_payload(limit: int = 1000, since: int = 0, until: int = 0,
+                       max_limit: int = 10000) -> dict:
     """Return bounded, secret-free structured RX evidence for the opt-in API."""
     from collections import deque
 
-    limit = max(1, min(int(limit), 10000))
+    limit = max(1, min(int(limit), max(1, int(max_limit))))
     since = max(0, int(since))
     until = max(0, int(until))
     reception = read_tsv(
@@ -3602,6 +3603,16 @@ class Handler(BaseHTTPRequestHandler):
     def _send_json(self, status: int, payload: dict) -> None:
         self._send(status, json.dumps(payload, ensure_ascii=True, indent=2).encode("utf-8"), "application/json; charset=utf-8")
 
+    def _send_json_download(self, status: int, payload: dict, filename: str) -> None:
+        body = json.dumps(payload, ensure_ascii=True, indent=2).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
     def _send_event_stream(self, lang: str) -> None:
         import time as _time
 
@@ -4118,7 +4129,16 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 self._send_json(400, {"ok": False, "message": "limit, since and until must be integers."})
                 return
-            self._send_json(200, esp_rx_api_payload(limit=limit, since=since, until=until))
+            download = (params.get('download') or [''])[0].strip().lower() in ('1', 'true', 'yes')
+            payload = esp_rx_api_payload(
+                limit=limit, since=since, until=until,
+                max_limit=100000 if download else 10000,
+            )
+            if download:
+                stamp = time.strftime('%Y%m%d-%H%M%S', time.gmtime(payload['generated_at']))
+                self._send_json_download(200, payload, f'esp-rx-{stamp}Z.json')
+            else:
+                self._send_json(200, payload)
             return
         if path.endswith('/api/candidate-report'):
             meter_id = (params.get('meter_id') or [''])[0].strip()

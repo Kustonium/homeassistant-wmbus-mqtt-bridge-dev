@@ -2305,6 +2305,7 @@
     const allMeters = asArray(data.meters);
     const filteredMeters = applyMediaFilter(allMeters, "media");
     const pending = pendingMeters();
+    const rxDownloadEnabled = Boolean(data.options?.esp_rx_api_enabled);
     const candidateCountLabel = `${filteredCandidates.length}${filteredCandidates.length !== allCandidates.length ? `/${allCandidates.length}` : ""} ${t("webui_visible", "visible")}`;
     return `
       ${discoverValueFilterBar(filteredMeters.length + filteredCandidates.length)}
@@ -2313,7 +2314,10 @@
       <section class="section">
         <div class="section-head">
           <h2>${escapeHtml(t("detected_candidates", "Detected candidates"))}</h2>
-          <span id="discover-candidate-count" data-default="${escapeHtml(candidateCountLabel)}">${escapeHtml(candidateCountLabel)}</span>
+          <div class="actions">
+            <span id="discover-candidate-count" data-default="${escapeHtml(candidateCountLabel)}">${escapeHtml(candidateCountLabel)}</span>
+            ${rxDownloadEnabled ? `<a class="btn" href="api/esp-rx?limit=100000&amp;download=1" download>${escapeHtml(t("download_rx_history", "Download RX history"))}</a>` : ""}
+          </div>
         </div>
         ${filterChips()}
         ${candidateTable(filteredCandidates, true)}

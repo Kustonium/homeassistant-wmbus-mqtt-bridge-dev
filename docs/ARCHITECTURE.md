@@ -640,6 +640,12 @@ allow-list and never returns RAW telegrams, AES keys, or MQTT credentials;
 when disabled it returns HTTP 404. Collection and the normal GUI are unaffected
 by this switch.
 
+The Received / Search page shows a **Download RX history** button while that
+gate is enabled. It downloads the same allow-listed payload with the complete
+retained buffer (bounded at 100,000 events) and an UTC-stamped filename. The
+interactive API remains capped at 10,000 events. Downloading is read-only: it
+does not truncate the history, reset counters, or restart either bridge process.
+
 The RSSI topic is the one case where a measurement has to travel out of band:
 the RAW topic carries bare hexadecimal, so the decoder never sees a signal
 level and cannot report one. The bridge caches the value per meter *and* per

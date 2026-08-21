@@ -90,6 +90,13 @@ class MBusWebUITest(unittest.TestCase):
                 )
                 with webui.urllib.request.urlopen(url + "?limit=5") as response:
                     self.assertEqual(json.load(response)["filters"]["limit"], 5)
+                with webui.urllib.request.urlopen(url + "?limit=100000&download=1") as response:
+                    self.assertEqual(response.headers.get_content_type(), "application/json")
+                    self.assertRegex(
+                        response.headers.get("Content-Disposition", ""),
+                        r'^attachment; filename="esp-rx-\d{8}-\d{6}Z\.json"$',
+                    )
+                    self.assertEqual(json.load(response)["filters"]["limit"], 100000)
                 with self.assertRaises(urllib.error.HTTPError) as malformed:
                     webui.urllib.request.urlopen(url + "?since=tomorrow")
                 self.assertEqual(malformed.exception.code, 400)
@@ -107,6 +114,11 @@ class MBusWebUITest(unittest.TestCase):
         # imported urllib.request as a side effect first.
         self.assertTrue(hasattr(webui, "urllib"))
         self.assertTrue(hasattr(webui.urllib, "request"))
+
+    def test_discover_page_offers_read_only_rx_history_download(self):
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("data.options?.esp_rx_api_enabled", source)
+        self.assertIn('href="api/esp-rx?limit=100000&amp;download=1"', source)
 
     def test_wired_device_discovery_bypasses_cache_and_refreshes(self):
         source = APP_JS.read_text(encoding="utf-8")
