@@ -1,3 +1,8 @@
+## 1.5.52-dev.279
+
+### Added
+- download retained ESP RX history (2ad37f2)
+
 ## 1.5.52-dev.278
 
 ### Added
