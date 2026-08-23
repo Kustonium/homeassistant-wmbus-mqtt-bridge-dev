@@ -1,0 +1,62 @@
+[
+  {
+    "line": "01",
+    "status": "QDS_NO_MFCT_BLOCK",
+    "telegram": "48449344855855601A077A5A0030252F2F0C13871300004C1300000000426CFFFFCC081348120000C2086C5E3602BB5600002F2F2F2F2F2F2F2F2F2F2F2F2F326CFFFF046D2D064837",
+    "note": "Ordinary CI=0x7A records from the same meter. The ground truth: total_m3 1.387."
+  },
+  {
+    "line": "02",
+    "status": "QDS_PLAINTEXT_OK",
+    "telegram": "49449344855855601A07780DFF5F350082590000F10007C113FFFF87130000FFFF000000005E364812000000800080008000800080008000800080030008002F0042002F046D29064837",
+    "note": "Plaintext-generation walk-by block (byte[4]=0x00). Decodes with no key at all."
+  },
+  {
+    "line": "03",
+    "status": "QDS_PLAINTEXT_OK",
+    "telegram": "49449344855855601A07780DFF5F35008259003576FC029A3309721170D09FC9BEC71DB3E57D87FAF6408E8A5E1B9FAEF22C6E802771716071E9EA6528F1F05F067CED0D046D29064837",
+    "note": "Encrypted block, key configured -> decrypts to the same 1.387 as line 01/02."
+  },
+  {
+    "line": "04",
+    "status": "QDS_PLAINTEXT_OK",
+    "telegram": "49449344855855601A07780DFF5F3500825B00352338BE3714C08D9DB8B7589C3A6F73F1F9B094ACCF91A2A89A9605F8C570A64A87F5F33857CDFB8DDDA4693D3D858E28046D29064837",
+    "note": "Second encrypted frame, different reading (2.350) so you can see the value move."
+  },
+  {
+    "line": "05",
+    "status": "QDS_DECRYPT_FAILED",
+    "telegram": "49449344855855601A07780DFF5F350082600035C7B5F3DA95D60C9FAB1119990F0BD04F232629EB3AA8C7211BE600B557D284239740F06799705C2CBC9B4245B97E89DE046D29064837",
+    "note": "Encrypted with a key that is NOT the configured one. Must report a wrong key and publish no value -- never a fallback number."
+  },
+  {
+    "line": "06",
+    "status": "QDS_ENCRYPTED_PAYLOAD",
+    "telegram": "49449344865855601A07780DFF5F3500822200350D866437277BF2785D5D01392FF5892E739ADB9A6958D94BAF388394E903B72FABE30B822542823964325D4082B8D3FE046D29064837",
+    "note": "Encrypted, meter 60555886 deliberately left unconfigured. Must ask for the meter's ordinary AES key."
+  },
+  {
+    "line": "07",
+    "status": "QDS_DECRYPT_FAILED",
+    "telegram": "49449344855855601A07780DFF5F350082590035E40C1B5C1313509ED5FE13E79D5975FA08EF2A766E0F341BE49F21CB2A8CDADE82FA4CE9EF79287407BF57764792EEFA046D29064837",
+    "note": "THE REGRESSION. Real frame from wmbusmeters issue #2025 whose blob[9] happens to be 0x13. Unpatched upstream publishes total_m3 15430.611 with status OK. Expected here: no reading at all, only meter_datetime 2026-07-08 06:41."
+  },
+  {
+    "line": "08",
+    "status": "QDS_UNKNOWN_LAYOUT",
+    "telegram": "49449344855855601A07780DFF5F35008259001776FC029A3309721170D09FC9BEC71DB3E57D87FAF6408E8A5E1B9FAEF22C6E802771716071E9EA6528F1F05F067CED0D046D29064837",
+    "note": "byte[4]=0x17 -- neither 0x00 nor 0x35. An unseen generation: nothing published, raw block reported."
+  },
+  {
+    "line": "09",
+    "status": "QDS_UNKNOWN_LAYOUT",
+    "telegram": "344465325566366018087A90040000046D1311962C01FD0C03326CFFFF01FD7300025AC2000DFF5F0C0008003030810613080BFFFC",
+    "note": "0DFF5F present but LVAR=0x0C, not 0x35. The fixed-offset reader must not apply."
+  },
+  {
+    "line": "10",
+    "status": "QDS_NO_MFCT_BLOCK",
+    "telegram": "2144B4095049260317077A3A0000000C1366000000046D10313D350F030003000000",
+    "note": "Control: a real BMETERS hydrodigit frame (tests/fixtures/hydrodigit/03264950.hex). Must pass through byte-for-byte and decode exactly as it does today."
+  }
+]

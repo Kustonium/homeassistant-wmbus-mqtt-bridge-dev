@@ -11,3 +11,8 @@
 # property of the diff format, not a defect in the patch.
 *.patch text eol=lf -whitespace
 *.sh text eol=lf
+
+# Injected verbatim into the MQTT RAW topic. The add-on's input filter tests each
+# payload with ishex(), so a trailing CR makes it drop the frame silently -- the
+# worst possible failure for a corpus whose job is to prove frames are handled.
+tests/fixtures/qds_walkby/*.txt text eol=lf
