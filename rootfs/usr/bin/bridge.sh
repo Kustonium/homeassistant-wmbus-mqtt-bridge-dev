@@ -57,6 +57,7 @@ BASE="${WMBUS_BASE:-/data}"
 OPTIONS_JSON="${BASE}/options.json"
 ETC_DIR="${BASE}/etc"
 METER_DIR="${ETC_DIR}/wmbusmeters.d"
+
 CONF_FILE="${ETC_DIR}/wmbusmeters.conf"
 
 mkdir -p "${ETC_DIR}" "${METER_DIR}"
@@ -281,6 +282,17 @@ RESTART_ON_EXIT="${RESTART_ON_EXIT:-$(json_get_bool '.restart_on_exit' 'true')}"
 # entity (sensor.wmbus_bridge_health) and a background worker asks the HA Core
 # API whether that entity exists. Off by default (read-only HA access is opt-in).
 VERIFY_HA_ENTITIES="${VERIFY_HA_ENTITIES:-$(json_get_bool '.verify_ha_entities' 'false')}"
+QDS_WALKBY_ENABLED="${QDS_WALKBY_ENABLED:-$(json_get_bool '.qds_walkby_enabled' 'false')}"
+# Optional Qundis walk-by stage, spliced between the RAW tee and wmbusmeters.
+# OFF (the default) is a plain `cat`: one long-lived process, no per-telegram
+# work, so an install that never sees a 0DFF5F block is unaffected. ON is one
+# long-lived python3 filter — deliberately not a fork per telegram, which would
+# hit the bash bookkeeping ceiling on the raw path. See rootfs/usr/bin/qds.py.
+if [[ "${QDS_WALKBY_ENABLED}" == "true" ]]; then
+  QDS_STAGE=( python3 -u /usr/bin/qds.py filter --meter-dir "${METER_DIR}" )
+else
+  QDS_STAGE=( cat )
+fi
 export VERIFY_HA_ENTITIES
 
 STATE_PREFIX="${STATE_PREFIX:-$(json_get '.state_prefix' 'wmbusmeters')}"
@@ -646,6 +658,7 @@ run_once() {
         }
       ' \
     | tee >(while IFS= read -r raw_line; do status_raw_seen "${raw_line}"; done >/dev/null) \
+    | "${QDS_STAGE[@]}" \
     | ${STDBUF_BIN} /usr/bin/wmbusmeters --useconfig="${BASE}" 2>&1 \
     | while IFS= read -r line; do
         if [[ "${line}" == \{*\"_\":\"telegram\"* ]]; then
@@ -718,6 +731,7 @@ done
 else
   ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" "${SUB_EXTRA[@]}" -t "${RAW_TOPIC}" -F '%p' \
     | tee >(while IFS= read -r raw_line; do status_raw_seen "${raw_line}"; done >/dev/null) \
+    | "${QDS_STAGE[@]}" \
     | ${STDBUF_BIN} /usr/bin/wmbusmeters --useconfig="${BASE}" 2>&1 \
     | while IFS= read -r line; do
         if [[ "${line}" == \{*\"_\":\"telegram\"* ]]; then

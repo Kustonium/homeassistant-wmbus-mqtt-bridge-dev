@@ -468,6 +468,37 @@ Sequence gaps prove that an event went missing somewhere between the ESP and the
 subscriber. They do **not**, on their own, say whether the cause was the radio,
 MQTT, the network or the subscriber.
 
+### Qundis walk-by block (`qds_walkby_enabled`, off by default)
+
+Qundis meters put their whole walk-by payload into a single manufacturer record
+(`0DFF5F`, 53 bytes) on CI=0x78 frames. Since the 2026 generation that record is
+encrypted **inside the record**, not at the wM-Bus layer: those frames carry no
+TPL header, so wM-Bus correctly reports them as unencrypted and nothing marks
+them as needing a key.
+
+Two things go wrong without this option, and it fixes both:
+
+- **Random values with `status: OK`.** The decoder decides whether a block is a
+  walk-by record by testing one byte, which random encrypted content satisfies
+  once in 256 telegrams — roughly every eight hours per meter. It then reads the
+  encrypted bytes as a number. On a meter reading 1.387 m³ that produces
+  `15430.611`, which silently poisons Home Assistant long-term statistics. With
+  the option on, a record that cannot be validated is passed to the decoder with
+  its key changed so no driver matches it: the reading is dropped, the meter
+  clock still updates.
+- **No values at all, with no explanation.** If the meter's AES key is
+  configured, the add-on decrypts the block itself and hands the decoder a
+  readable record. If it is not, the log says so in as many words, together with
+  the meter version, type, CI and the records found.
+
+**The key is the meter's ordinary AES key** — the same one its regular (CI=0x7A)
+frames already use. There is no separate walk-by secret; if the regular frames of
+that meter decrypt, that key is the one needed here. A wrong key is reported as
+such and never produces a fallback value.
+
+With the option off, decoding is byte-for-byte what it was, so an installation
+with no Qundis meters is unaffected. See `docs/ARCHITECTURE.md` §3.5.
+
 ### Wired M-Bus (serial bus, off by default)
 
 Heat and water meters are often wired rather than radio: an M-Bus master converter

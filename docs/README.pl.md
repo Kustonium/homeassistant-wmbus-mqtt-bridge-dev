@@ -467,6 +467,38 @@ Luki w sekwencji dowodzą, że jakieś zdarzenie zginęło gdzieś między ESP
 a subskrybentem. Same z siebie **nie** mówią, czy przyczyną było radio, MQTT, sieć
 czy subskrybent.
 
+### Blok walk-by Qundis (`qds_walkby_enabled`, domyślnie wyłączony)
+
+Liczniki Qundis pakują całą zawartość walk-by w jeden rekord producenta
+(`0DFF5F`, 53 bajty) w ramkach CI=0x78. Od generacji 2026 ten rekord jest
+szyfrowany **wewnątrz rekordu**, a nie na warstwie wM-Bus: takie ramki nie mają
+nagłówka TPL, więc wM-Bus słusznie widzi je jako nieszyfrowane i nic nie oznacza
+ich jako wymagających klucza.
+
+Bez tej opcji dzieją się dwie złe rzeczy — opcja usuwa obie:
+
+- **Losowe wartości ze `status: OK`.** Dekoder rozpoznaje rekord walk-by po
+  jednym bajcie, a losowa zaszyfrowana treść trafia w niego raz na 256
+  telegramów — czyli mniej więcej co osiem godzin na licznik. Wtedy czyta
+  zaszyfrowane bajty jako liczbę. Na liczniku pokazującym 1,387 m³ daje to
+  `15430.611`, co po cichu zatruwa statystyki długoterminowe Home Assistanta.
+  Przy włączonej opcji rekord, którego nie da się zweryfikować, trafia do
+  dekodera ze zmienionym kluczem, którego żaden sterownik nie łapie: odczyt
+  przepada, zegar licznika nadal się aktualizuje.
+- **Brak jakichkolwiek wartości, bez wyjaśnienia.** Jeśli klucz AES licznika
+  jest skonfigurowany, dodatek sam odszyfrowuje blok i podaje dekoderowi
+  czytelny rekord. Jeśli nie jest — log mówi to wprost, razem z wersją i typem
+  licznika, polem CI oraz listą znalezionych rekordów.
+
+**Chodzi o zwykły klucz AES licznika** — ten sam, którego używają jego zwykłe
+ramki (CI=0x7A). Nie ma osobnego sekretu do walk-by; jeśli zwykłe ramki tego
+licznika się odszyfrowują, to jest właśnie ten klucz. Zły klucz jest zgłaszany
+jako zły i nigdy nie daje wartości zastępczej.
+
+Przy wyłączonej opcji dekodowanie jest co do bajtu takie jak wcześniej, więc
+instalacja bez liczników Qundis nic nie odczuwa. Patrz `docs/ARCHITECTURE.md`
+§3.5.
+
 ### M-Bus przewodowy (magistrala szeregowa, domyślnie wyłączony)
 
 Liczniki ciepła i wody często idą kablem, nie radiem: konwerter M-Bus master siedzi

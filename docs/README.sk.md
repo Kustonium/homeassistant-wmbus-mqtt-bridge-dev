@@ -455,6 +455,36 @@ Medzery v sekvencii dokazujú, že sa niekde medzi ESP a odberateľom stratila
 udalosť. Samy osebe **nehovoria**, či bola príčinou rádiová časť, MQTT, sieť alebo
 odberateľ.
 
+### Blok walk-by Qundis (`qds_walkby_enabled`, predvolene vypnuté)
+
+Meradlá Qundis vkladajú celý obsah walk-by do jediného záznamu výrobcu
+(`0DFF5F`, 53 bajtov) v telegramoch CI=0x78. Od generácie 2026 je tento záznam
+šifrovaný **vnútri záznamu**, nie na vrstve wM-Bus: takéto telegramy nemajú
+hlavičku TPL, wM-Bus ich teda správne hlási ako nešifrované a nič ich neoznačí
+ako vyžadujúce kľúč.
+
+Bez tejto voľby nastávajú dva problémy a voľba rieši oba:
+
+- **Náhodné hodnoty so `status: OK`.** Dekodér rozpozná záznam walk-by podľa
+  jediného bajtu, ktorý náhodný šifrovaný obsah trafí raz za 256 telegramov —
+  teda približne každých osem hodín na meradlo. Potom číta šifrované bajty ako
+  číslo. Pri meradle s 1,387 m³ z toho vznikne `15430.611`, čo nenápadne
+  znehodnotí dlhodobé štatistiky Home Assistanta. So zapnutou voľbou sa
+  neoveriteľný záznam odovzdá dekodéru so zmeneným kľúčom, na ktorý nesedí žiadny
+  ovládač: odčet prepadne, hodiny meradla sa naďalej aktualizujú.
+- **Žiadne hodnoty a žiadne vysvetlenie.** Ak je AES kľúč meradla nastavený,
+  doplnok blok sám dešifruje a odovzdá dekodéru čitateľný záznam. Ak nie je, log
+  to povie priamo — spolu s verziou a typom meradla, poľom CI a nájdenými
+  záznamami.
+
+**Ide o bežný AES kľúč meradla** — ten istý, ktorý používajú jeho bežné telegramy
+(CI=0x7A). Žiadne osobitné tajomstvo pre walk-by neexistuje; ak sa bežné
+telegramy toho meradla dešifrujú, je to práve tento kľúč. Nesprávny kľúč je
+nahlásený ako nesprávny a nikdy nevedie k náhradnej hodnote.
+
+S vypnutou voľbou je dekódovanie bajt po bajte rovnaké ako predtým, inštalácia
+bez meradiel Qundis teda nie je dotknutá. Pozri `docs/ARCHITECTURE.md` §3.5.
+
 ### Drôtový M-Bus (sériová zbernica, predvolene vypnuté)
 
 Merače tepla a vody často vedú káblom, nie rádiom: prevodník M-Bus master sedí na

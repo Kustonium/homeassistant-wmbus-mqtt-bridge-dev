@@ -195,6 +195,60 @@ Bridge-side issues are different: dropped MQTT frames, stale process state,
 incorrect config generation, missing Discovery messages, or UI presentation
 belong in this repository.
 
+### 3.5 One deliberate exception: the Qundis walk-by block
+
+Section 3.2.1 says the wrapper must not narrow what upstream can do, and
+section 3.4 says decoder problems belong to the decoder. The optional Qundis
+walk-by stage (`qds_walkby_enabled`, off by default) is the one place where the
+bridge modifies a telegram before the decoder sees it. The reasoning is worth
+stating plainly, because it is a real exception rather than an oversight.
+
+Qundis meters put their entire walk-by payload into a single manufacturer
+record on CI=0x78 frames: DIF `0D` (LVAR), VIF `FF`, VIFE `5F`, length 0x35 (53
+bytes), with the values read from fixed offsets inside it. Since the 2026
+generation that record's 48-byte body is encrypted. The encryption is inside
+the manufacturer record, not at the wM-Bus layer -- CI=0x78 carries no TPL
+header, so the frame genuinely is unencrypted as far as wM-Bus is concerned,
+and nothing in the normal encryption handling flags it.
+
+Two consequences follow, and the stage addresses each:
+
+**The decoder can publish ciphertext as a reading.** `qwaterv2` decides whether
+a block is a walk-by record by testing one byte (`blob[9] == 0x13`). Random
+ciphertext satisfies that 1 time in 256, roughly every eight hours per meter at
+typical transmission rates. `extractDVdouble()` then reads the bytes as BCD
+while mapping hex A-F to "digits" 17-22, so the record decodes to a large
+plausible-looking number with `status: OK`. This is upstream issue #2025,
+unpatched on master as of 2026-08-17. Verified here against the pinned 3.0.0
+build: the frame from that issue yields `total_m3 15430.611` on a meter reading
+1.387 m3.
+
+Suppressing the whole telegram would be the crude fix, but it would also discard
+the `046D` meter datetime, which is the one field that is valid on these frames.
+So when the stage cannot validate a walk-by record, it rewrites only that
+record's key from `0DFF5F` to `0DFF5E`. The record keeps its length and
+structure, every following record still parses, and the key is one no driver
+matches -- EN 13757 reserves VIFE 0x5E. The decoder then reports exactly what it
+reports for any unrecognised manufacturer block: nothing.
+
+**The block can be decrypted, but not by the decoder.** The body is AES-128-CBC
+under the meter's ordinary AES key -- the same key its CI=0x7A frames already
+use, not a separate walk-by secret. The `ixml` engine upstream uses for these
+drivers cannot do AES, so this cannot live in a driver without core changes.
+When the key is configured, the stage decrypts the body, resets the generation
+marker byte and hands the decoder a record identical to what a plaintext-
+generation meter would have sent. Upstream's unmodified driver decodes it.
+
+Nothing is published on trust. A decrypted body must still pass the full header
+check and strict BCD validation on every field before any value is produced;
+failure is reported as `QDS_DECRYPT_FAILED`, never as a fallback value. The
+format itself is documented in `rootfs/usr/bin/qds.py`, which separates what
+this project verified independently from what rests on a single (well
+evidenced, but unmerged) upstream report.
+
+With the option off, the stage is a plain `cat` and the decode path is
+byte-for-byte what it was.
+
 ## 4. Life of a telegram
 
 Every payload accepted by the configured input filter is delivered to two
