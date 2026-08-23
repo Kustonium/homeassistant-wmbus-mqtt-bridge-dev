@@ -1,3 +1,8 @@
+## 1.5.53-dev.281
+
+### Added
+- classify, validate and decrypt the Qundis walk-by block (opt-in) (f54b550)
+
 ## 1.5.53-dev.280
 
 ### Added
