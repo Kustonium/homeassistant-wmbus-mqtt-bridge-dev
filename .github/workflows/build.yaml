@@ -113,6 +113,7 @@ jobs:
           bash tests/test_esp_reception_history.sh
           bash tests/test_mbus_meter_files.sh
           python3 -m unittest tests/test_mbus_webui.py -v
+          python3 -m unittest tests/test_meter_rename.py -v
 
   # ---------------------------------------------------------------------------
   # Build — build + push BOTH arch images tagged :dev and :dev.<run_number>.
