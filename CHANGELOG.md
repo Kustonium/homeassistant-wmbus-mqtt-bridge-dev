@@ -1,3 +1,8 @@
+## 1.5.55-dev.289
+
+### Added
+- make the Configuration section collapsible (950e4e8)
+
 ## 1.5.55-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
