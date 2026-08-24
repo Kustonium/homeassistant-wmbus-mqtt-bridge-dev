@@ -57,4 +57,35 @@ _upsert_esp_rx_sequence "${SEQUENCE}" lr1121 DEADBEEF 1 203
 [[ "$(awk -F '\t' '$1=="lr1121" {print $2 FS $3 FS $4 FS $5}' "${SEQUENCE}")" == $'DEADBEEF\t1\t0\t0' ]] \
   || { echo "FAIL: RX sequence boot reset" >&2; exit 1; }
 
+# A late or duplicated delivery must not invent a gap.
+#
+# The tracker used to store the LAST sequence number it saw, so an arrival
+# below the current maximum moved the baseline backwards and the next
+# in-order frame then looked like a jump. One redelivery therefore produced
+# a phantom 'missing' - observed on hardware 2026-08-21, when three boards
+# reported missing=1 in the same second while the broker was simply
+# redelivering. Feed 1,2,3,5,4,6,7: exactly one frame (4) was genuinely
+# late, so missing must stay at 1 and never grow as later frames arrive.
+BOOTS="${TMP}/boots.tsv"
+SEQ2="${TMP}/sequence_reorder.tsv"
+touch "${SEQ2}" "${BOOTS}"
+
+for n in 1 2 3 5 4 6 7; do
+  _upsert_esp_rx_sequence "${SEQ2}" lilygo AAAA "${n}" 1000
+done
+
+[[ "$(awk -F '\t' '$1=="lilygo" {print $3 FS $4 FS $5}' "${SEQ2}")" == $'5000\t1\t1' ]] \
+  || { echo "FAIL: reordered delivery must not invent gaps" >&2; exit 1; }
+
+# One row per boot, so a restart leaves a trace. Without this the sequence
+# reset erases the evidence of the very event you are trying to see.
+_upsert_esp_rx_boot "${BOOTS}" lilygo AAAA 1000
+_upsert_esp_rx_boot "${BOOTS}" lilygo AAAA 1100
+_upsert_esp_rx_boot "${BOOTS}" lilygo BBBB 2000
+
+[[ "$(awk -F '\t' '$2=="AAAA" {print $3 FS $4 FS $5}' "${BOOTS}")" == $'1000\t1100\t2' ]] \
+  || { echo "FAIL: boot row must accumulate first/last/events" >&2; exit 1; }
+[[ "$(wc -l < "${BOOTS}")" -eq 2 ]] \
+  || { echo "FAIL: a new boot_id must add a row, not overwrite" >&2; exit 1; }
+
 echo "PASS: ESP reception summary and bounded history"

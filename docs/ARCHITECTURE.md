@@ -685,6 +685,60 @@ also appended to a bounded history without RAW payload or AES material. Sequence
 gaps demonstrate a missing event somewhere on the ESP-to-subscriber path; they
 do not by themselves identify MQTT, networking, or the subscriber as the cause.
 
+### Diagnostics tab
+
+One row per ESP, because a multi-board setup raises two questions the other
+pages answer badly: which board is behaving differently, and has any of them
+been restarting unnoticed.
+
+Sources, all already collected:
+
+| file | contributes |
+|---|---|
+| `status_esp_rx_sequence.tsv` | `boot_id`, highest `seq`, missing and out-of-order counts |
+| `status_esp_rx_boots.tsv` | one row per boot: first seen, last seen, events |
+| `status_esp_rx_reception.tsv` | frames and meters per board |
+
+`status_esp_rx_boots.tsv` exists because a restart resets the sequence counters
+and therefore erases its own evidence. On 2026-08-20/21 four boards restarted
+every 15 minutes for a day and the only visible symptom was slightly worse
+reception; the cause was an empty `api:` block, where ESPHome applies its
+default `reboot_timeout: 15min` and restarts whenever no Native API client is
+connected. When restarts cluster between 840 s and 960 s apart the tab names
+that cause directly instead of leaving the reader to rediscover it.
+
+Thresholds, deliberately conservative:
+
+| state | condition |
+|---|---|
+| not enough data | fewer than 500 events this boot, or less than 5 min since boot |
+| OK | gaps at or below 0.1 % of expected events |
+| needs attention | gaps above 0.1 %, or 1-2 restarts in 24 h |
+| alarm | gaps above 1 %, a single gap of 100+, or 3+ restarts in 24 h |
+
+
+Firmware that sets `received_at` in the `rx` payload lets the tab show an **ESP
+clock** column. Three states, and the difference between them matters:
+
+- **synced** - every frame carried a stamp; the number beside it is the skew
+  between the board's reception time and the time the bridge saw the message,
+- **partly stamped** - some frames arrived without one. Normal right after a
+  restart, when the radio receives for as long as SNTP needs to answer,
+- **no timestamp** - the board never stamped anything: either older firmware, or
+  a clock that never came up.
+
+A malformed stamp drops the field, never the frame. Rejecting a telegram over a
+cosmetic timestamp would let one firmware bug silence a whole board.
+`out_of_order` never raises a state on its own. It counts delivery reordering,
+not reception, and a redelivering broker would otherwise light the whole page.
+
+**Sequence gaps count against the highest sequence seen, not the last one.** An
+arrival below the maximum is recorded as out-of-order and does not move the
+baseline. Before that fix a late or duplicated delivery pulled the baseline
+backwards and the next in-order frame looked like a jump, so one redelivery
+invented a gap that never happened - seen on 2026-08-21, when three boards
+reported a missing event in the same second while the broker was redelivering.
+
 The add-on option `esp_rx_api_enabled` is an independent, default-off export
 gate. When enabled, the authenticated Ingress WebUI exposes `GET /api/esp-rx`
 with the structured reception summary, source sequence state, and bounded
@@ -781,6 +835,8 @@ for understanding the system.
 | `status_esp_meter_reception.tsv`, `esp_rx_history.jsonl` | session counts and bounded history derived from legacy `/telegram` traffic |
 | `status_esp_rx_reception.tsv` | per-meter/source session counts from structured `/rx` events |
 | `status_esp_rx_sequence.tsv` | per-source boot and sequence continuity, including missing and out-of-order events |
+| `status_esp_rx_boots.tsv` | one row per ESP boot: first seen, last seen, events - so a restart leaves a trace after it resets the sequence counters |
+| `status_esp_rx_clock.tsv` | the board's own reception time against bridge time: last stamp, skew, and how many frames arrived stamped or unstamped |
 | `esp_rf_rx_history.jsonl` | bounded structured `/rx` history without RAW or AES payloads |
 | `status_esp_health.json`, `status_esp_meters.json` | per-ESP health and meter flags |
 | `status_esp_diag.json` | latest ESP diagnostic summary |

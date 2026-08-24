@@ -441,6 +441,28 @@ HEX.
 
 ---
 
+### Zakładka Diagnostyka
+
+Tabela per płytka: ramki, liczniki, zgubione zdarzenia, restarty w ostatniej
+dobie i czas od ostatniej ramki, plus jeden stan na płytkę. Pod nią karta każdej
+płytki ze szczegółami i wyjaśnieniem każdego ostrzeżenia zwykłym językiem.
+
+Dwie rzeczy, pod które to powstało. **Luki w sekwencji**, które dowodzą, że
+zdarzenie zginęło między ESP a dodatkiem — choć nie mówią, czy zawiniło radio,
+MQTT, sieć czy subskrybent. Oraz **ciche restarty**: restart zeruje liczniki
+płytki, więc bez osobnego zapisu kasuje własny ślad. Gdy restarty są oddalone
+o mniej więcej 15 minut, zakładka mówi to wprost i nazywa prawdopodobną
+przyczynę — domyślne `api.reboot_timeout` w ESPHome, które restartuje płytkę
+zawsze, gdy nie jest podłączony żaden klient Native API. Odbiornik pracujący
+tylko na MQTT nigdy takiego nie ma.
+
+Strona wymaga firmware'u publikującego temat metadanych `rx`; płytki na starszym
+firmwarze po prostu się nie pojawią.
+
+Gdy firmware stempluje też ramki czasem odbioru, karta zyskuje wiersz **Zegar
+ESP**: czy zegar płytki jest ustawiony i jak bardzo jej pojęcie o czasie odbioru
+rozjeżdża się z czasem dodatku.
+
 ### Eksport dowodów odbioru z ESP (`esp_rx_api_enabled`, domyślnie wyłączony)
 
 Firmware publikujący strukturalne metadane odbioru na `wmbus/<płytka>/rx` pozwala

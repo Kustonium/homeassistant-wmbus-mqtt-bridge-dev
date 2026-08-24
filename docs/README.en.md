@@ -442,6 +442,27 @@ which the decoder does not have when telegrams are fed to it as hex.
 
 ---
 
+### Diagnostics tab
+
+A per-board table: frames, meters, missing events, restarts in the last 24 hours
+and time since the last frame, with one status per board. Below it, a card per
+board with the details and a plain-language note explaining any warning.
+
+Two things it is built to catch. **Sequence gaps**, which prove an event was lost
+between the ESP and the add-on - though not whether the radio, MQTT, the network
+or the subscriber was at fault. And **silent restarts**: a restart resets the
+board's counters, so without a record it erases its own evidence. When restarts
+are spaced about 15 minutes apart, the tab says so and names the likely cause -
+ESPHome's default `api.reboot_timeout`, which restarts a board whenever no
+Native API client is connected. An MQTT-only receiver never has one.
+
+The page needs firmware that publishes the `rx` metadata topic; boards on older
+firmware simply do not appear.
+
+When the firmware also stamps frames with their reception time, the card gains
+an **ESP clock** line: whether the board's clock is set, and how far its idea of
+the reception time is from the bridge's.
+
 ### ESP RX evidence export (`esp_rx_api_enabled`, off by default)
 
 Firmware that publishes structured receive metadata on `wmbus/<board>/rx` lets the

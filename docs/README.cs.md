@@ -429,6 +429,27 @@ dekodér nemá, když mu telegramy předáváte jako HEX.
 
 ---
 
+### Záložka Diagnostika
+
+Tabulka po deskách: rámce, měřidla, chybějící události, restarty za posledních
+24 hodin a čas od posledního rámce, plus jeden stav na desku. Pod ní karta každé
+desky s detaily a srozumitelným vysvětlením každého varování.
+
+Dvě věci, kvůli kterým vznikla. **Mezery v sekvenci** dokládají, že se událost
+ztratila mezi ESP a doplňkem - neříkají však, zda selhalo rádio, MQTT, síť nebo
+odběratel. A **tiché restarty**: restart vynuluje počítadla desky, takže bez
+zvláštního záznamu maže vlastní stopu. Když jsou restarty zhruba 15 minut od
+sebe, záložka to řekne a pojmenuje pravděpodobnou příčinu - výchozí
+`api.reboot_timeout` v ESPHome, který desku restartuje, kdykoli není připojen
+klient Native API. Přijímač pouze na MQTT žádného nemá.
+
+Stránka potřebuje firmware publikující téma metadat `rx`; starší desky se
+jednoduše neobjeví.
+
+Pokud firmware navíc razítkuje rámce časem příjmu, karta získá řádek **Hodiny
+ESP**: zda jsou hodiny desky nastavené a jak moc se její čas příjmu liší od času
+doplňku.
+
 ### Export důkazů o příjmu z ESP (`esp_rx_api_enabled`, ve výchozím stavu vypnuto)
 
 Firmware publikující strukturovaná metadata příjmu na `wmbus/<deska>/rx` umožňuje

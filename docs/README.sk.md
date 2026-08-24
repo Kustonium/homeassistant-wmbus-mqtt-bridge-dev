@@ -429,6 +429,27 @@ zariadenie, ktoré dekodér nemá, keď mu telegramy podávate ako HEX.
 
 ---
 
+### Záložka Diagnostika
+
+Tabuľka podľa dosiek: rámce, merače, chýbajúce udalosti, reštarty za posledných
+24 hodín a čas od posledného rámca, plus jeden stav na dosku. Pod ňou karta
+každej dosky s detailmi a zrozumiteľným vysvetlením každého varovania.
+
+Dve veci, kvôli ktorým vznikla. **Medzery v sekvencii** dokazujú, že sa udalosť
+stratila medzi ESP a doplnkom - nehovoria však, či zlyhalo rádio, MQTT, sieť
+alebo odberateľ. A **tiché reštarty**: reštart vynuluje počítadlá dosky, takže
+bez osobitného záznamu maže vlastnú stopu. Keď sú reštarty zhruba 15 minút od
+seba, záložka to povie a pomenuje pravdepodobnú príčinu - predvolený
+`api.reboot_timeout` v ESPHome, ktorý dosku reštartuje vždy, keď nie je
+pripojený klient Native API. Prijímač len na MQTT žiadneho nemá.
+
+Stránka potrebuje firmvér publikujúci tému metadát `rx`; staršie dosky sa
+jednoducho neobjavia.
+
+Ak firmvér navyše pečiatkuje rámce časom príjmu, karta získa riadok **Hodiny
+ESP**: či sú hodiny dosky nastavené a ako veľmi sa ich čas príjmu líši od času
+doplnku.
+
 ### Export dôkazov o príjme z ESP (`esp_rx_api_enabled`, predvolene vypnuté)
 
 Firmvér publikujúci štruktúrované metadáta príjmu na `wmbus/<doska>/rx` umožňuje

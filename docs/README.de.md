@@ -453,6 +453,27 @@ Hex übergeben werden.
 
 ---
 
+### Diagnose-Tab
+
+Eine Tabelle je Platine: Frames, Zähler, fehlende Ereignisse, Neustarts der
+letzten 24 Stunden und Zeit seit dem letzten Frame, dazu ein Status je Platine.
+Darunter je eine Karte mit Details und einer Klartext-Notiz zu jeder Warnung.
+
+Zwei Dinge, für die das gebaut ist. **Sequenzlücken** belegen, dass ein Ereignis
+zwischen ESP und Add-on verloren ging - nicht aber, ob Funk, MQTT, Netzwerk oder
+Abonnent schuld war. Und **stille Neustarts**: ein Neustart setzt die Zähler
+zurück und löscht damit seinen eigenen Beleg. Liegen die Neustarts etwa 15
+Minuten auseinander, benennt der Tab die wahrscheinliche Ursache - ESPHomes
+Standard `api.reboot_timeout`, der die Platine neu startet, sobald kein
+Native-API-Client verbunden ist. Ein reiner MQTT-Empfänger hat nie einen.
+
+Die Seite braucht Firmware, die das `rx`-Metadaten-Topic sendet; ältere Platinen
+erscheinen schlicht nicht.
+
+Stempelt die Firmware die Frames zusätzlich mit ihrer Empfangszeit, zeigt die
+Karte eine **ESP-Uhr**-Zeile: ob die Uhr der Platine gesetzt ist und wie weit
+ihre Empfangszeit von der des Add-ons abweicht.
+
 ### Export der ESP-Empfangsnachweise (`esp_rx_api_enabled`, standardmäßig aus)
 
 Firmware, die strukturierte Empfangsmetadaten auf `wmbus/<Platine>/rx`

@@ -174,6 +174,11 @@ ESP_RX_HISTORY_FILE="${BASE}/esp_rx_history.jsonl"
 STATUS_ESP_RX_RECEPTION_FILE="${BASE}/status_esp_rx_reception.tsv"
 ESP_RF_RX_HISTORY_FILE="${BASE}/esp_rf_rx_history.jsonl"
 STATUS_ESP_RX_SEQUENCE_FILE="${BASE}/status_esp_rx_sequence.tsv"
+# One row per ESP boot. A restart resets the sequence counters, so without
+# this the evidence of the restart is destroyed by the restart itself.
+STATUS_ESP_RX_BOOTS_FILE="${BASE}/status_esp_rx_boots.tsv"
+# ESP-reported reception time against bridge time, per board.
+STATUS_ESP_RX_CLOCK_FILE="${BASE}/status_esp_rx_clock.tsv"
 SEARCH_MATCHES_FILE="${BASE}/search_matches.tsv"
 SEARCH_STATUS_FILE="${BASE}/search_status.json"
 # discovery_published flag — file-backed (see write_status_json). The raw-counter
