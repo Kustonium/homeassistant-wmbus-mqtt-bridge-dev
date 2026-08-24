@@ -1,3 +1,8 @@
+## 1.5.57-dev.296
+
+### Added
+- let a configured meter be renamed (5348662)
+
 ## 1.5.57-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
