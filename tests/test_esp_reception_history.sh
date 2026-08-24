@@ -74,7 +74,7 @@ for n in 1 2 3 5 4 6 7; do
   _upsert_esp_rx_sequence "${SEQ2}" lilygo AAAA "${n}" 1000
 done
 
-[[ "$(awk -F '\t' '$1=="lilygo" {print $3 FS $4 FS $5}' "${SEQ2}")" == $'5000\t1\t1' ]] \
+[[ "$(awk -F '\t' '$1=="lilygo" {print $3 FS $4 FS $5}' "${SEQ2}")" == $'7\t1\t1' ]] \
   || { echo "FAIL: reordered delivery must not invent gaps" >&2; exit 1; }
 
 # One row per boot, so a restart leaves a trace. Without this the sequence
