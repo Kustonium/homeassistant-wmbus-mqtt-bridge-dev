@@ -1,3 +1,8 @@
+## 1.5.56-dev.291
+
+### Fixed
+- remember which Configuration sections the reader opened (24caf68)
+
 ## 1.5.56-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
