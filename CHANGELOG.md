@@ -1,3 +1,8 @@
+## 1.5.53-dev.282
+
+### Added
+- diagnostics tab, and make a silent restart visible (a1aa748)
+
 ## 1.5.53-dev.281
 
 ### Added
