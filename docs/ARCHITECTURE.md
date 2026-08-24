@@ -699,6 +699,11 @@ Sources, all already collected:
 | `status_esp_rx_boots.tsv` | one row per boot: first seen, last seen, events |
 | `status_esp_rx_reception.tsv` | frames and meters per board |
 
+Both the boot history and the clock view are scoped to the bridge session,
+like every other counter here: restarting the add-on starts the 24 h reboot
+window over. A zero there means "none since this session began", not "this
+board has never rebooted".
+
 `status_esp_rx_boots.tsv` exists because a restart resets the sequence counters
 and therefore erases its own evidence. On 2026-08-20/21 four boards restarted
 every 15 minutes for a day and the only visible symptom was slightly worse
