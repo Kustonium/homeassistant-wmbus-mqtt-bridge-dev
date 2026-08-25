@@ -1,3 +1,8 @@
+## 1.5.59-dev.301
+
+### Fixed
+- pin the coverage sensor entity_id with object_id (910339b)
+
 ## 1.5.59-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
