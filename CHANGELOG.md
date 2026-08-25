@@ -1,3 +1,8 @@
+## 1.5.58-dev.298
+
+### Added
+- publish per-board meter coverage as an HA sensor (4b32c1a)
+
 ## 1.5.58-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
