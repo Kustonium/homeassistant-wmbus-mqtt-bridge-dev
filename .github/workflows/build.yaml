@@ -111,6 +111,7 @@ jobs:
           bash tests/test_issue_report_sources.sh
           bash tests/test_calculated_fields.sh
           bash tests/test_esp_reception_history.sh
+          bash tests/test_esp_coverage_sensor.sh
           bash tests/test_mbus_meter_files.sh
           python3 -m unittest tests/test_mbus_webui.py -v
           python3 -m unittest tests/test_meter_rename.py -v
