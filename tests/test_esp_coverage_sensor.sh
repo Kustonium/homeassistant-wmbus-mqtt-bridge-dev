@@ -93,6 +93,16 @@ cfg="$(awk -F '\t' '$1=="homeassistant/sensor/wmbus_lilygo_meters_heard/config" 
 [[ "$(jq -r '.unique_id' <<< "${cfg}")" == "wmbus_lilygo_meters_heard" ]] \
   || fail "unexpected unique_id"
 
+# object_id is what pins the entity_id. Without it HA composes one from the
+# device name plus the entity name and yields
+# sensor.wmbus_bridge_wmbus_<board>_meters_heard - "wmbus" twice. That shipped
+# in 1.5.58 and could not be corrected in place afterwards, because HA never
+# re-slugs an entity_id once the entity exists.
+[[ "$(jq -r '.object_id' <<< "${cfg}")" == "wmbus_lilygo_meters_heard" ]] \
+  || fail "object_id must pin entity_id to sensor.wmbus_<board>_meters_heard"
+[[ "$(jq -r '.has_entity_name' <<< "${cfg}")" == "true" ]] \
+  || fail "has_entity_name keeps the friendly name from doubling the device name"
+
 # ── throttling ──────────────────────────────────────────────────────────────
 # A second call in the same minute must publish nothing: the heartbeat ticker
 # calls this every few seconds and the table is reread in full each time.
