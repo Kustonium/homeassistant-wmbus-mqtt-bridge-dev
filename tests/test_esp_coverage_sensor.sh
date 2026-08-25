@@ -37,9 +37,11 @@ DISCOVERY_RETAIN="true"
 STATE_PREFIX="wmbusmeters"
 STATUS_ESP_RX_RECEPTION_FILE="${TMP}/reception.tsv"
 
-# Source only the function under test. The file defines other helpers that need
-# no setup, so a plain source is enough.
-# shellcheck source=/dev/null
+# Source the function under test. The path is given to shellcheck as well as
+# to bash: with -x it follows the directive and can then see that the
+# variables set above are consumed inside publish_esp_coverage, instead of
+# reporting them as unused.
+# shellcheck source=rootfs/usr/bin/bridge-lib/09-discovery.sh
 source "${LIB}"
 
 # ── fixture ─────────────────────────────────────────────────────────────────
