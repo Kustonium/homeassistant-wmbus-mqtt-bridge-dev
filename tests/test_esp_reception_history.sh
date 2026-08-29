@@ -88,4 +88,26 @@ _upsert_esp_rx_boot "${BOOTS}" lilygo BBBB 2000
 [[ "$(wc -l < "${BOOTS}")" -eq 2 ]] \
   || { echo "FAIL: a new boot_id must add a row, not overwrite" >&2; exit 1; }
 
+# BusyBox awk treats digit-E-digit values as numeric strings. Large exponents
+# overflow, so a plain `$2 == boot_id` can consider distinct boot IDs equal.
+# XIAO produced 651E6871 in the field, exposing this on real hardware.
+SCI_BOOTS="${TMP}/boots_scientific.tsv"
+SCI_SEQUENCE="${TMP}/sequence_scientific.tsv"
+touch "${SCI_BOOTS}" "${SCI_SEQUENCE}"
+
+_upsert_esp_rx_boot "${SCI_BOOTS}" xiaoseed 999E9999 1000
+for n in 1 2 3 4 5; do
+  _upsert_esp_rx_boot "${SCI_BOOTS}" xiaoseed 651E6871 "$((1000 + n))"
+done
+
+[[ "$(awk -F '\t' '"boot:" $2=="boot:651E6871" {print $3 FS $4 FS $5}' "${SCI_BOOTS}")" == $'1001\t1005\t5' ]] \
+  || { echo "FAIL: scientific-looking boot_id must accumulate its own row" >&2; exit 1; }
+[[ "$(wc -l < "${SCI_BOOTS}")" -eq 2 ]] \
+  || { echo "FAIL: distinct scientific-looking boot_ids must not collide" >&2; exit 1; }
+
+_upsert_esp_rx_sequence "${SCI_SEQUENCE}" xiaoseed 999E9999 40 1000
+_upsert_esp_rx_sequence "${SCI_SEQUENCE}" xiaoseed 651E6871 1 1001
+[[ "$(awk -F '\t' '$1=="xiaoseed" {print $2 FS $3 FS $4 FS $5}' "${SCI_SEQUENCE}")" == $'651E6871\t1\t0\t0' ]] \
+  || { echo "FAIL: scientific-looking boot_id must reset sequence accounting" >&2; exit 1; }
+
 echo "PASS: ESP reception summary and bounded history"
