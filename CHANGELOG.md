@@ -1,3 +1,8 @@
+## 1.5.60-dev.303
+
+### Other (review)
+- Fix awk boot ID comparisons (26c9b93)
+
 ## 1.5.60-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
