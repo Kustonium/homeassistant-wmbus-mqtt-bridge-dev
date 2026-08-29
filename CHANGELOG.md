@@ -1,3 +1,7 @@
+## 1.5.61-dev
+
+<!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
+
 ## 1.5.60-dev.303
 
 ### Other (review)
