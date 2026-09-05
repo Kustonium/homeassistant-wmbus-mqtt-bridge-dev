@@ -1,3 +1,8 @@
+## 1.5.61-dev.305
+
+### Other (review)
+- Do not flag a single restart as needing attention (c705be4)
+
 ## 1.5.61-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
