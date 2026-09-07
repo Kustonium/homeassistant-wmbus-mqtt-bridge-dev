@@ -63,7 +63,9 @@ class MBusWebUITest(unittest.TestCase):
                                 "topic": "wmbus/lr1121/diag/lr_fifo/0", "raw": "ABCD"}) + "\n",
                     encoding="utf-8",
                 )
-                payload = webui.esp_rx_api_payload(limit=1, since=120, until=201)
+                payload = webui.esp_rx_api_payload(
+                    limit=1, since=120, until=201, include_diagnostics=True
+                )
             finally:
                 webui.STATUS_ESP_RX_RECEPTION_FILE = old_reception
                 webui.STATUS_ESP_RX_SEQUENCE_FILE = old_sequence

@@ -300,6 +300,7 @@ RESTART_ON_EXIT="${RESTART_ON_EXIT:-$(json_get_bool '.restart_on_exit' 'true')}"
 # entity (sensor.wmbus_bridge_health) and a background worker asks the HA Core
 # API whether that entity exists. Off by default (read-only HA access is opt-in).
 VERIFY_HA_ENTITIES="${VERIFY_HA_ENTITIES:-$(json_get_bool '.verify_ha_entities' 'false')}"
+ESP_DIAG_HISTORY_ENABLED="${ESP_DIAG_HISTORY_ENABLED:-$(json_get_bool '.esp_diag_history_enabled' 'false')}"
 # Qundis walk-by block (0DFF5F). Off by default: no effect on installs that
 # never see the block. On (a) rejects walk-by records the decoder cannot
 # validate, so upstream cannot publish ciphertext as a reading, and (b) with
@@ -316,7 +317,7 @@ if [[ "${QDS_WALKBY_ENABLED}" == "true" ]]; then
 else
   QDS_STAGE=( cat )
 fi
-export VERIFY_HA_ENTITIES
+export VERIFY_HA_ENTITIES ESP_DIAG_HISTORY_ENABLED
 
 STATE_PREFIX="${STATE_PREFIX:-$(json_get '.state_prefix' 'wmbusmeters')}"
 STATE_RETAIN="${STATE_RETAIN:-$(json_get_bool '.state_retain' 'false')}"
@@ -378,6 +379,7 @@ log "wmbusmeters: loglevel=${LOGLEVEL} filter_hex_only=${FILTER_HEX_ONLY} debug_
 log "search: mode=${SEARCH_MODE} expected_value_m3=${SEARCH_EXPECTED_VALUE_M3} tolerance_m3=${SEARCH_TOLERANCE_M3} delta_mode=${SEARCH_DELTA_MODE} min_delta_m3=${SEARCH_MIN_DELTA_M3} topic=${SEARCH_TOPIC}"
 log "robust: ignore_retained=${IGNORE_RETAINED} require_timestamp=${REQUIRE_TIMESTAMP} restart_on_exit=${RESTART_ON_EXIT}"
 log "verify_ha_entities: ${VERIFY_HA_ENTITIES}"
+log "esp_diag_history_enabled: ${ESP_DIAG_HISTORY_ENABLED}"
 status_add_event "ok" "bridge starting"
 write_status_json
 

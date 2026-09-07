@@ -505,9 +505,23 @@ w zbieraniu danych ani w zwykłym GUI. Włączenie robi dwie rzeczy:
   zapisuje te same dane z pełnym zachowanym buforem (do 100 000 zdarzeń) pod nazwą
   pliku ze znacznikiem UTC.
 
-Eksport **nigdy** nie zwraca surowych telegramów, kluczy AES ani poświadczeń MQTT
+Przy domyślnie wyłączonej historii diagnostyki eksport nie zwraca surowych
+telegramów, kluczy AES ani poświadczeń MQTT
 i jest tylko do odczytu: pobranie nie skraca historii, nie zeruje liczników i nic
 nie restartuje. Przy wyłączonej opcji endpoint odpowiada HTTP 404.
+
+### Historia diagnostyki radiowej (`esp_diag_history_enabled`, domyślnie wyłączona)
+
+Ta opcja jest przeznaczona do krótkiego, celowanego dochodzenia problemu toru RX,
+np. gdy LR1121 odbiera FIFO, ale dekoder 3-z-6 odrzuca ramkę. Dodatek zachowuje do
+10 000 wiadomości `fifo_sample` i `pipeline_drop` z `wmbus/<płytka>/diag/`, razem
+z bajtami `raw`, RSSI, etapem odrzucenia i czasem odbioru przez dodatek. Są one
+zwracane w osobnej tablicy `diagnostics_history` eksportu `/api/esp-rx`.
+
+To nie jest zwykła historia odczytów: zawiera surowe dane radiowe i zajmuje miejsce
+na dysku. Dlatego jest wyłączona domyślnie i nie trafia do normalnej historii RX.
+Włącz ją razem z `esp_rx_api_enabled` tylko dla diagnozowanej płytki, a po badaniu
+wyłącz.
 
 Luki w sekwencji dowodzą, że jakieś zdarzenie zginęło gdzieś między ESP
 a subskrybentem. Same z siebie **nie** mówią, czy przyczyną było radio, MQTT, sieć

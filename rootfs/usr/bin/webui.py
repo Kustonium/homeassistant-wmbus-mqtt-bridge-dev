@@ -655,7 +655,7 @@ def read_tsv(path: Path, fields: list[str], limit: int | None = None, reverse: b
 
 
 def esp_rx_api_payload(limit: int = 1000, since: int = 0, until: int = 0,
-                       max_limit: int = 10000) -> dict:
+                       max_limit: int = 10000, include_diagnostics: bool = False) -> dict:
     """Return bounded, secret-free structured RX evidence for the opt-in API."""
     from collections import deque
 
@@ -700,6 +700,8 @@ def esp_rx_api_payload(limit: int = 1000, since: int = 0, until: int = 0,
     except OSError:
         pass
     try:
+        if not include_diagnostics:
+            raise OSError
         with ESP_DIAG_HISTORY_FILE.open("r", encoding="utf-8", errors="replace") as stream:
             for line in stream:
                 try:
@@ -4486,6 +4488,7 @@ class Handler(BaseHTTPRequestHandler):
             payload = esp_rx_api_payload(
                 limit=limit, since=since, until=until,
                 max_limit=100000 if download else 10000,
+                include_diagnostics=bool(options.get("esp_diag_history_enabled", False)),
             )
             if download:
                 stamp = time.strftime('%Y%m%d-%H%M%S', time.gmtime(payload['generated_at']))
