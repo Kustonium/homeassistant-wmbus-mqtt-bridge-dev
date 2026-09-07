@@ -33,9 +33,11 @@ class MBusWebUITest(unittest.TestCase):
             old_reception = webui.STATUS_ESP_RX_RECEPTION_FILE
             old_sequence = webui.STATUS_ESP_RX_SEQUENCE_FILE
             old_history = webui.ESP_RF_RX_HISTORY_FILE
+            old_diagnostics = webui.ESP_DIAG_HISTORY_FILE
             webui.STATUS_ESP_RX_RECEPTION_FILE = base / "reception.tsv"
             webui.STATUS_ESP_RX_SEQUENCE_FILE = base / "sequence.tsv"
             webui.ESP_RF_RX_HISTORY_FILE = base / "history.jsonl"
+            webui.ESP_DIAG_HISTORY_FILE = base / "diagnostics.jsonl"
             try:
                 webui.STATUS_ESP_RX_RECEPTION_FILE.write_text(
                     "00089907\tlr1121\t100\t200\t43\twmbus/lr1121/rx\n",
@@ -55,16 +57,24 @@ class MBusWebUITest(unittest.TestCase):
                     "\n".join(json.dumps(event) for event in events) + "\n",
                     encoding="utf-8",
                 )
+                webui.ESP_DIAG_HISTORY_FILE.write_text(
+                    json.dumps({"schema": 1, "kind": "fifo_sample", "boot_id": "00382BF2",
+                                "sample": 1, "bridge_rx_time": 200, "source": "lr1121",
+                                "topic": "wmbus/lr1121/diag/lr_fifo/0", "raw": "ABCD"}) + "\n",
+                    encoding="utf-8",
+                )
                 payload = webui.esp_rx_api_payload(limit=1, since=120, until=201)
             finally:
                 webui.STATUS_ESP_RX_RECEPTION_FILE = old_reception
                 webui.STATUS_ESP_RX_SEQUENCE_FILE = old_sequence
                 webui.ESP_RF_RX_HISTORY_FILE = old_history
+                webui.ESP_DIAG_HISTORY_FILE = old_diagnostics
         self.assertEqual(payload["reception"][0]["count"], "43")
         self.assertEqual(payload["sequence"][0]["missing"], "0")
         self.assertEqual([event["seq"] for event in payload["history"]], [200])
         self.assertNotIn("raw", payload["history"][0])
         self.assertNotIn("key", payload["history"][0])
+        self.assertEqual(payload["diagnostics_history"][0]["raw"], "ABCD")
 
     def test_esp_rx_api_http_gate_and_parameter_validation(self):
         with tempfile.TemporaryDirectory() as directory:

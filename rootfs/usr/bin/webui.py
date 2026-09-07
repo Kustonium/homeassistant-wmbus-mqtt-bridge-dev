@@ -139,6 +139,9 @@ STATUS_ESP_RX_BOOTS_FILE = BASE / "status_esp_rx_boots.tsv"
 STATUS_ESP_RX_CLOCK_FILE = BASE / "status_esp_rx_clock.tsv"
 STATUS_ESP_CONFIG_FILE = BASE / "status_esp_config.json"
 ESP_RF_RX_HISTORY_FILE = BASE / "esp_rf_rx_history.jsonl"
+# Isolated dev-radio evidence (fifo_sample and pipeline_drop). Unlike the
+# ordinary /rx metadata this can include raw radio bytes by explicit design.
+ESP_DIAG_HISTORY_FILE = BASE / "esp_diag_history.jsonl"
 # ESP events TSV and per-event detail files (written by bridge.sh event subscriber)
 STATUS_ESP_EVENTS_FILE = BASE / "status_esp_events.tsv"
 STATUS_ESP_SUGGESTION_FILE = BASE / "status_esp_suggestion.json"
@@ -668,7 +671,9 @@ def esp_rx_api_payload(limit: int = 1000, since: int = 0, until: int = 0,
         ["source", "boot_id", "last_seq", "missing", "out_of_order", "last_seen"],
     )
     history: deque[dict] = deque(maxlen=limit)
+    diagnostics_history: deque[dict] = deque(maxlen=limit)
     invalid_lines = 0
+    diagnostics_invalid_lines = 0
     try:
         with ESP_RF_RX_HISTORY_FILE.open("r", encoding="utf-8", errors="replace") as stream:
             for line in stream:
@@ -694,6 +699,28 @@ def esp_rx_api_payload(limit: int = 1000, since: int = 0, until: int = 0,
                 )})
     except OSError:
         pass
+    try:
+        with ESP_DIAG_HISTORY_FILE.open("r", encoding="utf-8", errors="replace") as stream:
+            for line in stream:
+                try:
+                    event = json.loads(line)
+                except (TypeError, ValueError):
+                    diagnostics_invalid_lines += 1
+                    continue
+                if not isinstance(event, dict):
+                    diagnostics_invalid_lines += 1
+                    continue
+                event_time = safe_int(event.get("bridge_rx_time", 0))
+                if since and event_time < since:
+                    continue
+                if until and event_time >= until:
+                    continue
+                if event.get("kind") not in {"fifo_sample", "pipeline_drop"}:
+                    diagnostics_invalid_lines += 1
+                    continue
+                diagnostics_history.append(event)
+    except OSError:
+        pass
     return {
         "ok": True,
         "schema": 1,
@@ -703,6 +730,8 @@ def esp_rx_api_payload(limit: int = 1000, since: int = 0, until: int = 0,
         "sequence": sequence,
         "history": list(history),
         "history_invalid_lines": invalid_lines,
+        "diagnostics_history": list(diagnostics_history),
+        "diagnostics_history_invalid_lines": diagnostics_invalid_lines,
     }
 
 
