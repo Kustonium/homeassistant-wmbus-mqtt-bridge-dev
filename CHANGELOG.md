@@ -1,3 +1,8 @@
+## 1.5.62-dev.307
+
+### Other (review)
+- Persist ESP radio diagnostic history (6f8910e)
+
 ## 1.5.62-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
