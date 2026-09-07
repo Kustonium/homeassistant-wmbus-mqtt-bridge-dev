@@ -1,3 +1,9 @@
+## 1.5.62-dev.308
+
+### Other (review)
+- Make radio diagnostic history opt-in (f353cc3)
+- Persist ESP radio diagnostic history (6f8910e)
+
 ## 1.5.62-dev.307
 
 ### Other (review)
