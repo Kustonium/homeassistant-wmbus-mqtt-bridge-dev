@@ -219,6 +219,24 @@ class MBusWebUITest(unittest.TestCase):
         # key, not the bare word - the comment above the call names it too.
         self.assertNotIn("mbus_enabled:", save_meters)
 
+    def test_wired_meters_are_not_editable_from_the_discover_panel(self):
+        source = APP_JS.read_text(encoding="utf-8")
+        # update_meter_in_options() searches options["meters"] only, so the
+        # driver modal answered "Meter <id> not found in options." for a wired
+        # meter and opened with an empty name field. remove_meter_from_options()
+        # is worse: it finds no such entry, reports success and drops the
+        # status_meters.tsv row, which the next poll recreates. Both actions are
+        # routed to the tab that owns mbus_meters instead.
+        panel = source.split("function discoverConfiguredPanel(rows)", 1)[1]
+        panel = panel.split("  function ", 1)[0]
+        self.assertIn('const isWired    = row.source === "mbus";', panel)
+        self.assertIn('t("source_mbus_manage", "Manage in M-Bus")', panel)
+        # No unconditional driver button or checkbox is left in the row.
+        self.assertIn("<td>${actionCell}</td>", panel)
+        self.assertIn('<td style="text-align:center;">${selectCell}</td>', panel)
+        # A row that renders no checkbox must not count towards select-all.
+        self.assertIn('rows.filter(r => r.source !== "mbus")', panel)
+
     @mock.patch.object(webui.subprocess, "run")
     def test_wired_driver_detection_uses_wmbusmeters_analysis(self, run):
         run.return_value = mock.Mock(stdout="Auto driver : piigth\n", stderr="")

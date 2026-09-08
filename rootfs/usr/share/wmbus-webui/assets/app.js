@@ -2172,7 +2172,13 @@
 
   function discoverConfiguredPanel(rows) {
     if (!rows.length) return "";
-    const rowIds   = rows.map(r => r.id || r.meter_id || "").filter(Boolean);
+    // Wired meters are configured in mbus_meters, which the removal endpoint
+    // never touches: remove_meter_from_options() finds no such entry, reports
+    // success, drops the row from status_meters.tsv and the next poll puts it
+    // straight back. They get no checkbox below, so they must not count towards
+    // the select-all state either.
+    const rowIds   = rows.filter(r => r.source !== "mbus")
+      .map(r => r.id || r.meter_id || "").filter(Boolean);
     const selCount = rowIds.filter(i => state.selectedRemoval.has(i)).length;
     const allSel   = rowIds.length > 0 && selCount === rowIds.length;
     return `
@@ -2227,9 +2233,24 @@
                 const mfrCell    = mfrCompact
                   ? `<span style="font-size:12px;color:#9eafba;" title="${escapeHtml(mfrRaw)}">${escapeHtml(mfrCompact)}</span>`
                   : `<span style="color:var(--muted);">—</span>`;
+                // A wired meter's driver lives in mbus_meters, which
+                // update_meter_in_options() does not search - opening the driver
+                // modal for one answered "Meter <id> not found in options." and
+                // left the name field empty. Route it to the tab that owns it,
+                // exactly as the Meters tab already does.
+                const isWired    = row.source === "mbus";
+                const selectCell = isWired
+                  ? `<span style="color:var(--muted);" title="${escapeHtml(t("source_mbus_hint", "Reading from the wired M-Bus polling instance"))}">—</span>`
+                  : `<input type="checkbox" data-action="toggle-select-meter" data-id="${escapeHtml(id)}" ${state.selectedRemoval.has(id) ? "checked" : ""} style="cursor:pointer;">`;
+                const actionCell = isWired
+                  ? `<a class="btn" href="#mbus" style="text-decoration:none;">${escapeHtml(t("source_mbus_manage", "Manage in M-Bus"))}</a>`
+                  : `<div class="actions">
+                      ${row.preview_active === "true" ? `<button class="btn" data-action="cancel-preview" data-id="${escapeHtml(id)}">${escapeHtml(t("cancel_preview", "Cancel preview"))}</button>` : ""}
+                      <button class="btn" data-action="open-edit-driver" data-id="${escapeHtml(id)}" data-driver="${escapeHtml(row.driver || "auto")}">${escapeHtml(t("change_driver_btn", "Driver…"))}</button>
+                    </div>`;
                 return `
                   <tr data-value="${escapeHtml(dataVal)}">
-                    <td style="text-align:center;"><input type="checkbox" data-action="toggle-select-meter" data-id="${escapeHtml(id)}" ${state.selectedRemoval.has(id) ? "checked" : ""} style="cursor:pointer;"></td>
+                    <td style="text-align:center;">${selectCell}</td>
                     <td><strong>${escapeHtml(id)}</strong>${aesLockBadge(row)}</td>
                     <td><span style="margin-right:5px;font-size:15px;vertical-align:middle;">${mIcon}</span>${escapeHtml(row.name || id || "-")}</td>
                     <td>${escapeHtml(row.driver || "-")}</td>
@@ -2242,10 +2263,7 @@
                     <td>${escapeHtml(String(seen15mAdj))}</td>
                     <td>${escapeHtml(String(seen60mAdj))}</td>
                     <td style="color:var(--muted);font-size:12px;">${escapeHtml(fmtInterval(row.avg_interval_s))}${espReceptionBadges(row)}</td>
-                    <td><div class="actions">
-                      ${row.preview_active === "true" ? `<button class="btn" data-action="cancel-preview" data-id="${escapeHtml(id)}">${escapeHtml(t("cancel_preview", "Cancel preview"))}</button>` : ""}
-                      <button class="btn" data-action="open-edit-driver" data-id="${escapeHtml(id)}" data-driver="${escapeHtml(row.driver || "auto")}">${escapeHtml(t("change_driver_btn", "Driver…"))}</button>
-                    </div></td>
+                    <td>${actionCell}</td>
                   </tr>`;
               }).join("")}
             </tbody>
