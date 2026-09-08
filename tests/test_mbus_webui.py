@@ -251,6 +251,41 @@ class MBusWebUITest(unittest.TestCase):
         # dashboard reads for "Recent meters", which does want last_seen order.
         self.assertNotIn("asArray(data.meters).sort(", page)
 
+    def test_wired_saves_apply_without_an_addon_restart(self):
+        source = APP_JS.read_text(encoding="utf-8")
+        # bridge.sh runs stop_mbus_instance/start_mbus_instance inside its
+        # restart-on-exit loop, so the soft pipeline reload restarts the wired
+        # engine too and it re-reads wmbusmeters.conf and the meter files. The
+        # tab used to tell the user to restart the add-on instead.
+        for act in ("mbus-save-device", "mbus-save-meters"):
+            handler = source.split('if (action === "%s")' % act, 1)[1]
+            handler = handler.split("if (action ===", 1)[0]
+            with self.subTest(action=act):
+                # Guarded: with polling off there is nothing to reload, and a
+                # reload briefly interrupts radio decoding.
+                self.assertIn("if (state.mbus?.enabled) triggerSoftReload();", handler)
+        engine = source.split('if (action === "mbus-save-engine")', 1)[1]
+        engine = engine.split("if (action ===", 1)[0]
+        # The switch itself: reload whichever way it was moved.
+        self.assertIn("triggerSoftReload();", engine)
+        self.assertNotIn("if (state.mbus?.enabled) triggerSoftReload();", engine)
+
+    def test_wired_engine_texts_no_longer_demand_a_restart(self):
+        i18n = (Path(__file__).parents[1] / "rootfs" / "usr" / "bin" / "i18n.py").read_text(
+            encoding="utf-8")
+        # Every shipped language, or the UI keeps telling four of five users to
+        # restart something that no longer needs restarting.
+        for needle in (
+            "no add-on restart is needed",
+            "restart dodatku nie jest potrzebny",
+            "Neustart des Add-ons ist nicht n\u00f6tig",
+            "restart dopl\u0148ku nen\u00ed pot\u0159eba",
+            "re\u0161tart doplnku nie je potrebn\u00fd",
+        ):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, i18n)
+        self.assertNotIn("click Apply and restart the add-on", i18n)
+
     @mock.patch.object(webui.subprocess, "run")
     def test_wired_driver_detection_uses_wmbusmeters_analysis(self, run):
         run.return_value = mock.Mock(stdout="Auto driver : piigth\n", stderr="")

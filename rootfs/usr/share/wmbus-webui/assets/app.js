@@ -4133,7 +4133,7 @@
           <button class="btn primary" data-action="mbus-save-meters">${escapeHtml(t("mbus_save_meters", "Save meters"))}</button>
         </div>
         <p class="hint">${escapeHtml(t("mbus_poll_once_diagnostic", "Poll once is diagnostic only: it shows the raw reply but does not decode it, publish it to MQTT/Home Assistant or add the meter to Pipeline."))}</p>
-        ${meters.length && !mbus.enabled ? `<div class="banner banner-warn">${escapeHtml(t("mbus_engine_required_banner", "The meter is saved, but polling is OFF. To make it appear in Pipeline and Home Assistant, enable the engine below, click Apply and restart the add-on."))}</div>` : ""}
+        ${meters.length && !mbus.enabled ? `<div class="banner banner-warn">${escapeHtml(t("mbus_engine_required_banner", "The meter is saved, but polling is OFF. To make it appear in Pipeline and Home Assistant, enable the engine below and click Apply."))}</div>` : ""}
         ${mbusScanCard(mbus)}
       </div>
 
@@ -4153,7 +4153,7 @@
         </div>
         <label class="mbus-engine-switch"><input type="checkbox" id="mbus_enabled"${mbus.enabled ? " checked" : ""}>
           <span>${escapeHtml(t("mbus_enabled_label", "Enable continuous automatic bus polling"))}</span></label>
-        <p class="mbus-engine-restart">${escapeHtml(t("mbus_engine_restart_note", "After changing this switch, restart the add-on/container. Apply only saves the option; the engine actually starts or stops during restart."))}</p>
+        <p class="mbus-engine-restart">${escapeHtml(t("mbus_engine_restart_note", "Apply saves the switch and reloads the polling engine - no add-on restart is needed. It stops or starts within a few seconds."))}</p>
         <p class="hint">${escapeHtml(t("mbus_engine_hint", "This controls only wired M-Bus. The radio path is never stopped."))}</p>
         <div class="row-actions">
           <button class="btn primary" data-action="mbus-save-engine">${escapeHtml(t("mbus_save_engine", "Apply"))}</button>
@@ -4275,6 +4275,14 @@
         });
         toast(result.message || t("saved", "Saved"));
         await loadMbus(true);
+        // Applying a wired change no longer needs an add-on restart. bridge.sh
+        // runs stop_mbus_instance/start_mbus_instance inside its restart-on-exit
+        // loop, so the soft pipeline reload the radio path already uses makes
+        // the engine re-read wmbusmeters.conf and the meter files; mbus_opt()
+        // re-reads options.json on every call, so the new values are picked up.
+        // Only while the engine runs: with polling off there is nothing to
+        // reload, and a reload briefly interrupts radio decoding for nothing.
+        if (state.mbus?.enabled) triggerSoftReload();
       } catch (error) {
         toast(error.message, true);
       }
@@ -4412,6 +4420,7 @@
         });
         toast(result.message || t("saved", "Saved"));
         await loadMbus(true);
+        if (state.mbus?.enabled) triggerSoftReload();
       } catch (error) {
         toast(error.message, true);
       }
@@ -4430,6 +4439,10 @@
         });
         toast(result.message || t("saved", "Saved"));
         await loadMbus(true);
+        // Unconditionally: this is the switch itself. start_mbus_instance()
+        // consults mbus_enabled on every loop pass, so the reload starts the
+        // engine or leaves it stopped, whichever the switch now says.
+        triggerSoftReload();
       } catch (error) {
         toast(error.message, true);
       }
