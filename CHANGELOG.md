@@ -1,3 +1,11 @@
+## 1.5.62-dev.313
+
+### Added
+- apply wired M-Bus changes with a soft reload instead of an add-on restart (d925bb7)
+
+### Fixed
+- give the Meters tab an order that receptions cannot change (455fd13)
+
 ## 1.5.62-dev.312
 
 ### Fixed
