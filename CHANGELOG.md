@@ -1,3 +1,9 @@
+## 1.5.62-dev.314
+
+### Added
+- stamp the M-Bus console with a time and a reading number (bca1b65)
+- apply wired M-Bus changes with a soft reload instead of an add-on restart (d925bb7)
+
 ## 1.5.62-dev.313
 
 ### Added
