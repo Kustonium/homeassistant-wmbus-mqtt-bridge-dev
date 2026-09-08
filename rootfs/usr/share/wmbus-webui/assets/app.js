@@ -3960,6 +3960,10 @@
   function mbusConsoleCard() {
     const con = state.mbusConsole || {};
     const lines = con.lines || [];
+    // Reading number of the previous line, so a change of number can be drawn
+    // as the boundary between one reading and the next. null until the first
+    // stamped line: no rule above the top of the log.
+    let prevSeq = null;
     const body = lines.length
       ? lines.map((l) => {
           // The shape outranks the line kind. A logged frame is kind "frame"
@@ -3967,7 +3971,16 @@
           // that is not M-Bus at all the same green as a good telegram.
           const cls = l.shape === "not_mbus" ? "bad" : (MBUS_LINE_CLASS[l.kind] || "muted");
           const shape = l.shape ? ` [${l.shape}]` : "";
-          return `<div class="mbus-console-line ${cls}">${escapeHtml(l.text + shape)}</div>`;
+          const sep = (l.seq && prevSeq !== null && l.seq !== prevSeq)
+            ? `<div class="mbus-console-sep"></div>`
+            : "";
+          if (l.seq) prevSeq = l.seq;
+          // Absent on a log written by an older build, which then renders
+          // exactly as it did before - one continuous block, no gutter.
+          const meta = l.ts
+            ? `<span class="mbus-console-time">${escapeHtml(l.ts)}</span><span class="mbus-console-seq">#${escapeHtml(l.seq)}</span>`
+            : "";
+          return `${sep}<div class="mbus-console-line ${cls}">${meta}<span>${escapeHtml(l.text + shape)}</span></div>`;
         }).join("")
       : `<div class="mbus-console-line muted">${escapeHtml(t("mbus_console_empty", "Nothing logged yet. The stream fills once polling runs; turn on logtelegrams to see the raw frames."))}</div>`;
     // Only shown when the classifier actually saw foreign bytes — offered as

@@ -2223,6 +2223,10 @@ MBUS_CONSOLE_MARKERS = (
 )
 
 
+# Console lines are stamped by the bridge as HH:MM:SS<TAB>seq<TAB>text.
+MBUS_CONSOLE_STAMP_RE = re.compile(r'\d{2}:\d{2}:\d{2}')
+
+
 def mbus_console_lines(limit: int = 200) -> list:
     """Tail the M-Bus instance log, classified, read-only.
 
@@ -2240,6 +2244,17 @@ def mbus_console_lines(limit: int = 200) -> list:
         return []
     out = []
     for line in lines[-max(1, min(1000, limit)):]:
+        # "HH:MM:SS<TAB>seq<TAB>text", written by mbus_log_console_line(). Split
+        # off before anything classifies the line, so every marker below still
+        # matches the decoder's own words. A line without the prefix is a log
+        # written by an older build: it keeps working, just without a stamp.
+        stamp = ''
+        read_seq = ''
+        head, tab, rest = line.partition('\t')
+        if tab and MBUS_CONSOLE_STAMP_RE.fullmatch(head):
+            seq_part, tab2, text = rest.partition('\t')
+            if tab2 and seq_part.isdigit():
+                stamp, read_seq, line = head, seq_part, text
         kind = 'info'
         for needle, name in MBUS_CONSOLE_MARKERS:
             if needle in line:
@@ -2258,7 +2273,8 @@ def mbus_console_lines(limit: int = 200) -> list:
             hex_text = tail.split('|', 1)[0].replace('_', '')
             shape = mbus_frame_shape(hex_text)
             kind = 'frame'
-        out.append({'text': line[:400], 'kind': kind, 'shape': shape})
+        out.append({'text': line[:400], 'kind': kind, 'shape': shape,
+                    'ts': stamp, 'seq': read_seq})
     return out
 
 

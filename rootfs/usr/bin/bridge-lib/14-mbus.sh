@@ -40,6 +40,13 @@ MBUS_METERS_SKIPPED=0
 # without bound.
 MBUS_LOG_MAX_LINES=2000
 MBUS_LINES_SINCE_TRIM=0
+# Reading counter stamped on every console line. The decoder marks no boundary
+# between one reading and the next, so consecutive polls ran together into a
+# single wall of text - the one thing the bus console exists to let somebody
+# read. Counts accepted telegrams, so every line of a reading carries the same
+# number and the next reading is visible as a step. It restarts at 1 when the
+# decoder does: this is a live tail, not an audit trail.
+MBUS_READ_SEQ=0
 
 # Last id seen per configured meter name. A bus address that starts answering
 # with a different id means two meters share one primary address — the decoder
@@ -362,6 +369,22 @@ refresh_mbus_meter_files() {
   fi
 }
 
+# Append one decoder line to the console log as "HH:MM:SS<TAB>seq<TAB>line".
+# Stamped here because it cannot be recovered later: webui.py reads a finished
+# file, not a stream. mbus_consume_line still receives the untouched line, so
+# nothing that parses decoder output ever sees the prefix.
+mbus_log_console_line() {
+  local line="$1" stamp
+  # if/fi rather than "[[ ]] &&": a false test as the last statement would make
+  # this function return 1, and it runs inside a pipeline.
+  if [[ "${line}" == \{*\"_\":\"telegram\"* ]]; then
+    MBUS_READ_SEQ=$(( MBUS_READ_SEQ + 1 ))
+  fi
+  # printf's %(...)T is a bash builtin; `date` would fork once per line.
+  printf -v stamp '%(%H:%M:%S)T' -1
+  printf '%s\t%s\t%s\n' "${stamp}" "${MBUS_READ_SEQ}" "${line}" >> "${MBUS_LOG}"
+}
+
 # ------------------------------------------------------------
 # Line consumer
 # ------------------------------------------------------------
@@ -465,9 +488,14 @@ start_mbus_instance() {
     while true; do
       local _t0
       _t0="$(epoch_now)"
+      # tee wrote the decoder's line verbatim, with no time and no boundary
+      # between readings. Logging inside the loop instead lets the log carry a
+      # stamp while mbus_consume_line still gets the untouched line.
       ${STDBUF_BIN} /usr/bin/wmbusmeters --useconfig="${MBUS_BASE}" 2>&1 \
-        | tee -a "${MBUS_LOG}" \
-        | while IFS= read -r line; do mbus_consume_line "${line}"; done &
+        | while IFS= read -r line; do
+            mbus_log_console_line "${line}"
+            mbus_consume_line "${line}"
+          done &
       local pipeline_pid=$!
       wait "${pipeline_pid}" 2>/dev/null || true
       # Only an exiting process gets here. A vanished port does not end the

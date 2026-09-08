@@ -286,6 +286,67 @@ class MBusWebUITest(unittest.TestCase):
                 self.assertIn(needle, i18n)
         self.assertNotIn("click Apply and restart the add-on", i18n)
 
+    def test_console_lines_carry_a_stamp_and_still_classify(self):
+        # The decoder writes no time and no boundary between readings, so the
+        # bridge stamps every line "HH:MM:SS<TAB>seq<TAB>text" as it is logged.
+        # The prefix must come off before classification, or every marker below
+        # would still match but the text shown would carry the chrome.
+        with tempfile.TemporaryDirectory() as directory:
+            old_base = webui.BASE
+            webui.BASE = Path(directory)
+            try:
+                log = webui.BASE / "mbus" / "console.log"
+                log.parent.mkdir()
+                log.write_text(
+                    "12:00:01\t1\ttelegram=|68030368010203|\n"
+                    "12:00:02\t1\t(mbus) expected checksum 0x0a but got 0x50\n"
+                    "12:15:00\t2\ttelegram=|7ea001|\n"
+                    # A log written by an older build: no prefix, still read.
+                    "(meter) sim p2 did not send a response!\n",
+                    encoding="utf-8",
+                )
+                lines = webui.mbus_console_lines()
+            finally:
+                webui.BASE = old_base
+
+        self.assertEqual(
+            [(l["ts"], l["seq"], l["kind"], l["shape"]) for l in lines],
+            [("12:00:01", "1", "frame", "frame_long"),
+             ("12:00:02", "1", "checksum", ""),
+             ("12:15:00", "2", "frame", "not_mbus"),
+             ("", "", "no_reply", "")],
+        )
+        # The stamp is stripped from the text, not merely detected.
+        self.assertEqual(lines[0]["text"], "telegram=|68030368010203|")
+        self.assertEqual(lines[3]["text"], "(meter) sim p2 did not send a response!")
+
+    def test_console_stamp_is_written_by_the_bridge(self):
+        lib = (Path(__file__).parents[1] / "rootfs" / "usr" / "bin" / "bridge-lib"
+               / "14-mbus.sh").read_text(encoding="utf-8")
+        # tee wrote the decoder's line verbatim; the stamp cannot be recovered
+        # later, so it has to be added where the line is logged.
+        self.assertNotIn('tee -a "${MBUS_LOG}"', lib)
+        self.assertIn("mbus_log_console_line() {", lib)
+        self.assertIn("printf -v stamp '%(%H:%M:%S)T' -1", lib)
+        # The consumer must keep receiving the untouched line.
+        self.assertIn('mbus_consume_line "${line}"', lib)
+        # The reading counter advances on a telegram, so all lines of one
+        # reading share a number - that is what the UI draws a rule between.
+        self.assertIn("MBUS_READ_SEQ=$(( MBUS_READ_SEQ + 1 ))", lib)
+
+    def test_console_renders_a_gutter_and_a_rule_between_readings(self):
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn('class="mbus-console-time"', source)
+        self.assertIn('class="mbus-console-seq"', source)
+        self.assertIn('class="mbus-console-sep"', source)
+        # No rule above the first line, and none for an unstamped legacy log.
+        self.assertIn("l.seq && prevSeq !== null && l.seq !== prevSeq", source)
+        css = (Path(__file__).parents[1] / "rootfs" / "usr" / "share" / "wmbus-webui"
+               / "assets" / "app.css").read_text(encoding="utf-8")
+        for rule in (".mbus-console-time {", ".mbus-console-seq {", ".mbus-console-sep {"):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, css)
+
     @mock.patch.object(webui.subprocess, "run")
     def test_wired_driver_detection_uses_wmbusmeters_analysis(self, run):
         run.return_value = mock.Mock(stdout="Auto driver : piigth\n", stderr="")
