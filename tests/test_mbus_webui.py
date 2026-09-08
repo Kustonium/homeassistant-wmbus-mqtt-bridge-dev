@@ -237,6 +237,20 @@ class MBusWebUITest(unittest.TestCase):
         # A row that renders no checkbox must not count towards select-all.
         self.assertIn('rows.filter(r => r.source !== "mbus")', panel)
 
+    def test_meters_page_orders_by_name_not_by_reception(self):
+        source = APP_JS.read_text(encoding="utf-8")
+        # state() returns data.meters sorted by last_seen descending, so every
+        # reception - a radio telegram, or a wired poll every pollinterval -
+        # moved its meter to the top and rows swapped places while the reader
+        # was managing the configuration. This table orders by something a
+        # reception cannot change.
+        page = source.split("function metersPage()", 1)[1].split("  function ", 1)[0]
+        self.assertIn("asArray(data.meters).slice().sort(", page)
+        self.assertIn("localeCompare", page)
+        # slice() matters: sorting in place would reorder the very array the
+        # dashboard reads for "Recent meters", which does want last_seen order.
+        self.assertNotIn("asArray(data.meters).sort(", page)
+
     @mock.patch.object(webui.subprocess, "run")
     def test_wired_driver_detection_uses_wmbusmeters_analysis(self, run):
         run.return_value = mock.Mock(stdout="Auto driver : piigth\n", stderr="")

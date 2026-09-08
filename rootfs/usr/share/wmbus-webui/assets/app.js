@@ -2118,7 +2118,16 @@
 
   function metersPage() {
     const data = state.data || {};
-    const all = asArray(data.meters);
+    // state() sorts data.meters by last_seen descending. That is what the
+    // dashboard's "Recent meters" wants, but it makes this page restless: every
+    // reception moves its meter to the top, so a wired meter and a radio meter
+    // swap places on each poll while the reader is managing the configuration.
+    // This table is a configuration list, so order it by something a reception
+    // cannot change. slice() first - sorting in place would reorder the array
+    // the dashboard reads for recency.
+    const all = asArray(data.meters).slice().sort((a, b) =>
+      String(a.name || a.id || "").localeCompare(String(b.name || b.id || "")) ||
+      String(a.id || "").localeCompare(String(b.id || "")));
     const filtered = applyMediaFilter(all, "media");
 
     const pending = pendingMeters();
