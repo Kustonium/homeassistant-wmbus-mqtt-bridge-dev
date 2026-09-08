@@ -591,7 +591,7 @@ nie zmienia.
 | `mbus_loglevel` | `normal`, `verbose`, `debug` — dotyczy tylko instancji magistrali, niezależnie od głównego poziomu logu |
 | `mbus_logtelegrams` | loguje każdą ramkę wymienioną z magistralą; przydatne, gdy licznik milczy, poza tym hałaśliwe |
 | `mbus_ignoreduplicates` | odrzuca powtórzone identyczne telegramy przed dekodowaniem |
-| `mbus_meters[]` | `id`, `address` (`p1`..`p250` albo 8 hex), `type`, `key`, `poll_interval` |
+| `mbus_meters[]` | `id`, `address` (`p0`..`p250` albo 8 hex), `type`, `key`, `poll_interval`, `exclude_fields` |
 
 **Dodatek nigdy nie skanuje portów, i to jest świadome.** Sondowanie oznacza
 nadawanie, a na typowej maszynie z Home Assistant jeden z portów szeregowych to
@@ -600,13 +600,15 @@ urządzenie i melduje sukces — więc port zawsze wskazujesz Ty.
 
 Wybraną magistralę możesz potem sprawdzić jawnie: **Sprawdź, czy magistrala żyje**
 wysyła jeden broadcast testowy, **Skan adresów pierwotnych** przechodzi tylko podany
-zakres (`p1`–`p250`, najwyżej 32 adresy na żądanie) i w każdym wierszu pokazuje
+zakres (`p0`–`p250`), przechodząc cały zakres jednym kliknięciem, w ograniczonych
+paczkach, z postępem i możliwością zatrzymania. W każdym wierszu pokazuje
 zarówno potwierdzenie adresu, jak i diagnozę odpowiedzi z danymi, a **Odpytaj raz** pyta jeden
 skonfigurowany adres pierwotny. Wszystkie trzy akcje są odrzucane podczas zwykłego
 odpytywania, bo M-Bus ma jednego mastera. **„Odpytaj raz” służy tylko do
 diagnostyki:** pokazuje surową odpowiedź, ale jej nie dekoduje, nie publikuje do
 MQTT/Home Assistant i nie dodaje licznika do Pipeline. Do normalnej pracy zapisz
-licznik, włącz silnik, kliknij **Zastosuj** i zrestartuj dodatek. Wyjście dekodera
+licznik, włącz silnik i kliknij **Zastosuj** — silnik odpytywania przeładowuje się
+w kilka sekund, restart dodatku nie jest potrzebny. Wyjście dekodera
 z tego regularnego silnika widać w **Konsoli magistrali**, która jest tylko do
 odczytu i nie przyjmuje dowolnych bajtów do wysłania.
 
@@ -623,6 +625,10 @@ zgadywać.
 Pipeline wyprowadza jednostkę z rzeczywistej nazwy zdekodowanego pola (na przykład
 `_c` → `°C`, `_rh` → `RH%`), także dla driverów bez sumarycznego odczytu, które
 korzystają z ogólnego numerycznego fallbacku.
+
+**Pola** działa również dla licznika przewodowego. Wypisuje każde pole
+ostatniego zdekodowanego telegramu i pozwala odrzucić te, które nie mają dostać
+encji w Home Assistant — tymi samymi wzorcami `exclude_fields` co tor radiowy.
 
 **W Dockerze** zmapuj konwerter jawnie:
 `devices: ["/dev/serial/by-id/usb-…:/dev/ttyUSB0"]`. Nigdy `/dev:/dev`, nigdy
