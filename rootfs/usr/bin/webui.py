@@ -2050,8 +2050,8 @@ MBUS_SCAN_MAX = 32
 
 def mbus_scan_range(first: int, last: int) -> tuple[int, int]:
     """Clamp, order and cap a requested primary-address range."""
-    first = max(1, min(250, first))
-    last = max(1, min(250, last))
+    first = max(0, min(250, first))
+    last = max(0, min(250, last))
     if last < first:
         first, last = last, first
     return first, min(last, first + MBUS_SCAN_MAX - 1)
@@ -2101,9 +2101,10 @@ def mbus_scan_addresses(device: str, first: int, last: int, baudrate: int = 2400
                         wait_s: float = 0.4, data_wait_s: float = 3.5) -> tuple[str, list]:
     """Check presence and immediately request data from every primary address.
 
-    Valid primaries are 1..250. 0 is the factory "unset" value and is not part
-    of a normal address sweep; 251..255 are reserved or broadcast and are never
-    scanned.
+    Valid primaries are 0..250; 251..255 are reserved or broadcast and are never
+    scanned. 0 is included because that is where a meter answers until somebody
+    gives it an address - excluding it made a factory-fresh meter look exactly
+    like a dead bus, which is the one thing this scan exists to tell apart.
 
     Returns one row for every scanned address. SND_NKE supplies the independent
     presence result; addresses that acknowledge are then sent REQ_UD2 so the UI
@@ -2159,7 +2160,7 @@ def mbus_poll_once(device: str, address: int, baudrate: int = 2400,
     decoder's job, and duplicating it would mean a second implementation of the
     thing this project exists not to reimplement.
     """
-    if not 1 <= address <= 250:
+    if not 0 <= address <= 250:
         return 'bad_address', ''
     if termios is None:
         return 'busy_or_error', ''
@@ -2382,11 +2383,13 @@ def mbus_save_meters(meters: list) -> tuple[bool, str]:
         address = str(entry.get('address') or '').strip()
         if not name:
             return False, "Every meter needs a name."
-        # p1..p250 (0 is the factory 'unset' value, 0xFB-0xFF are reserved or
-        # broadcast) or an 8-hex secondary address.
-        if not (re.fullmatch(r'p([1-9]|[1-9]\d|1\d\d|2[0-4]\d|250)', address)
+        # p0..p250 (0xFB-0xFF are reserved or broadcast) or an 8-hex secondary
+        # address. p0 is accepted: a meter answers there until it is given an
+        # address, and on a single-meter bus polling it works. It stops working
+        # the moment a second unconfigured meter joins - the UI says so.
+        if not (re.fullmatch(r'p(\d|[1-9]\d|1\d\d|2[0-4]\d|250)', address)
                 or re.fullmatch(r'[0-9A-Fa-f]{8}', address)):
-            return False, f"{name}: address must be p1..p250 or 8 hex characters."
+            return False, f"{name}: address must be p0..p250 or 8 hex characters."
         key = str(entry.get('key') or '').strip()
         if key and not re.fullmatch(r'[0-9A-Fa-f]{32}', key):
             return False, f"{name}: key must be 32 hex characters."
@@ -4152,8 +4155,8 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 baud = 2400
             try:
-                first = int((params.get('first') or ['1'])[0])
-                last = int((params.get('last') or ['32'])[0])
+                first = int((params.get('first') or ['0'])[0])
+                last = int((params.get('last') or ['31'])[0])
             except ValueError:
                 self._send_json(400, {"ok": False, "message": "first/last must be numbers."})
                 return
@@ -4181,9 +4184,9 @@ class Handler(BaseHTTPRequestHandler):
             # 68123456 down as an address. Secondary addressing needs a select
             # cycle the decoder performs; this button sends one bare REQ_UD2.
             raw_addr = (params.get('address') or [''])[0].strip().lstrip('pP')
-            if not raw_addr.isdigit() or not 1 <= int(raw_addr) <= 250:
+            if not raw_addr.isdigit() or not 0 <= int(raw_addr) <= 250:
                 self._send_json(400, {"ok": False, "state": "bad_address",
-                                      "message": "Only a primary address (p1..p250) can be polled from here. "
+                                      "message": "Only a primary address (p0..p250) can be polled from here. "
                                                  "A secondary (8-hex) address needs the selection the decoder does."})
                 return
             device = str(opts.get('mbus_device') or '')

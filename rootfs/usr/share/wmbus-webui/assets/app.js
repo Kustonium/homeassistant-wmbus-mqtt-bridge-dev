@@ -3925,13 +3925,13 @@
     return `
       <div class="mbus-scan-section">
         <h2>${escapeHtml(t("mbus_scan_title", "Scan primary addresses"))}</h2>
-        <p class="hint">${escapeHtml(t("mbus_scan_hint", "The diagnostic scan checks whether each address acknowledges and immediately requests its data. It never starts on its own. Valid primaries are p1–p250; p0 is the factory 'unset' value."))}</p>
+        <p class="hint">${escapeHtml(t("mbus_scan_hint", "The diagnostic scan checks whether each address acknowledges and immediately requests its data. It never starts on its own. Valid primaries are p0–p250; p0 is where a meter answers until it is given an address."))}</p>
         <div class="mbus-scan-controls">
           <label>${escapeHtml(t("mbus_scan_from", "From"))}
-            <input type="number" id="mbus_scan_first" min="1" max="250" value="${escapeHtml(String(scan.nextFirst ?? 1))}">
+            <input type="number" id="mbus_scan_first" min="0" max="250" value="${escapeHtml(String(scan.nextFirst ?? 0))}">
           </label>
           <label>${escapeHtml(t("mbus_scan_to", "To"))}
-            <input type="number" id="mbus_scan_last" min="1" max="250" value="${escapeHtml(String(scan.nextLast ?? 32))}">
+            <input type="number" id="mbus_scan_last" min="0" max="250" value="${escapeHtml(String(scan.nextLast ?? 31))}">
           </label>
         </div>
         <div class="row-actions">
@@ -4097,7 +4097,7 @@
                    oninput="window.__mbusPollIntervalSet(this.value)">
           </label>
         </div>
-        <p class="hint">${escapeHtml(t("mbus_meters_hint", "Address is p1..p250 (primary) or 8 hex characters (secondary). p0 is the factory 'unset' value and is not a valid address."))}</p>
+        <p class="hint">${escapeHtml(t("mbus_meters_hint", "Address is p0..p250 (primary) or 8 hex characters (secondary). A meter answers on p0 until it is given an address; leave one there only while it is the only unconfigured meter on the bus."))}</p>
         <div class="table-wrap"><table class="table mbus-table">
           <tr><th>${escapeHtml(t("mbus_col_name", "Name"))}</th><th>${escapeHtml(t("mbus_col_address", "Address"))}</th>
               <th>${escapeHtml(t("mbus_col_driver", "Driver"))}</th><th>${escapeHtml(t("mbus_col_interval", "Interval"))}</th><th></th></tr>
@@ -4116,15 +4116,15 @@
                     placeholder="${escapeHtml(mbus.poll_interval || "15m")}"
                     oninput="window.__mbusMeterSet(${index}, 'poll_interval', this.value)"></td>
               <td><div class="actions"><button class="btn" data-action="mbus-poll-one" data-i="${index}"${
-                    mbus.enabled || !/^p(?:[1-9]|[1-9]\d|1\d\d|2[0-4]\d|250)$/.test(String(m.address || "")) ? " disabled" : ""}
+                    mbus.enabled || !/^p(?:\d|[1-9]\d|1\d\d|2[0-4]\d|250)$/.test(String(m.address || "")) ? " disabled" : ""}
                     title="${escapeHtml(mbus.enabled
                       ? t("mbus_engine_holds_bus", "Turn polling off first — it is the bus master.")
-                      : (!/^p(?:[1-9]|[1-9]\d|1\d\d|2[0-4]\d|250)$/.test(String(m.address || ""))
-                          ? t("mbus_poll_primary_only", "Only a primary address (p1–p250) can be polled from here.")
+                      : (!/^p(?:\d|[1-9]\d|1\d\d|2[0-4]\d|250)$/.test(String(m.address || ""))
+                          ? t("mbus_poll_primary_only", "Only a primary address (p0–p250) can be polled from here.")
                           : ""))}"
                   >${escapeHtml(t("mbus_poll_once", "Poll once"))}</button>
                 <button class="btn" data-action="mbus-detect-driver" data-i="${index}"${
-                    mbus.enabled || !/^p(?:[1-9]|[1-9]\d|1\d\d|2[0-4]\d|250)$/.test(String(m.address || "")) ? " disabled" : ""}
+                    mbus.enabled || !/^p(?:\d|[1-9]\d|1\d\d|2[0-4]\d|250)$/.test(String(m.address || "")) ? " disabled" : ""}
                     title="${escapeHtml(t("mbus_detect_driver_hint", "Poll this address and ask the bundled wmbusmeters analyzer for a driver suggestion. Nothing is saved automatically."))}"
                   >${escapeHtml(t("mbus_detect_driver", "Detect driver"))}</button>
                 <button class="btn danger" data-action="mbus-del-meter" data-i="${index}">${escapeHtml(t("remove", "Remove"))}</button></div></td>
@@ -4320,8 +4320,8 @@
     }
 
     if (action === "mbus-scan") {
-      const first = Number(document.getElementById("mbus_scan_first")?.value ?? 1);
-      const last = Number(document.getElementById("mbus_scan_last")?.value ?? 32);
+      const first = Number(document.getElementById("mbus_scan_first")?.value ?? 0);
+      const last = Number(document.getElementById("mbus_scan_last")?.value ?? 31);
       state.mbusScan = {running: true, found: [], nextFirst: first, nextLast: last};
       render();
       try {

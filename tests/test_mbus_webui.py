@@ -490,19 +490,48 @@ class MBusWebUITest(unittest.TestCase):
         self.assertIn("Restart", reason)
         self.assertEqual(allowed_after, (True, ""))
 
-    def test_poll_once_rejects_factory_and_reserved_addresses_before_io(self):
-        for address in (0, 251, 68123456):
+    def test_poll_once_rejects_reserved_addresses_before_io(self):
+        # 251-255 are reserved or broadcast; 68123456 is a secondary address
+        # made of digits, which needs the select cycle the decoder performs.
+        for address in (251, 255, 68123456):
             with self.subTest(address=address):
                 self.assertEqual(
                     webui.mbus_poll_once("/path/that/does/not/matter", address),
                     ("bad_address", ""),
                 )
 
+    def test_poll_once_accepts_the_unconfigured_address(self):
+        # p0 is where a meter answers until somebody gives it an address, so it
+        # must get past validation like any other primary. Asserted as "behaves
+        # exactly like p1" rather than against a fixed state: what comes back
+        # after validation depends on the platform - the add-on runs on Linux
+        # and reports device_missing, while a maintainer running this file on
+        # Windows has no termios and gets busy_or_error first.
+        missing = "/path/that/does/not/exist"
+        self.assertEqual(
+            webui.mbus_poll_once(missing, 0),
+            webui.mbus_poll_once(missing, 1),
+        )
+        self.assertNotEqual(webui.mbus_poll_once(missing, 0)[0], "bad_address")
+
     def test_scan_range_is_ordered_clamped_and_capped(self):
-        self.assertEqual(webui.mbus_scan_range(1, 250), (1, 32))
+        # Sweeps start at 0: a factory-fresh meter answers there, and leaving it
+        # out made one look exactly like a dead bus.
+        self.assertEqual(webui.mbus_scan_range(0, 250), (0, 31))
         self.assertEqual(webui.mbus_scan_range(50, 20), (20, 50))
-        self.assertEqual(webui.mbus_scan_range(-10, 999), (1, 32))
+        self.assertEqual(webui.mbus_scan_range(-10, 999), (0, 31))
         self.assertEqual(webui.mbus_scan_range(250, 250), (250, 250))
+
+    def test_saved_meter_address_accepts_p0_and_still_rejects_reserved(self):
+        with mock.patch.object(webui, "save_options_patch", return_value=(True, "")) as saved:
+            ok, _ = webui.mbus_save_meters([{"id": "fresh", "address": "p0"}])
+        self.assertTrue(ok)
+        self.assertEqual(saved.call_args.args[0]["mbus_meters"][0]["address"], "p0")
+        for bad in ("p251", "p300", "p00", "p"):
+            with self.subTest(address=bad):
+                ok, msg = webui.mbus_save_meters([{"id": "x", "address": bad}])
+                self.assertFalse(ok)
+                self.assertIn("p0..p250", msg)
 
 
 if __name__ == "__main__":
