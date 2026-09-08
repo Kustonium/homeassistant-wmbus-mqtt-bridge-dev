@@ -1,3 +1,8 @@
+## 1.5.62-dev.317
+
+### Added
+- sweep the whole primary-address range from one click (077381d)
+
 ## 1.5.62-dev.316
 
 ### Added
