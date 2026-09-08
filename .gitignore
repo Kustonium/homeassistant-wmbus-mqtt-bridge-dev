@@ -23,6 +23,8 @@ RS485-MBUS-TAB-DESIGN-2026-08-16.md
 RS485-MBUS-CODE-SKETCH-2026-08-16.md
 
 # Convention for future notes of that kind: name them *.local.md, or put them
-# under notes/, and they are covered without touching this file again.
+# under notes/ or docslocal/, and they are covered without touching this
+# file again.
 *.local.md
 notes/
+docslocal/
