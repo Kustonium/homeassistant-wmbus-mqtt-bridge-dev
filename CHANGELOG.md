@@ -1,3 +1,8 @@
+## 1.5.62-dev.316
+
+### Added
+- accept p0, the address a meter answers on before it is configured (ff98419)
+
 ## 1.5.62-dev.315
 
 ### Added
