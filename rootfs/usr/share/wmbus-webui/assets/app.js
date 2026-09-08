@@ -3722,8 +3722,20 @@
     render();
   }
 
+  // The row inputs cover four fields. Everything else an entry can carry - key,
+  // type_other, calculated_fields, static_fields - has no widget in this table,
+  // so it is carried over from the loaded entry at the same index. Without that
+  // carry-over every "Save meters" posted a row without those fields and
+  // mbus_save_meters() rebuilds the meter from the payload alone: an AES key and
+  // both field lists set on the add-on Configuration page were silently dropped.
+  // Spread rather than a second whitelist - an explicit list is what caused this
+  // in the first place, and it would go stale again the next time mbus_meters
+  // grows a field. Index alignment holds because the rows, their data-i and
+  // state.mbus.meters are all produced from the same array.
   function mbusMetersFromForm() {
+    const loaded = asArray(state.mbus?.meters);
     return Array.from(document.querySelectorAll(".mbus-m-name")).map((input, index) => ({
+      ...loaded[index],
       id: input.value.trim(),
       address: (document.querySelector(`.mbus-m-addr[data-i="${index}"]`)?.value || "").trim(),
       type: (document.querySelector(`.mbus-m-type[data-i="${index}"]`)?.value || "auto").trim(),

@@ -145,6 +145,40 @@ class MBusWebUITest(unittest.TestCase):
         self.assertIn('postApi("mbus/detect-driver", {address})', source)
         self.assertIn('name !== "auto"', source)
 
+    def test_wired_meter_form_carries_fields_that_have_no_input(self):
+        source = APP_JS.read_text(encoding="utf-8")
+        # The row inputs cover id/address/type/poll_interval only. key,
+        # type_other, calculated_fields and static_fields have no widget in that
+        # table, so mbusMetersFromForm() has to carry them over from the entry
+        # loaded at the same index - otherwise every "Save meters" posts a row
+        # without them and mbus_save_meters() rebuilds the meter from the payload
+        # alone, wiping an AES key set on the add-on Configuration page.
+        self.assertIn("const loaded = asArray(state.mbus?.meters);", source)
+        self.assertIn("...loaded[index],", source)
+
+    def test_wired_meter_save_keeps_key_and_field_lists(self):
+        posted = [{
+            "id": "water",
+            "address": "p1",
+            "type": "auto",
+            "key": "00112233445566778899AABBCCDDEEFF",
+            "type_other": "",
+            "calculated_fields": "difftemp_c=flow_temperature_c-return_temperature_c",
+            "static_fields": "location=kitchen",
+        }]
+        with mock.patch.object(webui, "save_options_patch", return_value=(True, "")) as saved_patch:
+            ok, _ = webui.mbus_save_meters(posted)
+        self.assertTrue(ok)
+        saved = saved_patch.call_args.args[0]["mbus_meters"][0]
+        self.assertEqual(saved["key"], "00112233445566778899AABBCCDDEEFF")
+        self.assertEqual(
+            saved["calculated_fields"],
+            "difftemp_c=flow_temperature_c-return_temperature_c",
+        )
+        self.assertEqual(saved["static_fields"], "location=kitchen")
+        # Empty optionals are dropped, not stored as "".
+        self.assertNotIn("type_other", saved)
+
     @mock.patch.object(webui.subprocess, "run")
     def test_wired_driver_detection_uses_wmbusmeters_analysis(self, run):
         run.return_value = mock.Mock(stdout="Auto driver : piigth\n", stderr="")
