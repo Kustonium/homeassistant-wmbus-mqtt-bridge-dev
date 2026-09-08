@@ -1,3 +1,9 @@
+## 1.5.62-dev.315
+
+### Added
+- accept p0, the address a meter answers on before it is configured (ff98419)
+- stamp the M-Bus console with a time and a reading number (bca1b65)
+
 ## 1.5.62-dev.314
 
 ### Added
