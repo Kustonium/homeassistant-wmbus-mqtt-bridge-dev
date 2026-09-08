@@ -1,3 +1,9 @@
+## 1.5.62-dev.311
+
+### Fixed
+- route wired meters to the M-Bus tab from the Discover panel (be22224)
+- keep M-Bus meter edits in state so typing survives and enables the buttons (a066cd4)
+
 ## 1.5.62-dev.310
 
 ### Fixed
