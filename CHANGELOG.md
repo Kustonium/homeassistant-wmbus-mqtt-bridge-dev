@@ -1,3 +1,9 @@
+## 1.5.62-dev.312
+
+### Fixed
+- give the Meters tab an order that receptions cannot change (455fd13)
+- route wired meters to the M-Bus tab from the Discover panel (be22224)
+
 ## 1.5.62-dev.311
 
 ### Fixed
