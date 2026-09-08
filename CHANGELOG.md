@@ -1,3 +1,9 @@
+## 1.5.62-dev.318
+
+### Added
+- let a wired M-Bus meter exclude fields like a radio one (567abe4)
+- sweep the whole primary-address range from one click (077381d)
+
 ## 1.5.62-dev.317
 
 ### Added
