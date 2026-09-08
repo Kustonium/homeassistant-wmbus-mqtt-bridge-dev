@@ -497,6 +497,45 @@ class MBusWebUITest(unittest.TestCase):
         self.assertEqual(webui.mbus_scan_range(-10, 999), (0, 31))
         self.assertEqual(webui.mbus_scan_range(250, 250), (250, 250))
 
+    def test_scan_sweeps_the_whole_range_in_chunks(self):
+        source = APP_JS.read_text(encoding="utf-8")
+        handler = source.split('if (action === "mbus-scan")', 1)[1]
+        handler = handler.split('if (action === "mbus-scan-cancel")', 1)[0]
+        # One click, many requests: the per-request cap stays (a 0..250 sweep in
+        # one request would hold it for minutes), so the walk happens client
+        # side and accumulates rows.
+        self.assertIn("while (cursor <= hi)", handler)
+        self.assertIn('postApi("mbus/scan", {first: cursor, last: hi})', handler)
+        self.assertIn("results.push(...asArray(result.results))", handler)
+        self.assertIn("cursor = swept + 1", handler)
+        # A sweep of minutes needs a way out, checked between chunks only.
+        self.assertIn("if (state.mbusScan?.cancel) break;", handler)
+        self.assertIn('if (action === "mbus-scan-cancel")', source)
+        self.assertIn('data-action="mbus-scan-cancel"', source)
+
+    def test_scan_range_inputs_are_kept_in_state(self):
+        source = APP_JS.read_text(encoding="utf-8")
+        # Same defect the meter rows had: these inputs render from
+        # state.mbusScan, so without a sink morphdom rewrote them on the next
+        # 5 s refresh - and a full sweep is a range typed once, then watched.
+        self.assertIn("window.__mbusScanRangeSet = function (which, value)", source)
+        for which in ("nextFirst", "nextLast"):
+            with self.subTest(which=which):
+                self.assertIn(
+                    "oninput=\"window.__mbusScanRangeSet('%s', this.value)\"" % which,
+                    source,
+                )
+
+    def test_scan_reports_progress_and_a_stopped_sweep(self):
+        i18n = (Path(__file__).parents[1] / "rootfs" / "usr" / "bin" / "i18n.py").read_text(
+            encoding="utf-8")
+        # Every shipped language: a sweep that runs for minutes must be able to
+        # say where it is, and a stopped one must not read as a complete one.
+        for lang_marker in ('"mbus_scan_progress"', '"mbus_scan_summary_cancelled"',
+                            '"mbus_scan_stop"', '"mbus_scan_stopping"'):
+            with self.subTest(key=lang_marker):
+                self.assertEqual(i18n.count(lang_marker), 5)
+
     def test_saved_meter_address_accepts_p0_and_still_rejects_reserved(self):
         with mock.patch.object(webui, "save_options_patch", return_value=(True, "")) as saved:
             ok, _ = webui.mbus_save_meters([{"id": "fresh", "address": "p0"}])

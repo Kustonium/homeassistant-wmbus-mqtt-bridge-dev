@@ -3768,6 +3768,16 @@
     render();
   };
 
+  // The scan range inputs render from state.mbusScan, so without a sink they
+  // were rewritten by morphdom on the next 5 s refresh - the same way the meter
+  // rows were before __mbusMeterSet. It matters more here: a full sweep is a
+  // range somebody types once and then watches for minutes.
+  window.__mbusScanRangeSet = function (which, value) {
+    if (!state.mbusScan) state.mbusScan = {};
+    const n = Number(value);
+    state.mbusScan[which] = Number.isFinite(n) ? n : 0;
+  };
+
   window.__mbusPollIntervalSet = function (value) {
     if (state.mbus) state.mbus.poll_interval = String(value == null ? "" : value);
   };
@@ -3915,9 +3925,21 @@
         <span class="detail">${escapeHtml(f.answered ? t("mbus_scan_answered", "present") : t("mbus_scan_silent", "no response"))} · ${escapeHtml(labels[f.data_state] || f.data_state || "")}${f.hex ? ` · <code>${escapeHtml(f.hex.slice(0, 24))}</code>` : ""}</span>
         ${f.answered ? `<button class="btn" data-action="mbus-scan-add" data-addr="${f.address}">${escapeHtml(t("mbus_scan_add", "Add"))}</button>` : ""}
       </div>`).join("");
+    // While the sweep runs, say how far it has got: a full range is minutes of
+    // work and a bare "Scanning..." gives the reader no way to tell progress
+    // from a hang.
+    const progress = scan.running
+      ? `<p class="hint">${escapeHtml(
+          t("mbus_scan_progress", "Scanning p{at} of p{to}… {n} answered so far.")
+            .replace("{at}", String(scan.at ?? scan.from ?? 0))
+            .replace("{to}", String(scan.to ?? 0))
+            .replace("{n}", String((scan.found || []).length)))}</p>`
+      : "";
     const summary = scan.done
       ? `<p class="hint">${escapeHtml(
-          t("mbus_scan_summary", "Scanned p{first}–p{last}: {n} answered.")
+          (scan.cancelled
+            ? t("mbus_scan_summary_cancelled", "Stopped after p{first}–p{last}: {n} answered.")
+            : t("mbus_scan_summary", "Scanned p{first}–p{last}: {n} answered."))
             .replace("{first}", String(scan.first))
             .replace("{last}", String(scan.last))
             .replace("{n}", String((scan.found || []).length)))}</p>`
@@ -3928,16 +3950,21 @@
         <p class="hint">${escapeHtml(t("mbus_scan_hint", "The diagnostic scan checks whether each address acknowledges and immediately requests its data. It never starts on its own. Valid primaries are p0–p250; p0 is where a meter answers until it is given an address."))}</p>
         <div class="mbus-scan-controls">
           <label>${escapeHtml(t("mbus_scan_from", "From"))}
-            <input type="number" id="mbus_scan_first" min="0" max="250" value="${escapeHtml(String(scan.nextFirst ?? 0))}">
+            <input type="number" id="mbus_scan_first" min="0" max="250" value="${escapeHtml(String(scan.nextFirst ?? 0))}"
+                   oninput="window.__mbusScanRangeSet('nextFirst', this.value)">
           </label>
           <label>${escapeHtml(t("mbus_scan_to", "To"))}
-            <input type="number" id="mbus_scan_last" min="0" max="250" value="${escapeHtml(String(scan.nextLast ?? 31))}">
+            <input type="number" id="mbus_scan_last" min="0" max="250" value="${escapeHtml(String(scan.nextLast ?? 31))}"
+                   oninput="window.__mbusScanRangeSet('nextLast', this.value)">
           </label>
         </div>
         <div class="row-actions">
           <button class="btn primary" data-action="mbus-scan"${mbus.enabled || scan.running ? " disabled" : ""}>${escapeHtml(
             scan.running ? t("mbus_scan_running", "Scanning…") : t("mbus_scan_button", "Scan this range"))}</button>
+          ${scan.running ? `<button class="btn" data-action="mbus-scan-cancel"${scan.cancel ? " disabled" : ""}>${escapeHtml(
+            scan.cancel ? t("mbus_scan_stopping", "Stopping…") : t("mbus_scan_stop", "Stop"))}</button>` : ""}
         </div>
+        ${progress}
         ${mbus.enabled ? `<p class="hint">${escapeHtml(t("mbus_engine_holds_bus", "Turn polling off first — it is the bus master."))}</p>` : ""}
         ${summary}
         ${rows}
@@ -4320,28 +4347,56 @@
     }
 
     if (action === "mbus-scan") {
-      const first = Number(document.getElementById("mbus_scan_first")?.value ?? 0);
-      const last = Number(document.getElementById("mbus_scan_last")?.value ?? 31);
-      state.mbusScan = {running: true, found: [], nextFirst: first, nextLast: last};
+      // One click sweeps the whole requested range. The request stays capped at
+      // MBUS_SCAN_MAX addresses - a sweep of 0..250 would otherwise hold one
+      // HTTP request for minutes - so the walk happens here, chunk by chunk,
+      // accumulating rows and reporting where it is. ThreadingHTTPServer gives
+      // each request its own thread, so the rest of the tab keeps refreshing.
+      const from = Math.max(0, Math.min(250, Number(document.getElementById("mbus_scan_first")?.value ?? 0)));
+      const to   = Math.max(0, Math.min(250, Number(document.getElementById("mbus_scan_last")?.value ?? 31)));
+      const lo = Math.min(from, to), hi = Math.max(from, to);
+      const results = [];
+      state.mbusScan = {running: true, results: [], found: [], from: lo, to: hi,
+                        at: lo, nextFirst: from, nextLast: to};
       render();
-      try {
-        const result = await postApi("mbus/scan", {first, last});
-        // The server reports the range it actually swept, which is capped. The
-        // next range is pre-filled from it so continuing the sweep does not
-        // depend on the reader noticing where it stopped.
+      let cursor = lo, failed = "";
+      while (cursor <= hi) {
+        // Checked between chunks, not during one: a chunk already on the wire
+        // has to finish - the replies are still coming back.
+        if (state.mbusScan?.cancel) break;
+        let result;
+        try {
+          result = await postApi("mbus/scan", {first: cursor, last: hi});
+        } catch (error) {
+          failed = error.message;
+          break;
+        }
+        results.push(...asArray(result.results));
+        const swept = Number(result.last);
         state.mbusScan = {
-          running: false, done: true,
-          found: asArray(result.found),
-          results: asArray(result.results),
-          first: result.first, last: result.last,
-          nextFirst: Math.min(250, Number(result.last) + 1),
-          nextLast: Math.min(250, Number(result.last) + Number(result.chunk || 32)),
+          ...state.mbusScan,
+          running: true, results, found: results.filter((r) => r.answered),
+          first: lo, last: swept, at: swept,
         };
-        if (result.state && result.state !== "ok") toast(result.state, true);
-      } catch (error) {
-        state.mbusScan = {running: false, found: [], nextFirst: first, nextLast: last};
-        toast(error.message, true);
+        render();
+        if (!Number.isFinite(swept) || swept >= hi) break;
+        cursor = swept + 1;
       }
+      const cancelled = Boolean(state.mbusScan?.cancel);
+      state.mbusScan = {
+        ...state.mbusScan,
+        running: false, done: true, cancel: false, cancelled,
+        results, found: results.filter((r) => r.answered),
+        first: lo, last: results.length ? results[results.length - 1].address : lo,
+      };
+      if (failed) toast(failed, true);
+      render();
+      return;
+    }
+
+    if (action === "mbus-scan-cancel") {
+      // Only sets the flag; the loop above stops after the chunk in flight.
+      if (state.mbusScan) state.mbusScan.cancel = true;
       render();
       return;
     }
