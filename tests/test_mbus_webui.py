@@ -179,6 +179,46 @@ class MBusWebUITest(unittest.TestCase):
         # Empty optionals are dropped, not stored as "".
         self.assertNotIn("type_other", saved)
 
+    def test_wired_meter_row_edits_are_kept_in_state_not_the_dom(self):
+        source = APP_JS.read_text(encoding="utf-8")
+        # refreshMbusDevices() re-renders the tab every 5 s and morphdom
+        # rewrites the value of every input that is not focused, so a row left
+        # alone after editing was reverted to the saved entry. Every row input
+        # has to sink into state, the way __cfgSet does for the settings form.
+        self.assertIn("window.__mbusMeterSet = function (index, field, value)", source)
+        for field in ("id", "address", "type", "poll_interval"):
+            with self.subTest(field=field):
+                self.assertIn(
+                    "oninput=\"window.__mbusMeterSet(${index}, '%s', this.value)\"" % field,
+                    source,
+                )
+
+    def test_wired_address_edit_refreshes_the_poll_buttons(self):
+        source = APP_JS.read_text(encoding="utf-8")
+        # "Poll once" and "Detect driver" are disabled from the address in
+        # state, so a typed address left them dead until the next save. change,
+        # not input: this file renders no more than once per committed edit.
+        self.assertIn("window.__mbusAddressCommit = function ()", source)
+        self.assertIn('onchange="window.__mbusAddressCommit()"', source)
+
+    def test_wired_default_poll_interval_is_saved_by_save_meters(self):
+        source = APP_JS.read_text(encoding="utf-8")
+        # The field is rendered in the "Meters on the bus" card but stored with
+        # the device options, so "Save meters" has to persist it too - before
+        # this, only "Save port" in another card did, and the field silently
+        # discarded what was typed.
+        self.assertIn('oninput="window.__mbusPollIntervalSet(this.value)"', source)
+        self.assertIn("window.__mbusPollIntervalSet = function (value)", source)
+        # Slice exactly this handler: the next one legitimately posts the
+        # engine switch, so a fixed-size window would read it as this one.
+        save_meters = source.split('if (action === "mbus-save-meters")', 1)[1]
+        save_meters = save_meters.split('if (action ===', 1)[0]
+        self.assertIn('postApi("mbus/device"', save_meters)
+        self.assertIn("poll_interval: state.mbus?.poll_interval", save_meters)
+        # The engine switch must not ride along with a meter save. The payload
+        # key, not the bare word - the comment above the call names it too.
+        self.assertNotIn("mbus_enabled:", save_meters)
+
     @mock.patch.object(webui.subprocess, "run")
     def test_wired_driver_detection_uses_wmbusmeters_analysis(self, run):
         run.return_value = mock.Mock(stdout="Auto driver : piigth\n", stderr="")

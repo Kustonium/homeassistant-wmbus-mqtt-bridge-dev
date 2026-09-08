@@ -3722,6 +3722,29 @@
     render();
   }
 
+  // M-Bus form sinks: edits go to state, not the DOM - the same rule __cfgSet
+  // follows, and for the same reason. refreshMbusDevices() re-renders this tab
+  // every 5 s, and morphdom rewrites the value of every input that is not the
+  // focused one, so a row that was edited and then left alone was silently
+  // reverted to the last saved entry.
+  window.__mbusMeterSet = function (index, field, value) {
+    const meters = asArray(state.mbus && state.mbus.meters);
+    if (!meters[index]) return;
+    meters[index][field] = String(value == null ? "" : value);
+  };
+
+  // The address decides whether "Poll once" and "Detect driver" are enabled, so
+  // unlike the other fields it needs a render to take effect. On change, not on
+  // input: this file's rule is no render() per keystroke, and change fires when
+  // the field is left - focus has moved by then, so nothing is dropped.
+  window.__mbusAddressCommit = function () {
+    render();
+  };
+
+  window.__mbusPollIntervalSet = function (value) {
+    if (state.mbus) state.mbus.poll_interval = String(value == null ? "" : value);
+  };
+
   // The row inputs cover four fields. Everything else an entry can carry - key,
   // type_other, calculated_fields, static_fields - has no widget in this table,
   // so it is carried over from the loaded entry at the same index. Without that
@@ -4030,7 +4053,8 @@
         <div class="mbus-card-head">
           <h2>${escapeHtml(t("mbus_meters_title", "Meters on the bus"))}</h2>
           <label class="mbus-default-poll">${escapeHtml(t("mbus_poll_label", "Default poll interval"))}
-            <input type="text" id="mbus_poll_interval" value="${escapeHtml(mbus.poll_interval || "15m")}">
+            <input type="text" id="mbus_poll_interval" value="${escapeHtml(mbus.poll_interval || "15m")}"
+                   oninput="window.__mbusPollIntervalSet(this.value)">
           </label>
         </div>
         <p class="hint">${escapeHtml(t("mbus_meters_hint", "Address is p1..p250 (primary) or 8 hex characters (secondary). p0 is the factory 'unset' value and is not a valid address."))}</p>
@@ -4039,13 +4063,18 @@
               <th>${escapeHtml(t("mbus_col_driver", "Driver"))}</th><th>${escapeHtml(t("mbus_col_interval", "Interval"))}</th><th></th></tr>
           ${meters.map((m, index) => `
             <tr>
-              <td><input type="text" class="mbus-m-name" data-i="${index}" value="${escapeHtml(m.id || "")}"></td>
-              <td><input type="text" class="mbus-m-addr" data-i="${index}" value="${escapeHtml(m.address || "")}"></td>
+              <td><input type="text" class="mbus-m-name" data-i="${index}" value="${escapeHtml(m.id || "")}"
+                    oninput="window.__mbusMeterSet(${index}, 'id', this.value)"></td>
+              <td><input type="text" class="mbus-m-addr" data-i="${index}" value="${escapeHtml(m.address || "")}"
+                    oninput="window.__mbusMeterSet(${index}, 'address', this.value)"
+                    onchange="window.__mbusAddressCommit()"></td>
               <td><input type="text" class="mbus-m-type" data-i="${index}" list="mbus-driver-options"
                     value="${escapeHtml(m.type || "auto")}"
-                    title="${escapeHtml(t("mbus_driver_picker_hint", "Choose a driver shipped with this add-on, leave auto, or type a custom driver name."))}"></td>
+                    title="${escapeHtml(t("mbus_driver_picker_hint", "Choose a driver shipped with this add-on, leave auto, or type a custom driver name."))}"
+                    oninput="window.__mbusMeterSet(${index}, 'type', this.value)"></td>
               <td><input type="text" class="mbus-m-poll" data-i="${index}" value="${escapeHtml(m.poll_interval || "")}"
-                    placeholder="${escapeHtml(mbus.poll_interval || "15m")}"></td>
+                    placeholder="${escapeHtml(mbus.poll_interval || "15m")}"
+                    oninput="window.__mbusMeterSet(${index}, 'poll_interval', this.value)"></td>
               <td><div class="actions"><button class="btn" data-action="mbus-poll-one" data-i="${index}"${
                     mbus.enabled || !/^p(?:[1-9]|[1-9]\d|1\d\d|2[0-4]\d|250)$/.test(String(m.address || "")) ? " disabled" : ""}
                     title="${escapeHtml(mbus.enabled
@@ -4340,6 +4369,20 @@
       const meters = mbusMetersFromForm();
       try {
         const result = await postApi("mbus/meters", {meters: JSON.stringify(meters)});
+        // "Default poll interval" is rendered in this card but is stored with
+        // the device options, so until now the only button that saved it was
+        // "Save port" in a different card - the field next to Save meters
+        // silently discarded whatever was typed into it. Same device payload
+        // the Engine card posts, and mbus_enabled is left out of it, so the
+        // engine switch is not touched. Second request rather than a widened
+        // /api/mbus/meters: the interval is not a property of a meter.
+        await postApi("mbus/device", {
+          device: state.mbus?.device || "",
+          bus_alias: state.mbus?.bus_alias || "MAIN",
+          baudrate: String(state.mbus?.baudrate || "2400"),
+          poll_interval: state.mbus?.poll_interval || "15m",
+          donotprobe_all: state.mbus?.donotprobe_all ? "true" : "false",
+        });
         toast(result.message || t("saved", "Saved"));
         await loadMbus(true);
       } catch (error) {
