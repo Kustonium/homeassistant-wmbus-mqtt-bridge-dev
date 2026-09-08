@@ -1,3 +1,11 @@
+## 1.5.62-dev.309
+
+### Fixed
+- stop wiping M-Bus AES key and field lists on "Save meters" (16f2d9f)
+
+### Other (review)
+- Make radio diagnostic history opt-in (f353cc3)
+
 ## 1.5.62-dev.308
 
 ### Other (review)
