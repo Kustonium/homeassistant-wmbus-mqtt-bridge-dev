@@ -1,3 +1,8 @@
+## 1.5.62-dev.319
+
+### Added
+- let a wired M-Bus meter exclude fields like a radio one (567abe4)
+
 ## 1.5.62-dev.318
 
 ### Added
