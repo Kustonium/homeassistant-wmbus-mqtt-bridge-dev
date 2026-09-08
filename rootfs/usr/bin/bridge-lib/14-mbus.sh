@@ -53,6 +53,12 @@ MBUS_READ_SEQ=0
 # reports neither problem nor duplicate, it simply emits both telegrams, so the
 # detection has to live here.
 declare -A MBUS_LAST_ID=()
+# exclude_fields per configured meter NAME. It cannot go straight into
+# METER_EXCLUDE_FIELDS: that map is keyed by the id in the telegram, and a
+# wired meter's id is not its configured address - it is learned from the
+# first reply. So the patterns wait here under the name, and are moved
+# across in mbus_consume_line() once both halves are known.
+declare -A MBUS_EXCLUDE_BY_NAME=()
 declare -A MBUS_LAST_OK=()
 declare -A MBUS_CLASH=()
 
@@ -287,7 +293,7 @@ write_mbus_conf() {
 
 refresh_mbus_meter_files() {
   rm -f "${MBUS_METER_DIR}/meter-"* 2>/dev/null || true
-  local n=0 skipped=0 meter_json name addr driver driver_other key poll calc stat calc_lines stat_lines file
+  local n=0 skipped=0 meter_json name addr driver driver_other key poll calc stat excl calc_lines stat_lines file
 
   MBUS_METERS_OK=0
   MBUS_METERS_SKIPPED=0
@@ -305,8 +311,14 @@ refresh_mbus_meter_files() {
     driver_other="$(echo "${meter_json}" | jq -r '.type_other // empty')"
     key="$(echo "${meter_json}" | jq -r '.key // empty')"
     poll="$(echo "${meter_json}" | jq -r '.poll_interval // empty')"
+    excl="$(echo "${meter_json}" | jq -r '.exclude_fields // empty' | tr ',' ' ')"
     calc="$(echo "${meter_json}" | jq -r '.calculated_fields // empty')"
     stat="$(echo "${meter_json}" | jq -r '.static_fields // empty')"
+    if [[ -n "${excl}" && "${excl}" != "null" ]]; then
+      MBUS_EXCLUDE_BY_NAME["${name}"]="${excl}"
+    else
+      unset 'MBUS_EXCLUDE_BY_NAME[${name}]'
+    fi
 
     # Primary addresses are p1..p250; 0x00 is the factory "unset" value and
     # 0xFB-0xFF are reserved or broadcast. Secondary addressing uses 8 hex.
@@ -420,6 +432,15 @@ mbus_consume_line() {
       # still accepted (measured on the simulator), so "when did we last hear
       # from it" is the only answer that means anything.
       MBUS_LAST_OK["${name}"]="$(epoch_now)"
+      # The id is only now known, and field_excluded_for_meter() looks the
+      # patterns up by id. Set before emit_discovery_from_json() below, or
+      # the first telegram of every run would publish the excluded fields.
+      if [[ -n "${MBUS_EXCLUDE_BY_NAME[${name}]:-}" ]]; then
+        # shellcheck disable=SC2034  # read by field_excluded_for_meter() in 08-discovery-helpers.sh
+        METER_EXCLUDE_FIELDS["${id,,}"]="${MBUS_EXCLUDE_BY_NAME[${name}]}"
+      else
+        unset 'METER_EXCLUDE_FIELDS[${id,,}]'
+      fi
     fi
 
     if [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]]; then

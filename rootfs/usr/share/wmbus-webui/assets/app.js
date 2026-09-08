@@ -1838,12 +1838,27 @@
   // promise control that does not exist.
   const METADATA_FIELDS = new Set(["_", "id", "name", "meter", "media", "timestamp", "device_date_time", "rssi", "lqi"]);
 
+  // A wired meter is configured in mbus_meters under a NAME, but the table row
+  // carries the id from its telegram - and those are different things: the id
+  // is learned from the first reply, the name is what the user typed. The
+  // runtime map in status_mbus.json is the only link between them.
+  function wiredMeterEntry(meterId) {
+    const runtime = ((state.data || {}).mbus || {}).meters || {};
+    const name = Object.keys(runtime).find(
+      (k) => normalizeMeterId((runtime[k] || {}).id) === normalizeMeterId(meterId));
+    if (!name) return null;
+    return asArray(((state.data || {}).options || {}).mbus_meters)
+      .find((m) => m && String(m.id || "").trim() === name) || null;
+  }
+
   function meterFieldsRow(row, colspan) {
     let fields = null;
     try { fields = JSON.parse(row.last_json || ""); } catch (e) { fields = null; }
     const meterId = normalizeMeterId(row.id || row.meter_id || "");
-    const savedMeter = ((state.data && state.data.options && state.data.options.meters) || [])
-      .find(m => m && normalizeMeterId(m.meter_id) === meterId);
+    const savedMeter = row.source === "mbus"
+      ? wiredMeterEntry(meterId)
+      : ((state.data && state.data.options && state.data.options.meters) || [])
+          .find(m => m && normalizeMeterId(m.meter_id) === meterId);
     const excludeText = (savedMeter && savedMeter.exclude_fields) || "";
     let inner;
     if (!fields || typeof fields !== "object") {
@@ -1945,7 +1960,7 @@
                     ${
                       withActions
                         ? (row.source === "mbus"
-                          ? `<td><a class="btn" href="#mbus" style="text-decoration:none;">${escapeHtml(t("source_mbus_manage", "Manage in M-Bus"))}</a></td>`
+                          ? `<td><div class="actions"><button class="btn" data-action="toggle-meter-fields" data-id="${escapeHtml(id)}">${escapeHtml(t("published_fields_btn", "Fields"))} ${state.expandedMeterFields.has(id) ? "▴" : "▾"}</button><a class="btn" href="#mbus" style="text-decoration:none;">${escapeHtml(t("source_mbus_manage", "Manage in M-Bus"))}</a></div></td>`
                           : `<td><div class="actions"><button class="btn" data-action="toggle-meter-fields" data-id="${escapeHtml(id)}">${escapeHtml(t("published_fields_btn", "Fields"))} ${state.expandedMeterFields.has(id) ? "▴" : "▾"}</button><button class="btn" data-action="open-edit-driver" data-id="${escapeHtml(id)}" data-driver="${escapeHtml(row.driver || "auto")}">${escapeHtml(t("change_driver_btn", "Driver…"))}</button><button class="btn" data-action="export-report" data-id="${escapeHtml(id)}" title="${escapeHtml(t("export_report_title", "wmbusmeters issue report"))}">${escapeHtml(t("export_report_btn", "Report…"))}</button><button class="btn danger" data-action="remove-meter" data-id="${escapeHtml(id)}">${escapeHtml(t("webui_remove", "Remove"))}</button></div></td>`)
                         : ""
                     }
@@ -4612,7 +4627,11 @@
       const fieldName = target.dataset.name || "";
       const driver = target.dataset.driver || "auto";
       if (!id || !fieldName) return;
-      const saved = ((state.data && state.data.options && state.data.options.meters) || [])
+      // A wired meter has no entry in options.meters, so update-meter would
+      // answer "not found in options." and the click would do nothing. Its
+      // patterns live in mbus_meters and are addressed by name.
+      const wired = wiredMeterEntry(id);
+      const saved = wired || ((state.data && state.data.options && state.data.options.meters) || [])
         .find(m => m && normalizeMeterId(m.meter_id) === normalizeMeterId(id));
       const next = toggleExcludedName((saved && saved.exclude_fields) || "", fieldName);
       // update-meter overwrites the driver with whatever it receives, so take it
@@ -4627,7 +4646,11 @@
       target.disabled = true;
       (async () => {
         try {
-          await postApi("update-meter", {meter_id: id, driver: effectiveDriver, exclude_fields: next});
+          if (wired) {
+            await postApi("mbus/meter-fields", {name: String(wired.id || ""), exclude_fields: next});
+          } else {
+            await postApi("update-meter", {meter_id: id, driver: effectiveDriver, exclude_fields: next});
+          }
           triggerSoftReload(`${t("fields_saved", "Field selection saved.")} ${t("reloading_pipeline", "Applying meter changes…")}`);
         } catch (error) {
           toast(error.message, true);

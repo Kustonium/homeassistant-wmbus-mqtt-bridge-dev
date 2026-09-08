@@ -178,6 +178,84 @@ class MBusWebUITest(unittest.TestCase):
         # Empty optionals are dropped, not stored as "".
         self.assertNotIn("type_other", saved)
 
+    def test_wired_meter_fields_are_written_to_mbus_meters(self):
+        # update_meter_in_options() searches options["meters"] by meter_id and
+        # would answer "not found in options." for a wired meter, so the field
+        # toggle gets its own narrow writer, addressed by the configured name.
+        opts = {"mbus_meters": [{"id": "woda", "address": "p1"},
+                                {"id": "cieplo", "address": "p2"}]}
+        with tempfile.TemporaryDirectory() as directory:
+            old = webui.OPTIONS_JSON
+            webui.OPTIONS_JSON = Path(directory) / "options.json"
+            try:
+                webui.OPTIONS_JSON.write_text(json.dumps(opts), encoding="utf-8")
+                with mock.patch.object(webui, "save_options_patch",
+                                       return_value=(True, "")) as saved:
+                    ok, _ = webui.mbus_save_meter_fields("woda", "history_*_date, total_m3")
+                self.assertTrue(ok)
+                written = saved.call_args.args[0]["mbus_meters"]
+                self.assertEqual(written[0]["exclude_fields"], "history_*_date total_m3")
+                # Only the addressed meter is touched.
+                self.assertNotIn("exclude_fields", written[1])
+
+                # An empty pattern clears the key rather than storing "".
+                webui.OPTIONS_JSON.write_text(
+                    json.dumps({"mbus_meters": [{"id": "woda", "address": "p1",
+                                                 "exclude_fields": "total_m3"}]}),
+                    encoding="utf-8")
+                with mock.patch.object(webui, "save_options_patch",
+                                       return_value=(True, "")) as saved:
+                    ok, _ = webui.mbus_save_meter_fields("woda", "")
+                self.assertTrue(ok)
+                self.assertNotIn("exclude_fields",
+                                 saved.call_args.args[0]["mbus_meters"][0])
+
+                ok, msg = webui.mbus_save_meter_fields("nie-ma-takiego", "x")
+            finally:
+                webui.OPTIONS_JSON = old
+        self.assertFalse(ok)
+        self.assertIn("not found in mbus_meters", msg)
+
+    def test_wired_meter_save_accepts_and_normalises_exclude_fields(self):
+        with mock.patch.object(webui, "save_options_patch", return_value=(True, "")) as saved:
+            ok, _ = webui.mbus_save_meters(
+                [{"id": "woda", "address": "p1", "exclude_fields": "a_*,b_c"}])
+        self.assertTrue(ok)
+        # Same validator as the radio path, so one glob syntax covers both.
+        self.assertEqual(saved.call_args.args[0]["mbus_meters"][0]["exclude_fields"],
+                         "a_* b_c")
+
+    def test_wired_exclusions_are_keyed_by_the_id_from_the_telegram(self):
+        lib = (Path(__file__).parents[1] / "rootfs" / "usr" / "bin" / "bridge-lib"
+               / "14-mbus.sh").read_text(encoding="utf-8")
+        # field_excluded_for_meter() looks patterns up by the id in the telegram,
+        # but a wired meter is configured under a name and its id is only learned
+        # from the first reply. The patterns therefore wait under the name and
+        # are moved across once both halves are known - before discovery runs,
+        # or the first telegram of every run would publish the excluded fields.
+        self.assertIn("declare -A MBUS_EXCLUDE_BY_NAME=()", lib)
+        self.assertIn('MBUS_EXCLUDE_BY_NAME["${name}"]="${excl}"', lib)
+        self.assertIn('METER_EXCLUDE_FIELDS["${id,,}"]="${MBUS_EXCLUDE_BY_NAME[${name}]}"', lib)
+        # Anchored on the call, not the name: the file mentions the function in
+        # a comment above the assignment, and matching that read as the map
+        # being filled after discovery had already run.
+        apply_at = lib.index('METER_EXCLUDE_FIELDS["${id,,}"]')
+        call_at = lib.index('emit_discovery_from_json "${line}"')
+        self.assertLess(apply_at, call_at)
+
+    def test_fields_panel_reaches_wired_meters(self):
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("function wiredMeterEntry(meterId)", source)
+        # Reading and writing both go through the wired entry when there is one.
+        self.assertIn('row.source === "mbus"\n      ? wiredMeterEntry(meterId)',
+                      source.replace("\r\n", "\n"))
+        self.assertIn('postApi("mbus/meter-fields", {name: String(wired.id || ""), '
+                      'exclude_fields: next})', source)
+        # The Meters tab offers the button at all for a wired row.
+        meters_tab = source.split("function meterTable(", 1)[1].split("  function ", 1)[0]
+        self.assertIn('source_mbus_manage', meters_tab)
+        self.assertIn('toggle-meter-fields', meters_tab)
+
     def test_wired_meter_row_edits_are_kept_in_state_not_the_dom(self):
         source = APP_JS.read_text(encoding="utf-8")
         # refreshMbusDevices() re-renders the tab every 5 s and morphdom

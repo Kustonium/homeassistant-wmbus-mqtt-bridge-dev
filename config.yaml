@@ -151,6 +151,12 @@ schema:
       type_other: str?
       key: str?
       poll_interval: str?
+      # Same glob patterns as a radio meter's exclude_fields, and the same
+      # effect: matching fields get no Home Assistant entity. Applied by
+      # field_excluded_for_meter(), which the wired path already reaches -
+      # 14-mbus.sh hands its decoded JSON to emit_discovery_from_json() like
+      # any radio telegram. Only the pattern map was never filled for it.
+      exclude_fields: str?
       calculated_fields: str?
       static_fields: str?
   meters:

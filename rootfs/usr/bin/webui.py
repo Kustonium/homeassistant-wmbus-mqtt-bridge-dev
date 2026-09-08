@@ -2396,6 +2396,10 @@ def mbus_save_meters(meters: list) -> tuple[bool, str]:
         poll = str(entry.get('poll_interval') or '').strip()
         if poll and not re.fullmatch(r'\d+[smh]', poll):
             return False, f"{name}: poll interval must look like 15m."
+        # Same validator the radio path uses, so one glob syntax covers both.
+        ok_ex, exclude, err = _clean_exclude_fields(str(entry.get('exclude_fields') or ''))
+        if not ok_ex:
+            return False, f"{name}: {err}"
         cleaned.append({k: v for k, v in {
             'id': name,
             'address': address,
@@ -2403,10 +2407,48 @@ def mbus_save_meters(meters: list) -> tuple[bool, str]:
             'type_other': str(entry.get('type_other') or '').strip() or None,
             'key': key or None,
             'poll_interval': poll or None,
+            'exclude_fields': exclude or None,
             'calculated_fields': str(entry.get('calculated_fields') or '').strip() or None,
             'static_fields': str(entry.get('static_fields') or '').strip() or None,
         }.items() if v is not None})
     return save_options_patch({'mbus_meters': cleaned})
+
+
+def mbus_save_meter_fields(name: str, exclude_fields: str) -> tuple[bool, str]:
+    """Set exclude_fields on one wired meter, addressed by its configured name.
+
+    Narrow on purpose. update_meter_in_options() searches options["meters"] by
+    meter_id and rewrites driver, key and label; a wired meter lives in
+    options["mbus_meters"] keyed by name and address, and the field table only
+    ever changes this one value. Widening the radio writer to understand a
+    second shape would put a rename and a driver rewrite on a path that needs
+    neither.
+    """
+    name = (name or '').strip()
+    if not name:
+        return False, "Missing meter name."
+    ok, cleaned, err = _clean_exclude_fields(exclude_fields or '')
+    if not ok:
+        return False, err
+
+    options = read_options()
+    options = options if isinstance(options, dict) else {}
+    meters = options.get('mbus_meters')
+    if not isinstance(meters, list):
+        return False, "No mbus_meters list in options."
+
+    found = False
+    for entry in meters:
+        if isinstance(entry, dict) and str(entry.get('id') or '').strip() == name:
+            if cleaned:
+                entry['exclude_fields'] = cleaned
+            else:
+                entry.pop('exclude_fields', None)
+            found = True
+            break
+    if not found:
+        return False, f"Wired meter {name} not found in mbus_meters."
+    return save_options_patch({'mbus_meters': meters})
 
 
 def restart_addon_via_supervisor() -> tuple[bool, str]:
@@ -4077,6 +4119,7 @@ class Handler(BaseHTTPRequestHandler):
             '/api/compare-driver', '/api/save-config', '/api/driver-fields',
             '/api/esp-rx',
             '/api/mbus', '/api/mbus/device', '/api/mbus/meters', '/api/mbus/probe',
+            '/api/mbus/meter-fields',
             '/api/mbus/console', '/api/mbus/scan', '/api/mbus/poll-one',
             '/api/mbus/detect-driver',
         )
@@ -4105,6 +4148,13 @@ class Handler(BaseHTTPRequestHandler):
                 in ('true', '1', 'on', 'yes'),
                 (params['mbus_enabled'][0].strip().lower() in ('true', '1', 'on', 'yes')
                  if 'mbus_enabled' in params else None),
+            )
+            self._send_json(200 if ok else 400, {"ok": ok, "message": msg})
+            return
+        if path.endswith('/api/mbus/meter-fields'):
+            ok, msg = mbus_save_meter_fields(
+                (params.get('name') or [''])[0],
+                (params.get('exclude_fields') or [''])[0],
             )
             self._send_json(200 if ok else 400, {"ok": ok, "message": msg})
             return
