@@ -112,6 +112,7 @@ jobs:
           bash tests/test_calculated_fields.sh
           bash tests/test_esp_reception_history.sh
           bash tests/test_esp_boot_dedup.sh
+          bash tests/test_esp_diag_retained.sh
           bash tests/test_esp_coverage_sensor.sh
           bash tests/test_mbus_meter_files.sh
           python3 -m unittest tests/test_mbus_webui.py -v
