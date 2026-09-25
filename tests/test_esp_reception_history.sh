@@ -110,4 +110,21 @@ _upsert_esp_rx_sequence "${SCI_SEQUENCE}" xiaoseed 651E6871 1 1001
 [[ "$(awk -F '\t' '$1=="xiaoseed" {print $2 FS $3 FS $4 FS $5}' "${SCI_SEQUENCE}")" == $'651E6871\t1\t0\t0' ]] \
   || { echo "FAIL: scientific-looking boot_id must reset sequence accounting" >&2; exit 1; }
 
+# Per-meter band counts: one row per (meter, mode), so a meter heard on two
+# bands (Techem sends T1 and C1) keeps both, and an unknown mode is ignored.
+MODES="${TMP}/modes.tsv"
+_upsert_esp_meter_mode "${MODES}" 90830781 T1 300
+_upsert_esp_meter_mode "${MODES}" 90830781 C1 301
+_upsert_esp_meter_mode "${MODES}" 90830781 T1 302
+_upsert_esp_meter_mode "${MODES}" 90830781 S1 303
+_upsert_esp_meter_mode "${MODES}" 90830781 XX 304
+[[ "$(awk -F '\t' '$1=="90830781" && $2=="T1" {print $3 FS $4}' "${MODES}")" == $'2\t302' ]] \
+  || { echo "FAIL: band count T1" >&2; exit 1; }
+[[ "$(awk -F '\t' '$1=="90830781" && $2=="C1" {print $3}' "${MODES}")" == "1" ]] \
+  || { echo "FAIL: band count C1" >&2; exit 1; }
+[[ "$(awk -F '\t' '$1=="90830781" && $2=="S1" {print $3}' "${MODES}")" == "1" ]] \
+  || { echo "FAIL: band count S1" >&2; exit 1; }
+[[ "$(wc -l < "${MODES}" | tr -d ' ')" == "3" ]] \
+  || { echo "FAIL: unknown band must not create a row" >&2; exit 1; }
+
 echo "PASS: ESP reception summary and bounded history"
