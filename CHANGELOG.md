@@ -1,3 +1,8 @@
+## 1.5.64-dev.323
+
+### Fixed
+- keep retained diag replays out of the event log (e3b46ae)
+
 ## 1.5.64-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
