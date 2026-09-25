@@ -1,3 +1,8 @@
+## 1.5.66-dev.327
+
+### Fixed
+- stop calling a meter "AES required" when its value decodes without a key (c76d647)
+
 ## 1.5.66-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
