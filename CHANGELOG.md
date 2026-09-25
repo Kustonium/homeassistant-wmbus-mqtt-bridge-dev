@@ -1,3 +1,9 @@
+## 1.5.63-dev.321
+
+### Fixed
+- English fatal MQTT messages and WebUI fallbacks (bed1e1a)
+- stop logging a retained boot as a restart every 3 minutes (73bcec8)
+
 ## 1.5.63-dev.320
 
 ### Fixed
