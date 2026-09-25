@@ -1,3 +1,8 @@
+## 1.5.63-dev.320
+
+### Fixed
+- stop logging a retained boot as a restart every 3 minutes (73bcec8)
+
 ## 1.5.63-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
