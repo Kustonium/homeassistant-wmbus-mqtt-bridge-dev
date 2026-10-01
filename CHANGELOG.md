@@ -1,3 +1,11 @@
+## 1.5.68-dev.331
+
+### Changed
+- store RSSI only for decoded meters, read /rx fields with one jq (a71b02a)
+
+### Fixed
+- join RSSI for meter ids containing hex letters (2b5e57b)
+
 ## 1.5.68-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
