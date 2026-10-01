@@ -35,7 +35,10 @@ inject_rssi_into_json() {
     # Key is [a-z0-9_] and the value an integer, so the object can be built
     # here and merged with ONE jq call for all boards.
     add+="${add:+,}\"${field}\":${dbm}"
-  done < <(awk -F'\t' -v id="${id}" '$1 == id {print}' "${STATUS_RSSI_FILE}" 2>/dev/null || true)
+  # Case-insensitive: the subscriber stores normalize_meter_id output
+  # (uppercase) while id is lowercased above, so a plain == never matched a
+  # meter id containing A-F.
+  done < <(awk -F'\t' -v id="${id}" 'tolower($1) == id {print}' "${STATUS_RSSI_FILE}" 2>/dev/null || true)
 
   [[ -n "${add}" ]] || { printf '%s' "${line}"; return 0; }
   jq -c --argjson add "{${add}}" '. + $add' <<<"${line}" 2>/dev/null \

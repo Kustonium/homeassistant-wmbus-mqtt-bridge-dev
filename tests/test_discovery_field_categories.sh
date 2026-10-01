@@ -392,6 +392,13 @@ assert_json_field "fresh rssi" "${RSSI_JOINED}" rssi_dbm missing
 assert_json_field "fresh rssi" "${RSSI_JOINED}" rssi_source missing
 assert_json_field "fresh rssi" "${RSSI_JOINED}" total_m3 10.5
 
+# Hex id with letters: the subscriber stores the id uppercase (normalize_meter_id)
+# and callers pass it uppercase too; the join must still find the row. Before the
+# case-insensitive match no meter with A-F in its id ever got an RSSI field.
+printf '%s\t%s\t%s\t%s\n' "0A1B2C3D" "-70" "tbeam" "$(epoch_now)" > "${STATUS_RSSI_FILE}"
+RSSI_HEX="$(inject_rssi_into_json 0A1B2C3D "${TELEGRAM_RSSI}")"
+assert_json_field "hex id rssi" "${RSSI_HEX}" rssi_tbeam_dbm -70
+
 # Two ESPs hearing the same meter retain independent fields/entities, and still
 # no merged value is invented from them.
 printf '%s\t%s\t%s\t%s\n' \
