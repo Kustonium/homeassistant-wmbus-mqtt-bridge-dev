@@ -1,3 +1,8 @@
+## 1.5.67-dev.329
+
+### Changed
+- stop forking per field and per board on every decoded telegram (40c48ef)
+
 ## 1.5.67-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
