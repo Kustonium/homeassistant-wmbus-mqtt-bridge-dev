@@ -80,6 +80,8 @@ RAW_RATE_PREV_MIN_COUNT=0
 
 # The two hand-overs to bash, logged instead of run.
 DECISIONS="${TMP}/decisions"
+eval "real_$(declare -f status_candidate_seen)"
+# shellcheck disable=SC2329  # called by the sourced bridge-lib code
 status_candidate_seen() { printf 'register\t%s\t%s\t%s\n' "$1" "$2" "$3" >> "${DECISIONS}"; }
 # shellcheck disable=SC2154  # id: a local of preview_decode_raw_if_requested, the caller
 _preview_acquire_slot() { printf 'preview\t%s\n' "${id}" >> "${DECISIONS}"; return 1; }
@@ -192,6 +194,104 @@ grep -q $'^register\t2156B4C2' "${TMP}/py/DECISIONS" || fail "no SAP registratio
 grep -q $'^preview\t52632878' "${TMP}/py/DECISIONS" || fail "no preview was handed over - the corpus tests nothing"
 expected=$(( 22 + $(wc -l < "${CORPUS}") ))
 [[ "$(cat "${STATUS_RAW_COUNT_FILE}")" == "${expected}" ]] || fail "counter did not reach ${expected}"
+
+# ── Diehl/SAP candidate already registered as auto ──────────────────────────
+# Real IZAR frames carry device type 01, so bash registers them as driver auto
+# with the device-type label on every telegram. When the row already holds
+# exactly that and the preview config would stay as it is, bridge_ledger.py
+# writes the reception refresh itself (seen row with its 2 s threshold, stats,
+# candidate row, RAW analysis) and nothing reaches bash. status_candidate_seen
+# is the real one here, so every file the two runs write must be identical.
+# The clock is fixed per batch (date in bash, time.time in python3): the 2 s
+# threshold and the stats depend on it.
+mkdir -p "${TMP}/clock"
+printf '%s\n' 'import os, time' \
+  'if os.environ.get("LEDGER_TEST_EPOCH"): time.time = lambda: float(os.environ["LEDGER_TEST_EPOCH"])' \
+  > "${TMP}/clock/sitecustomize.py"
+# shellcheck disable=SC2329  # called by the sourced bridge-lib code
+date() {
+  case "$*" in
+    +%s) echo "${LEDGER_TEST_EPOCH}" ;;
+    -Iseconds) command date -u -d "@${LEDGER_TEST_EPOCH}" '+%Y-%m-%dT%H:%M:%S+00:00' ;;
+    *) command date "$@" ;;
+  esac
+}
+# shellcheck disable=SC2329  # called by the sourced bridge-lib code
+status_candidate_seen() {
+  printf 'register\t%s\t%s\t%s\n' "$1" "$2" "$3" >> "${DECISIONS}"
+  real_status_candidate_seen "$@"
+}
+T0=1790935200
+SAP_A="${IZAR1}"                          # 2156B4C2: auto row, preview config
+SAP_B="${IZAR2}"                          # 215F908A: 8-field row, manufacturer filled first
+SAP_C="${IZAR1:0:8}33221100${IZAR1:16}"   # 00112233: official meter, no preview config
+SAP_D="${IZAR1:0:8}77665511${IZAR1:16}"   # 11556677: its type changes - bash registers it
+seed_sap() {
+  rm -rf "${BASE}"
+  mkdir -p "${BASE}" "${PREVIEW_METER_DIR}" "${METER_DIR}" "${BASE}/.preview_decode_last" \
+    "${BASE}/.preview_decode_locks" "${BASE}/.preview_decode_slots" "${BASE}/.preview_attempts"
+  local t="Unknown meter type (0x01)" id
+  {
+    printf '2156B4C2\tauto\t%s\tOLD\t3\t30\t1\t2\t(SAP) Diehl Metering\n' "${t}"
+    printf '77665544\tqwaterv2\tWater meter (0x07)\tOLD\t3\t30\t1\t2\tQDS\n'
+    printf '215F908A\tauto\t%s\tOLD\t3\t30\t1\t2\n' "${t}"
+    printf '00112233\tauto\t%s\tOLD\t3\t30\t1\t2\t\n' "${t}"
+    printf '11556677\tauto\tWater meter (0x07)\tOLD\t3\t30\t1\t2\t\n'
+  } > "${STATUS_CANDIDATES_FILE}"
+  for id in 2156B4C2 215F908A; do
+    printf 'name=preview_%s\nid=%s\n' "${id}" "${id,,}" > "${PREVIEW_METER_DIR}/meter-preview-${id}"
+  done
+  printf 'name=official\nid=00112233\ndriver=izar\n' > "${METER_DIR}/meter-official"
+  for id in 2156B4C2 215F908A 11556677; do
+    printf '%s\n' $(( T0 + 86400 )) > "${BASE}/.preview_decode_last/${id}"   # no one-shot here
+  done
+  for id in 2156B4C2 215F908A 00112233 11556677; do
+    printf '%s\tcandidate\t%s\n%s\tmeter\t%s\n' "${id}" $(( T0 - 4000 )) "${id}" $(( T0 - 700 ))
+  done > "${STATUS_SEEN_FILE}"
+  # The decoding pipeline's row for the same transmission: one reception in the stats.
+  printf '2156B4C2\tmeter\t%s\n' $(( T0 - 1 )) >> "${STATUS_SEEN_FILE}"
+  printf '2156B4C2\tOLD\t4\tabcd\n' > "${STATUS_CANDIDATE_RAW_FILE}"
+  printf '2156B4C2\tunknown\told\t\t\t4\tOLD\n' > "${STATUS_CANDIDATE_ANALYSIS_FILE}"
+  printf '%s\n' 22 > "${STATUS_RAW_COUNT_FILE}"
+  : > "${DECISIONS}"
+}
+# Everything under ${BASE} but the lock files (python3 also locks the seen file).
+dump() {
+  ( cd "${BASE}" && find . -type f ! -name '*.lock' | LC_ALL=C sort \
+      | while IFS= read -r f; do printf '== %s\n' "${f}"; cat "${f}"; done ) > "$1"
+}
+# One batch per clock value. A batch's only hand-over is its last frame, and
+# the stage returns when the bash loop has finished it, so the python3 run is
+# as deterministic as the bash one.
+sap_batches() {  # sap_batches bash|python
+  local e frames
+  for e in "0 A B C A" "1 A B" "2 B" "5 A C D"; do
+    frames=()
+    for f in ${e#* }; do v="SAP_${f}"; frames+=("${!v}"); done
+    printf '%s\n' "${frames[@]}" | (
+      export LEDGER_TEST_EPOCH=$(( T0 + ${e%% *} )) PYTHONPATH="${TMP}/clock" WMBUS_LEDGER="$1"
+      # The loop's status is that of the last request it ran; status_candidate_seen
+      # ends on `[[ false == true ]] && ...`. Nothing in the pipeline reads it.
+      stage || true )
+  done
+}
+seed_sap
+sap_batches bash
+dump "${TMP}/sap_bash"
+cp "${DECISIONS}" "${TMP}/sap_bash_decisions"
+seed_sap
+sap_batches python
+dump "${TMP}/sap_py"
+diff -u "${TMP}/sap_bash" "${TMP}/sap_py" >&2 \
+  || fail "SAP auto refresh: files differ between status_raw_seen and bridge_ledger.py raw"
+[[ "$(cat "${DECISIONS}")" == $'register\t11556677\tauto\tUnknown meter type (0x01)' ]] \
+  || { cat "${DECISIONS}" >&2; fail "SAP auto refresh: only the type change of 11556677 may reach bash"; }
+[[ "$(grep -c '^register' "${TMP}/sap_bash_decisions")" == 10 ]] \
+  || fail "SAP auto refresh: bash registered $(grep -c '^register' "${TMP}/sap_bash_decisions") times, not 10 - the corpus tests nothing"
+[[ "$(grep -c $'^215F908A\tcandidate\t' "${STATUS_SEEN_FILE}")" == 3 ]] \
+  || fail "SAP auto refresh: 215F908A at +0, +1 and +2 s must be booked at +0 and +2 s only"
+unset -f date
+status_candidate_seen() { printf 'register\t%s\t%s\t%s\n' "$1" "$2" "$3" >> "${DECISIONS}"; }
 
 # ── restart after python3 dies ──────────────────────────────────────────────
 seed

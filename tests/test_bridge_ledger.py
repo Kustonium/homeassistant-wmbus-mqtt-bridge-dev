@@ -328,7 +328,11 @@ class RawBookRequestTest(unittest.TestCase):
                 "raw-count", "last-raw", "recent-raw", "broker-error", "events",
                 "rate", "rate-history", "status-json", "discovery-flag")),
             f"--candidates-file={self.candidates}",
+            *(f"--{n}-file={d / n}" for n in ("seen", "candidate-raw", "candidate-analysis")),
+            f"--meter-dir={d / 'meters'}",
             f"--preview-meter-dir={d / 'preview'}", f"--preview-last-dir={d / 'last'}"])
+        (d / "meters").mkdir()
+        self.d = d
         self.preview, self.last = d / "preview", d / "last"
         self.out = io.StringIO()
         self.book = bl.RawBook(self.args, self.out)
@@ -367,6 +371,107 @@ class RawBookRequestTest(unittest.TestCase):
         (self.preview / "meter-preview-abcdef12").write_text("id=abcdef12\n")
         abcd = self.QWATER[:8] + "12EFCDAB" + self.QWATER[16:]
         self.assertEqual(self.requests(abcd), [])  # bash looks for meter-preview-ABCDEF12
+
+    def test_sap_auto_candidate_registered_as_is_is_refreshed_without_bash(self):
+        sap01 = self.frame("44332211")  # 11223344, device type 01: bash registers it as auto
+        label = "Unknown meter type (0x01)"
+        self.candidates.write_text(f"11223344\tauto\t{label}\tT\t1\t0\t1\t1\t(SAP) Diehl Metering\n"
+                                   "99999999\tauto\tGas meter (0x03)\tT\t1\t0\t1\t1\t\n")
+        (self.preview / "meter-preview-11223344").write_text("name=preview_11223344\nid=11223344\n")
+        (self.last / "11223344").write_text(f"{int(bl.now()) + 3600}\n")  # no one-shot in this test
+        self.assertEqual(self.requests(sap01), [])
+        rows = self.candidates.read_text().splitlines()
+        self.assertEqual(rows[0].split("\t")[0], "99999999")  # the refreshed row moves to the end
+        f = rows[1].split("\t")
+        self.assertEqual((f[0], f[1], f[2], f[4], f[8]),
+                         ("11223344", "auto", label, "1", "(SAP) Diehl Metering"))
+        self.assertTrue((self.d / "seen").read_text().startswith("11223344\tcandidate\t"))
+        self.assertTrue((self.d / "candidate-analysis").read_text().startswith("11223344\tunknown\t"))
+        # Anything bash would change still goes to bash.
+        cases = {
+            "type differs": lambda: self.candidates.write_text(f"11223344\tauto\tWater meter (0x07)\n"),
+            "no preview config": lambda: (self.preview / "meter-preview-11223344").unlink(),
+            "preview config differs": lambda: (self.preview / "meter-preview-11223344").write_text("id=11223344\n"),
+            "official meter, preview to remove": lambda: (self.d / "meters" / "meter-x").write_text("id=11223344\n"),
+        }
+        for name, change in cases.items():
+            with self.subTest(name):
+                self.candidates.write_text(f"11223344\tauto\t{label}\n")
+                (self.preview / "meter-preview-11223344").write_text("name=preview_11223344\nid=11223344\n")
+                for meter in (self.d / "meters").iterdir():
+                    meter.unlink()
+                change()
+                self.assertEqual(self.requests(sap01), [f"sap\t{sap01}"])
+        with self.subTest("official meter without a preview config"):
+            self.candidates.write_text(f"11223344\tauto\t{label}\n")
+            (self.preview / "meter-preview-11223344").unlink()
+            self.assertEqual(self.requests(sap01), [])
+
+
+class CandidateRefreshTest(unittest.TestCase):
+    """candidate_seen_refresh: the reception bookkeeping of status_candidate_seen."""
+
+    def setUp(self) -> None:
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        d = Path(self.dir.name)
+        self.d = d
+        self.files = bl.CandidateFiles(str(d / "candidates"), str(d / "seen"), str(d / "ring"),
+                                       str(d / "craw"), str(d / "analysis"), str(d / "preview"),
+                                       str(d / "meters"))
+        self.clock = [1790935200.0]
+        old = bl.now
+        bl.now = lambda: self.clock[0]
+        self.addCleanup(setattr, bl, "now", old)
+
+    def test_reception_within_two_seconds_is_booked_once(self):
+        (self.d / "seen").write_text("11223344\tmeter\t1790935199\n")  # another kind: no threshold
+        for step in (0, 1, 1, 5):
+            self.clock[0] += step
+            bl.record_seen(self.files.seen, "11223344", "candidate")
+        self.assertEqual((self.d / "seen").read_text().splitlines(),
+                         ["11223344\tmeter\t1790935199", "11223344\tcandidate\t1790935200",
+                          "11223344\tcandidate\t1790935202", "11223344\tcandidate\t1790935207"])
+
+    def test_seen_file_keeps_the_last_5000_rows(self):
+        (self.d / "seen").write_text("".join(f"AAAAAAAA\tmeter\t{n}\n" for n in range(5000)))
+        bl.record_seen(self.files.seen, "11223344", "candidate")
+        rows = (self.d / "seen").read_text().splitlines()
+        self.assertEqual((len(rows), rows[0], rows[-1]),
+                         (5000, "AAAAAAAA\tmeter\t1", "11223344\tcandidate\t1790935200"))
+
+    def test_stats_match_status_seen_stats(self):
+        t = int(self.clock[0])
+        (self.d / "seen").write_text("".join(f"11223344\t{k}\t{ts}\n" for k, ts in (
+            ("candidate", t - 7200), ("meter", t - 3600), ("candidate", t - 3599),  # one reception
+            ("candidate", t - 900), ("candidate", t - 600), ("x", "bad"),  # 900 s ago: still in 15 min
+            ("candidate", t - 1))) + "22222222\tmeter\t5\n")
+        lib = ROOT / "rootfs" / "usr" / "bin" / "bridge-lib"
+        expected = subprocess.run(
+            ["bash", "-c", f'source "{lib}/01-utils.sh"; source "{lib}/04-status.sh"; '
+             f'source "{lib}/05-raw.sh"; epoch_now() {{ echo {t}; }}; '
+             f'STATUS_SEEN_FILE="$1"; status_seen_stats 11223344 candidate', "bash", str(self.d / "seen")],
+            capture_output=True, text=True, check=True).stdout
+        self.assertEqual("\t".join(map(str, bl.seen_stats(self.files.seen, "11223344"))) + "\n", expected)
+        self.assertEqual(bl.seen_stats(self.files.seen, "11223344"), (5, 1800, 3, 4))
+
+    def test_row_keeps_the_manufacturer_and_moves_to_the_end(self):
+        (self.d / "candidates").write_text("11223344\tauto\tX\tT\t1\t0\t0\t0\t(SAP) Diehl Metering\n"
+                                           "55555555\tauto\tY\tT\t1\t0\t0\t0\n")
+        bl.upsert_candidate_row(self.files.candidates, "11223344", "auto", "Z", "NOW", (2, 30, 1, 2))
+        self.assertEqual((self.d / "candidates").read_text(),
+                         "55555555\tauto\tY\tT\t1\t0\t0\t0\n"
+                         "11223344\tauto\tZ\tNOW\t2\t30\t1\t2\t(SAP) Diehl Metering\n")
+
+    def test_analysis_uses_the_newest_ring_row_of_the_meter(self):
+        sap = "1E44" + "4C30" + "44332211" + "1001A2" + "00" * 8
+        (self.d / "ring").write_text(f"T1\t{len(sap)}\t{sap}\nT2\t4\tABCD\n")
+        bl.analyze_candidate_from_text(self.files, "11223344", "Unknown meter type (0x01)")
+        self.assertEqual((self.d / "craw").read_text(), f"11223344\tT1\t{len(sap)}\t{sap.lower()}\n")
+        f = (self.d / "analysis").read_text().rstrip("\n").split("\t")
+        self.assertEqual(f[:6], ["11223344", "unknown",
+                                 "RAW was mapped to this candidate, but no backend security parser has classified AES yet",
+                                 "a2", "", str(len(sap))])
 
 
 if __name__ == "__main__":

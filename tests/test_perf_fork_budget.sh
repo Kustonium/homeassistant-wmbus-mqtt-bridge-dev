@@ -72,6 +72,11 @@ BUDGET_LEDGER_TRACKER=2        #  1: /telegram tracker, LEDGER_BATCH messages
 # (subshells of the stage pipeline). Telegrams of a candidate whose preview is
 # throttled, so nothing is handed over.
 BUDGET_LEDGER_RAW=6            #  4: _raw_counter_stage, LEDGER_BATCH telegrams
+# Diehl/SAP (0x304C) telegrams of candidates bash would register exactly as
+# they are: one already classified (driver izar) and one of device type 01,
+# which bash registers as "auto" on every telegram. Python books the reception
+# itself; nothing may be handed to bash (each hand-over costs ~50 forks).
+BUDGET_LEDGER_SAP=6            #  4: _raw_counter_stage, LEDGER_BATCH SAP telegrams
 LEDGER_BATCH=200
 BUDGET_LISTEN_BLOCK=74         # 59: LISTEN block of a known candidate
 # How much ONE call may cost more at 200 meters on air than at 10.
@@ -88,13 +93,22 @@ METER_ID="52632878"
 RAW_HEX_OTHER="${RAW_HEX:0:8}44556677${RAW_HEX:16}"
 # A candidate that is not a configured meter: the first id fixture_ids makes.
 CANDIDATE_ID="10001003"
+# Diehl/SAP IZAR frames (device type 01): one candidate registered as auto with
+# the device-type label, one already classified by LISTEN.
+SAP_AUTO_HEX="$(tr -d '[:space:]' < "${ROOT_DIR}/tests/fixtures/izar/2156B4C2.hex")"
+SAP_AUTO_ID="2156B4C2"
+SAP_KNOWN_HEX="$(tr -d '[:space:]' < "${ROOT_DIR}/tests/fixtures/izar/215F908A.hex")"
+SAP_KNOWN_ID="215F908A"
 
 TMP="$(mktemp -d)"
 PERF_CURRENT=""
+# The EXIT trap runs with the redirections of the command that failed, which
+# send stderr to /dev/null; report on the test's own stderr.
+exec {PERF_STDERR}>&2
 cleanup() {
   local rc=$?
   if (( rc != 0 )) && [[ -n "${PERF_CURRENT}" ]]; then
-    echo "FAIL: '${PERF_CURRENT}' failed (rc=${rc}): fixture, stub or function missing" >&2
+    echo "FAIL: '${PERF_CURRENT}' failed (rc=${rc}): fixture, stub or function missing" >&"${PERF_STDERR}"
   fi
   wait 2>/dev/null || true
   rm -rf "${TMP}"
@@ -202,7 +216,7 @@ fixture_ids() {
   for (( i = 1; i < m; i++ )); do
     printf -v id '%08X' $(( 0x10000000 + i * 4099 ))
     le="${id:6:2}${id:4:2}${id:2:2}${id:0:2}"
-    if [[ "${RAW_HEX,,}" == *"${le,,}"* || "${RAW_HEX_OTHER,,}" == *"${le,,}"* ]]; then
+    if [[ "${RAW_HEX,,}${RAW_HEX_OTHER,,}${SAP_AUTO_HEX,,}${SAP_KNOWN_HEX,,}" == *"${le,,}"* ]]; then
       continue
     fi
     printf '%s\n' "${id}"
@@ -242,6 +256,18 @@ build_fixture() {
     done
   done < <(fixture_ids "${m}")
 
+  # The Diehl/SAP candidates, in the state bash leaves them in.
+  printf '%s\tauto\tUnknown meter type (0x01)\t%s\t42\t30\t5\t20\t(SAP) Diehl Metering\n' \
+    "${SAP_AUTO_ID}" "${iso}" >> "${STATUS_CANDIDATES_FILE}"
+  printf 'name=preview_%s\nid=%s\n' "${SAP_AUTO_ID}" "${SAP_AUTO_ID,,}" \
+    > "${PREVIEW_METER_DIR}/meter-preview-${SAP_AUTO_ID}"
+  printf '%s\tizar\tWater meter (0x07)\t%s\t42\t30\t5\t20\t(SAP) Diehl Metering\n' \
+    "${SAP_KNOWN_ID}" "${iso}" >> "${STATUS_CANDIDATES_FILE}"
+  for (( n = 20; n > 0; n-- )); do
+    printf '%s\tcandidate\t%d\n%s\tcandidate\t%d\n' \
+      "${SAP_AUTO_ID}" $(( now - n * 30 )) "${SAP_KNOWN_ID}" $(( now - n * 30 )) >> "${STATUS_SEEN_FILE}"
+  done
+
   # The decoded meter is configured, so it also has history as a meter.
   printf 'name=water\nid=%s\ndriver=qwaterv2\n' "${METER_ID,,}" > "${METER_DIR}/meter-0001"
   for (( n = 20; n > 0; n-- )); do
@@ -265,6 +291,7 @@ build_fixture() {
   # throttled however long the test takes.
   printf '%s\n' $(( now + 86400 )) > "${BASE}/.preview_decode_last/${METER_ID}"
   printf '%s\n' $(( now + 86400 )) > "${BASE}/.preview_decode_last/${CANDIDATE_ID}"
+  printf '%s\n' $(( now + 86400 )) > "${BASE}/.preview_decode_last/${SAP_AUTO_ID}"
   # ESP subscriber state, and the candidate already announced once.
   : > "${STATUS_ESP_TELEGRAM_DEVICES_FILE}"
   : > "${STATUS_ESP_METER_DEVICE_FILE}"
@@ -342,6 +369,18 @@ run_ledger_tracker() {
 for (( n = 1; n <= LEDGER_BATCH; n++ )); do printf '%s\n' "${RAW_HEX}"; done > "${TMP}/raw_batch"
 # The pipeline runs with errexit off (bridge.sh: set +e before run_once).
 run_ledger_raw() { ( set +e; _raw_counter_stage < "${TMP}/raw_batch" ); }
+for (( n = 1; n <= LEDGER_BATCH / 2; n++ )); do printf '%s\n%s\n' "${SAP_AUTO_HEX}" "${SAP_KNOWN_HEX}"; done \
+  > "${TMP}/sap_batch"
+# The stage's status is that of the last hand-over it ran, and nothing in the
+# pipeline reads it; a hand-over must show up in the check below, not abort.
+run_ledger_sap() { ( set +e; _raw_counter_stage < "${TMP}/sap_batch"; exit 0 ); }
+# Hand-overs the bash loop receives, counted with builtins only (no fork).
+HANDOVERS="${TMP}/handovers"
+eval "_perf_real_$(declare -f status_raw_candidate_seen)"
+status_raw_candidate_seen() { printf 'sap\n' >> "${HANDOVERS}"; _perf_real_status_raw_candidate_seen "$@"; }
+eval "_perf_real_$(declare -f preview_decode_raw_if_requested)"
+preview_decode_raw_if_requested() { printf 'preview\n' >> "${HANDOVERS}"; _perf_real_preview_decode_raw_if_requested "$@"; }
+restore_state_handovers() { restore_state; : > "${HANDOVERS}"; }
 run_ledger_rssi() {
   python3 "${BRIDGE_LEDGER}" rssi --meter-dir "${METER_DIR}" --rssi-file "${STATUS_RSSI_FILE}" \
     < "${TMP}/rssi_batch"
@@ -429,6 +468,15 @@ for m in "${METER_COUNTS[@]}"; do
   [[ "$(cat "${STATUS_RAW_COUNT_FILE}")" == "$(( 1000 + LEDGER_BATCH ))" ]] \
     || fail "bridge_ledger.py raw did not count every telegram (fixture broken)"
 
+  measure restore_state_handovers run_ledger_sap
+  R[ledger_sap,${m}]="${MEASURED}"
+  [[ "$(cat "${STATUS_RAW_COUNT_FILE}")" == "$(( 1000 + LEDGER_BATCH ))" ]] \
+    || fail "bridge_ledger.py raw did not count every SAP telegram (fixture broken)"
+  [[ ! -s "${HANDOVERS}" ]] \
+    || fail "bridge_ledger.py raw handed $(wc -l < "${HANDOVERS}") SAP telegrams to bash; a candidate registered as it would be again needs none"
+  grep -q "^${SAP_AUTO_ID}"$'\t' "${STATUS_CANDIDATE_ANALYSIS_FILE}" \
+    || fail "bridge_ledger.py raw did not refresh the auto SAP candidate (fixture broken)"
+
   measure restore_state run_listen
   R[listen_block,${m}]="${MEASURED}"
   [[ "$(awk -F '\t' -v id="${CANDIDATE_ID}" '$1==id && $2=="candidate"' "${STATUS_SEEN_FILE}" | wc -l)" == "21" ]] \
@@ -439,7 +487,8 @@ done
 
 # ── report and verdict ──────────────────────────────────────────────────────
 STEPS=(raw_no_preview raw_preview meter_seen inject_rssi discovery json_total
-       esp_tracker esp_rx esp_rssi listen_block ledger_rssi ledger_rx ledger_tracker ledger_raw)
+       esp_tracker esp_rx esp_rssi listen_block ledger_rssi ledger_rx ledger_tracker ledger_raw
+       ledger_sap)
 declare -A LABEL=(
   [raw_no_preview]="status_raw_seen, no preview (bash)"
   [raw_preview]="status_raw_seen, preview (bash)"
@@ -455,6 +504,7 @@ declare -A LABEL=(
   [ledger_rx]="ledger /rx, ${LEDGER_BATCH} msgs, 1 process"
   [ledger_tracker]="ledger tracker, ${LEDGER_BATCH} msgs, 1 proc"
   [ledger_raw]="ledger RAW stage, ${LEDGER_BATCH} telegrams"
+  [ledger_sap]="ledger RAW stage, ${LEDGER_BATCH} known SAP"
 )
 declare -A BUDGET=(
   [raw_no_preview]="${BUDGET_RAW_NO_PREVIEW}"
@@ -471,6 +521,7 @@ declare -A BUDGET=(
   [ledger_rx]="${BUDGET_LEDGER_RX}"
   [ledger_tracker]="${BUDGET_LEDGER_TRACKER}"
   [ledger_raw]="${BUDGET_LEDGER_RAW}"
+  [ledger_sap]="${BUDGET_LEDGER_SAP}"
 )
 
 printf '%-38s' "forks per call, meters on air ->"
