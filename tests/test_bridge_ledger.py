@@ -263,5 +263,51 @@ class RxBookTest(unittest.TestCase):
         self.assertEqual(len(self.read("history")), 90000)
 
 
+class TrackerBookTest(unittest.TestCase):
+    QWATER = "".join((ROOT / "tests/fixtures/qwaterv2/52632878.hex").read_text().split())
+
+    def setUp(self) -> None:
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.d = Path(self.dir.name)
+        self.clock = [1_790_935_200.0]
+        self.addCleanup(setattr, bl, "now", bl.now)
+        bl.now = lambda: self.clock[0]
+        self.files = {n: self.d / n for n in ("devices", "meter_device", "reception", "history")}
+        for name in ("devices", "meter_device"):
+            self.files[name].write_text("")  # created by bridge.sh at start
+        self.book = bl.TrackerBook(1, *(str(self.files[n]) for n in ("devices", "meter_device", "reception", "history")))
+
+    def send(self, board: str) -> None:
+        self.book(f"wmbus/{board}/telegram".encode(), self.QWATER.encode())
+        self.clock[0] += 10
+
+    def test_meter_board_row_is_written_only_when_the_board_changes(self):
+        self.send("lilygo")
+        self.send("lilygo")
+        self.assertEqual(self.files["meter_device"].read_text(), "52632878\tlilygo\t1790935200\n")
+        self.send("heltec")
+        self.assertEqual(self.files["meter_device"].read_text(), "52632878\theltec\t1790935220\n")
+        self.assertEqual(self.files["devices"].read_text().splitlines(),
+                         ["lilygo\t1790935210\twmbus/lilygo/telegram\t2",
+                          "heltec\t1790935220\twmbus/heltec/telegram\t1"])
+
+    def test_meter_id_matches_the_bash_parser_on_every_fixture(self):
+        lib = ROOT / "rootfs" / "usr" / "bin" / "bridge-lib" / "05-raw.sh"
+        for path in sorted((ROOT / "tests" / "fixtures").glob("*/*.hex")):
+            raw = "".join(path.read_text().split()).upper()
+            for frame in (raw, raw[:-2], raw[:8] + "0001E003" + raw[16:]):
+                with self.subTest(frame=path.name):
+                    expected = subprocess.run(
+                        ["bash", "-c", f'source "{lib}"; meter_id_from_raw_hex "$1"', "bash", frame],
+                        capture_output=True, text=True, check=True).stdout.strip()
+                    self.assertEqual(bl.meter_id_from_raw_hex(frame), expected)
+
+    def test_missing_files_are_not_created(self):
+        self.files["devices"].unlink()
+        self.send("lilygo")
+        self.assertFalse(self.files["devices"].exists())  # awk on a missing file writes nothing
+
+
 if __name__ == "__main__":
     unittest.main()

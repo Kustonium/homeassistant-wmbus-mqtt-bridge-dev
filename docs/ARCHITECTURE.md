@@ -368,7 +368,8 @@ Python reads the subscription through a descriptor, so the loop holds
 `mosquitto_sub`'s PID and stops it the moment Python ends - a plain pipe is not
 enough where SIGPIPE is ignored. Formats and locks stay those described in
 Appendix A; the `/rx` history is written byte for byte as jq writes it, number
-literals included. Moved so far: the `rssi/<meter_id>` and `/rx` subscribers.
+literals included. Moved so far: the `rssi/<meter_id>` and `/rx` subscribers
+and the per-board `/telegram` tracker.
 `WMBUS_LEDGER=bash` selects the previous in-shell handlers while the move is in
 progress.
 

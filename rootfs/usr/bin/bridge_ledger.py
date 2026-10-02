@@ -621,6 +621,119 @@ class RxBook:
             self.since_trim = 0
 
 
+# ── per-board /telegram tracker ─────────────────────────────────────────────
+
+_HEX_UPPER = re.compile(r"[0-9A-F]+")
+_BASH_SPACE = re.compile(r"[ \t\n\v\f\r]")
+_ID8_UPPER = re.compile(r"[0-9A-F]{8}")
+
+
+def meter_id_from_raw_hex(raw: str) -> str:
+    """05-raw.sh meter_id_from_raw_hex: the A-field id of a standard wM-Bus frame.
+
+    `raw` is already upper-case hex; "" unless the L-field matches the length.
+    """
+    if not _HEX_UPPER.fullmatch(raw) or len(raw) < 22 or len(raw) % 2:
+        return ""
+    if int(raw[0:2], 16) != len(raw) // 2 - 1:
+        return ""
+    le = raw[8:16]
+    return le[6:8] + le[4:6] + le[2:4] + le[0:2]
+
+
+def bash_split(text: str, sep: str) -> List[str]:
+    """`IFS=<sep> read -ra parts <<< text` for a non-whitespace separator."""
+    parts = text.split(sep)
+    if text.endswith(sep):
+        parts.pop()
+    return parts
+
+
+def _awk_nf(line: bytes) -> int:
+    return 0 if not line else line.count(b"\t") + 1
+
+
+def _rewrite_unlocked(path: str, rows: Callable[[List[bytes]], List[bytes]]) -> None:
+    """awk ... file > file.tmp && mv: the tracker is the only writer, no lock.
+
+    awk fails on a missing file, so nothing is written then (bridge.sh creates
+    these files at start).
+    """
+    if not os.path.isfile(path):
+        return
+    _replace_with(path, rows(_read_lines(path)))
+
+
+class TrackerBook:
+    """_esp_tracker_handle_message: which board delivered which meter, and when.
+
+    status_esp_telegram_devices.tsv  board<TAB>last_epoch<TAB>topic<TAB>count
+    status_esp_meter_device.tsv      id<TAB>board<TAB>epoch (rewritten only when
+                                     a meter's board changes, as in bash)
+    status_esp_meter_reception.tsv   id board first last count topic
+    esp_rx_history.jsonl             {"time","source","meter_id","topic"}
+    """
+
+    TRIM_EVERY = 1000
+
+    def __init__(self, dev_pos: int, devices: str, meter_device: str,
+                 reception: str, history: str) -> None:
+        self.dev_pos = dev_pos
+        self.devices, self.meter_device = devices, meter_device
+        self.reception, self.history = reception, history
+        # Last board per meter, like the subscriber's _MD_LAST: in memory, so
+        # it starts empty again when this process is restarted.
+        self.last_board: Dict[str, str] = {}
+        self.since_trim = 0
+
+    def __call__(self, topic_b: bytes, payload_b: bytes) -> None:
+        if not topic_b:
+            return
+        topic = _s(topic_b)
+        parts = bash_split(topic, "/")
+        board = parts[self.dev_pos] if 0 <= self.dev_pos < len(parts) else ""
+        if not board:
+            return
+        ts = int(now())
+        meter = meter_id_from_raw_hex(_ascii_upper(_BASH_SPACE.sub("", _s(payload_b))))
+        valid = bool(_ID8_UPPER.fullmatch(meter))
+        if valid and self.last_board.get(meter) != board:
+            self.last_board[meter] = board
+            row = _b(f"{meter}\t{board}\t{ts}")
+            k = _b(meter)
+
+            def meter_rows(lines: List[bytes]) -> List[bytes]:
+                out = [row if _first_field(ln) == k else ln for ln in lines]
+                if not any(_first_field(ln) == k for ln in lines):
+                    out.append(row)
+                return out
+            _rewrite_unlocked(self.meter_device, meter_rows)
+        if valid:
+            upsert_meter_reception(self.reception, meter, board, ts, topic)
+            append_locked(self.history, jq_dumps(
+                {"time": ts, "source": board, "meter_id": meter, "topic": topic}))
+            self.since_trim += 1
+            if self.since_trim >= self.TRIM_EVERY:
+                trim_locked(self.history, 100000, 90000)
+                self.since_trim = 0
+        k_board = _b(board)
+
+        def device_rows(lines: List[bytes]) -> List[bytes]:
+            out: List[bytes] = []
+            updated = False
+            for ln in lines:
+                if _first_field(ln) == k_board:
+                    nf = _awk_nf(ln)
+                    count = _awk_str(_awk_num(_s(ln.split(b"\t")[3])) + 1) if nf >= 4 else "1"
+                    out.append(_b(f"{board}\t{ts}\t{topic}\t{count}"))
+                    updated = True
+                else:
+                    out.append(ln)
+            if not updated:
+                out.append(_b(f"{board}\t{ts}\t{topic}\t1"))
+            return out
+        _rewrite_unlocked(self.devices, device_rows)
+
 
 def run(handler: Handler, stream=None, err=None) -> None:
     """Feed every line of stream to handler until EOF; a failing message is skipped."""
@@ -641,6 +754,11 @@ def _parser() -> argparse.ArgumentParser:
     rssi = modes.add_parser("rssi", help="wmbus/<board>/rssi/<meter_id> messages")
     rssi.add_argument("--meter-dir", required=True)
     rssi.add_argument("--rssi-file", required=True)
+    tracker = modes.add_parser("tracker", help="RAW_TOPIC messages, per-board tracker")
+    tracker.add_argument("--dev-pos", type=int, required=True,
+                         help="index of the '+' segment of RAW_TOPIC")
+    for name in ("devices", "meter-device", "reception", "history"):
+        tracker.add_argument(f"--{name}-file", required=True)
     rx = modes.add_parser("rx", help="wmbus/<board>/rx messages")
     for name in ("reception", "mode", "history", "sequence", "boots", "clock"):
         rx.add_argument(f"--{name}-file", required=True)
@@ -654,6 +772,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         return int(exc.code or 0)
     if args.mode == "rssi":
         run(RssiBook(args.meter_dir, args.rssi_file))
+    elif args.mode == "tracker":
+        run(TrackerBook(args.dev_pos, args.devices_file, args.meter_device_file,
+                        args.reception_file, args.history_file))
     elif args.mode == "rx":
         run(RxBook(args.reception_file, args.mode_file, args.history_file,
                    args.sequence_file, args.boots_file, args.clock_file))

@@ -22,6 +22,7 @@ bash tests/test_perf_fork_budget.sh
 bash tests/test_ledger_lock_interop.sh
 bash tests/test_ledger_rssi.sh
 bash tests/test_ledger_rx.sh
+bash tests/test_ledger_tracker.sh
 python3 -m unittest tests/test_mbus_webui.py -v
 python3 -m unittest tests/test_meter_rename.py -v
 python3 -m unittest tests/test_bridge_ledger.py -v
