@@ -180,5 +180,88 @@ class RssiBookTest(unittest.TestCase):
         self.assertEqual(self.rows(), ["52632878\t-070\tlilygo\t1000000"])
 
 
+class RxPrimitivesTest(unittest.TestCase):
+    """Values checked against jq 1.7.1 and musl in the add-on image 1.5.70-dev.337."""
+
+    def test_numbers_and_strings_as_jq_writes_them(self):
+        cases = {"1": "1", "1.0": "1.0", "1.50": "1.50", "1e3": "1E+3", "1E3": "1E+3",
+                 "1.0e2": "1.0E+2", "100e-2": "1.00", "0.1": "0.1", "0.000001": "0.000001",
+                 "0.0000001": "1E-7", "-0": "-0", "-0.0": "-0.0", "1e400": "1E+400",
+                 "12345678901234567890": "12345678901234567890"}
+        for literal, expected in cases.items():
+            with self.subTest(literal=literal):
+                self.assertEqual(bl.jq_dumps(bl.jq_values(f'{{"x":{literal}}}')[0]), f'{{"x":{expected}}}')
+        self.assertEqual(bl.jq_dumps(bl.jq_values('{"s":"a\\u0001b\\u007fc\\u2028d\\/e\\u00e9f\\tg"}')[0]),
+                         '{"s":"a\\u0001b\\u007fc\u2028d/e\u00e9f\\tg"}')
+        self.assertEqual(bl.jq_dumps(bl.jq_values('{"a":1,"b":2,"a":3}')[0]), '{"a":3,"b":2}')
+        self.assertEqual(bl.jq_values('{"s":"raw\ttab"}'), [])  # jq rejects raw control characters
+        self.assertEqual(len(bl.jq_values('{"a":1}{"a":2} xx {"a":3}')), 2)  # up to the parse error
+
+    def test_received_at_as_musl_strptime_and_timegm_read_it(self):
+        cases = {
+            "2026-10-02T10:00:00.000Z": "1790935200",
+            "2026-10-02T10:00:00.123Z\n": "1790935200",  # test() accepts a final newline
+            "2026-02-30T10:00:00.000Z": "1772445600",  # rolls over into March
+            "2026-10-02T23:59:60.000Z": "1790985600",  # leap second accepted
+            "2026-13-01T10:00:00.000Z": "",
+            "2026-00-10T10:00:00.000Z": "",
+            "2026-10-00T10:00:00.000Z": "",
+            "2026-10-32T00:00:00.000Z": "",
+            "2026-10-02T24:00:00.000Z": "",
+            "2026-10-02T23:60:00.000Z": "",
+            "1969-12-31T23:59:59.000Z": "",  # timegm's -1 is its error value
+            "0000-01-01T00:00:00.000Z": "-62167219200",
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(bl.received_epoch(text), expected)
+        self.assertEqual(bl.received_epoch(None), "")
+
+    def test_bash_read_takes_the_first_line_and_leaves_the_rest_to_the_last_field(self):
+        self.assertEqual(bl.bash_read_fields("a\x1fb\x1fc", 2, "\x1f"), ["a", "b\x1fc"])
+        self.assertEqual(bl.bash_read_fields("a\x1fB\nX\x1fc", 3, "\x1f"), ["a", "B", ""])
+        self.assertEqual(bl.bash_read_fields("a\x1fb\x1f", 3, "\x1f"), ["a", "b", ""])
+
+
+class RxBookTest(unittest.TestCase):
+    BASE = ('"schema":1,"rx_task_wakeup_us":1,"mode":"T1","frame_crc32":"7F56A83C",'
+            '"frame_length":10,"meter_id":"52632878","boot_id":"A84F12C7"')
+
+    def setUp(self) -> None:
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.d = Path(self.dir.name)
+        self.clock = [1_790_935_210.0]
+        self.addCleanup(setattr, bl, "now", bl.now)
+        bl.now = lambda: self.clock[0]
+        self.files = {n: str(self.d / n) for n in ("reception", "mode", "history", "sequence", "boots", "clock")}
+        self.book = bl.RxBook(*(self.files[n] for n in ("reception", "mode", "history", "sequence", "boots", "clock")))
+
+    def send(self, board: str, extra: str) -> None:
+        self.book(f"wmbus/{board}/rx".encode(), ("{" + self.BASE + "," + extra + "}").encode())
+
+    def read(self, name: str):
+        return Path(self.files[name]).read_text().splitlines()
+
+    def test_clock_skew_is_kept_from_the_last_stamped_frame(self):
+        self.send("lilygo", '"seq":1,"received_at":"2026-10-02T10:00:00.500Z"')  # stamped 1790935200
+        self.clock[0] += 5
+        self.send("lilygo", '"seq":2')  # unstamped
+        self.assertEqual(self.read("clock"), ["lilygo\t1790935200\t1790935215\t10\t1\t1"])
+
+    def test_numeric_looking_keys_stay_distinct(self):
+        self.send("1000", '"seq":1')
+        self.send("1E3", '"seq":1')
+        self.assertEqual([r.split("\t")[1] for r in self.read("reception")], ["1000", "1E3"])
+        self.assertEqual([r.split("\t")[0] for r in self.read("sequence")], ["1000", "1E3"])
+
+    def test_history_is_trimmed_every_1000_messages(self):
+        self.book.TRIM_EVERY = 3
+        Path(self.files["history"]).write_text("old\n" * 100001)
+        for n in range(1, 4):
+            self.send("lilygo", f'"seq":{n}')
+        self.assertEqual(len(self.read("history")), 90000)
+
+
 if __name__ == "__main__":
     unittest.main()
