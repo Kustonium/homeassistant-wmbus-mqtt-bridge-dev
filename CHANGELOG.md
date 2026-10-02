@@ -1,3 +1,8 @@
+## 1.5.74-dev.350
+
+### Fixed
+- never give energy fields state_class measurement (c96c28f)
+
 ## 1.5.74-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
