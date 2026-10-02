@@ -1,3 +1,9 @@
+## 1.5.73-dev.348
+
+### Changed
+- decode a candidate with a value again at most every 5 min (44b7943)
+- parse the pure LISTEN output in bridge_ledger.py (d6ce84c)
+
 ## 1.5.73-dev.347
 
 ### Changed
