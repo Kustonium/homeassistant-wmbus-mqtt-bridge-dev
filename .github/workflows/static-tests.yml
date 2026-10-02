@@ -1,0 +1,25 @@
+name: static-tests
+
+# The static regression suite also runs in build.yaml, but only on a push to
+# main, where it gates the image build. That workflow builds and publishes
+# images, so it is not opened to pull requests; this one runs the same script
+# with read-only permissions, so a failing test shows on the PR before the
+# merge instead of on main after it.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-tests:
+    name: Static regression tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run static regression tests
+        shell: bash
+        run: bash tests/run_static_tests.sh
