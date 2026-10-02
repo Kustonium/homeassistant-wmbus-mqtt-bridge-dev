@@ -1,3 +1,8 @@
+## 1.5.73-dev.346
+
+### Fixed
+- do not overwrite a candidate reclassified during a refresh (184cf20)
+
 ## 1.5.73-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
