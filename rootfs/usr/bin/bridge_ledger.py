@@ -1071,6 +1071,16 @@ def raw_is_encrypted(raw: str) -> bool:
     return bool(re.fullmatch(r"[0-9A-F]{2}", cfg_hi)) and int(cfg_hi, 16) & 0x1F != 0
 
 
+def preview_state(path: str, meter: str) -> str:
+    """`awk '$1 == id { s = $2 } END { print s }'` on the preview state file."""
+    k, state = _b(meter), ""
+    for line in _read_lines(path):
+        f = line.split(b"\t")
+        if f[0] == k:
+            state = _s(f[1]) if len(f) > 1 else ""
+    return state
+
+
 class RawBook:
     """status_raw_seen: the bookkeeping of every RAW telegram, in one process.
 
@@ -1200,6 +1210,9 @@ class RawBook:
             return
         last = _digits_or_zero(os.path.join(a.preview_last_dir, meter))
         if int(now()) - int(last) < a.preview_min_interval:
+            return
+        if (int(now()) - int(last) < a.preview_decoded_min_interval
+                and preview_state(a.preview_state_file, meter) == "decoded_value"):
             return
         self.request("preview", raw, meter)
 
@@ -1449,6 +1462,8 @@ def _parser() -> argparse.ArgumentParser:
     raw.add_argument("--preview-meter-dir", required=True)
     raw.add_argument("--preview-last-dir", required=True)
     raw.add_argument("--preview-min-interval", type=int, default=20)
+    raw.add_argument("--preview-state-file", default="")
+    raw.add_argument("--preview-decoded-min-interval", type=int, default=300)
     # Values the counter subshell inherits when the pipeline starts; they go
     # into status.json unchanged, as the bash counter wrote them.
     for name in ("raw-topic", "state-prefix", "discovery-prefix", "search-mode", "loglevel",
