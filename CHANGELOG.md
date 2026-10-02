@@ -1,3 +1,11 @@
+## 1.5.73-dev.347
+
+### Changed
+- parse the pure LISTEN output in bridge_ledger.py (d6ce84c)
+
+### Fixed
+- do not overwrite a candidate reclassified during a refresh (184cf20)
+
 ## 1.5.73-dev.346
 
 ### Fixed
