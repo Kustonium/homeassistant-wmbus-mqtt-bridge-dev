@@ -136,5 +136,49 @@ class RunLoopTest(unittest.TestCase):
         self.assertEqual(bl.main(["no-such-mode"]), 2)
 
 
+class RssiBookTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.d = Path(self.dir.name)
+        self.meters = self.d / "meters"
+        self.meters.mkdir()
+        (self.meters / "meter-0001").write_text("name=water\nid=52632878\ndriver=auto\n")
+        self.rssi = self.d / "status_rssi.tsv"
+        self.clock = [1_000_000.0]
+        self.addCleanup(setattr, bl, "now", bl.now)
+        bl.now = lambda: self.clock[0]
+        self.book = bl.RssiBook(str(self.meters), str(self.rssi))
+
+    def rows(self):
+        return self.rssi.read_text().splitlines() if self.rssi.exists() else []
+
+    def test_configured_meter_is_stored_per_board(self):
+        self.book(b"wmbus/lilygo/rssi/52632878", b"-70")
+        self.book(b"wmbus/heltec/rssi/52632878", b"-81")
+        self.book(b"wmbus/lilygo/rssi/52632878", b"-66")
+        self.assertEqual(self.rows(), ["52632878\t-81\theltec\t1000000", "52632878\t-66\tlilygo\t1000000"])
+
+    def test_meter_added_later_is_picked_up_after_30_s(self):
+        self.book(b"wmbus/lilygo/rssi/52632878", b"-70")  # loads the configured ids
+        (self.meters / "meter-0002").write_text("id=abcdef12\n")
+        self.clock[0] += 29
+        self.book(b"wmbus/lilygo/rssi/ABCDEF12", b"-60")
+        self.assertEqual(len(self.rows()), 1)
+        self.clock[0] += 1
+        self.book(b"wmbus/lilygo/rssi/abcdef12", b"-60")
+        self.assertIn("ABCDEF12\t-60\tlilygo\t1000030", self.rows())
+
+    def test_values_read_like_bash_arithmetic(self):
+        self.assertEqual(bl.bash_int("-070"), -56)  # leading 0 = octal
+        self.assertIsNone(bl.bash_int("-089"))  # invalid octal: bash errors, value rejected
+        self.assertEqual(bl.bash_int("-125"), -125)
+        for val in (b"-127", b"0", b"1", b"-0", b"abc", b"-70 ", b"-089", b""):
+            self.book(b"wmbus/lilygo/rssi/52632878", val)
+        self.assertEqual(self.rows(), [])
+        self.book(b"wmbus/lilygo/rssi/52632878", b"-070")  # stored as received
+        self.assertEqual(self.rows(), ["52632878\t-070\tlilygo\t1000000"])
+
+
 if __name__ == "__main__":
     unittest.main()

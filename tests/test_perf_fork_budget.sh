@@ -61,6 +61,12 @@ BUDGET_JSON_TOTAL=68           # 54: sum of the three decoded-telegram steps
 BUDGET_ESP_TRACKER=17          # 13: per-ESP tracker, one /telegram message
 BUDGET_ESP_RX=42               # 33: /rx subscriber, one message
 BUDGET_ESP_RSSI=9              #  7: rssi/<id> subscriber, configured meter
+                               #     (bash handler, the WMBUS_LEDGER=bash fallback)
+# Paths booked by bridge_ledger.py: forks for a whole batch of LEDGER_BATCH
+# messages through one process. Starting python3 is the only fork; per
+# message the cost must stay zero.
+BUDGET_LEDGER_RSSI=2           #  1: rssi/<id>, LEDGER_BATCH messages
+LEDGER_BATCH=200
 BUDGET_LISTEN_BLOCK=74         # 59: LISTEN block of a known candidate
 # How much ONE call may cost more at 200 meters on air than at 10.
 SCALE_TOLERANCE=2
@@ -303,6 +309,14 @@ run_tracker() { _MD_LAST["${METER_ID}"]="lilygo"; _esp_tracker_handle_message "w
 run_rx() { _esp_rx_handle_message "wmbus/lilygo/rx" "${RX_PAYLOAD}"; }
 run_rssi() { _esp_rssi_handle_message "wmbus/lilygo/rssi/${METER_ID}" "-70"; }
 run_listen() { _process_listen_text_block "${CANDIDATE_ID}" "qwaterv2" "Water meter (0x07)" "(QDS) Qundis"; }
+BRIDGE_LEDGER="${ROOT_DIR}/rootfs/usr/bin/bridge_ledger.py"
+for (( n = 1; n <= LEDGER_BATCH; n++ )); do
+  printf 'wmbus/board%d/rssi/%s\t-%d\n' $(( n % 5 )) "${METER_ID}" $(( 50 + n % 40 ))
+done > "${TMP}/rssi_batch"
+run_ledger_rssi() {
+  python3 "${BRIDGE_LEDGER}" rssi --meter-dir "${METER_DIR}" --rssi-file "${STATUS_RSSI_FILE}" \
+    < "${TMP}/rssi_batch"
+}
 
 check_raw_effect() {
   [[ "$(cat "${STATUS_RAW_COUNT_FILE}")" == "1001" ]] \
@@ -366,6 +380,11 @@ for m in "${METER_COUNTS[@]}"; do
   [[ "$(awk -F '\t' -v id="${METER_ID}" '$1==id && $3=="lilygo" {print $2}' "${STATUS_RSSI_FILE}")" == "-70" ]] \
     || fail "rssi handler did not store the reading (fixture broken)"
 
+  measure restore_state run_ledger_rssi
+  R[ledger_rssi,${m}]="${MEASURED}"
+  [[ "$(awk -F '\t' -v id="${METER_ID}" '$1==id && $3 ~ /^board[0-4]$/' "${STATUS_RSSI_FILE}" | wc -l)" == "5" ]] \
+    || fail "bridge_ledger.py rssi did not store one row per board (fixture broken)"
+
   measure restore_state run_listen
   R[listen_block,${m}]="${MEASURED}"
   [[ "$(awk -F '\t' -v id="${CANDIDATE_ID}" '$1==id && $2=="candidate"' "${STATUS_SEEN_FILE}" | wc -l)" == "21" ]] \
@@ -376,7 +395,7 @@ done
 
 # ── report and verdict ──────────────────────────────────────────────────────
 STEPS=(raw_no_preview raw_preview meter_seen inject_rssi discovery json_total
-       esp_tracker esp_rx esp_rssi listen_block)
+       esp_tracker esp_rx esp_rssi listen_block ledger_rssi)
 declare -A LABEL=(
   [raw_no_preview]="status_raw_seen (no preview match)"
   [raw_preview]="status_raw_seen (preview match)"
@@ -386,8 +405,9 @@ declare -A LABEL=(
   [json_total]="decoded JSON path (sum)"
   [esp_tracker]="ESP tracker (/telegram)"
   [esp_rx]="ESP /rx subscriber"
-  [esp_rssi]="ESP rssi subscriber"
+  [esp_rssi]="ESP rssi subscriber (bash fallback)"
   [listen_block]="LISTEN block (known candidate)"
+  [ledger_rssi]="ledger rssi, ${LEDGER_BATCH} msgs, 1 process"
 )
 declare -A BUDGET=(
   [raw_no_preview]="${BUDGET_RAW_NO_PREVIEW}"
@@ -400,6 +420,7 @@ declare -A BUDGET=(
   [esp_rx]="${BUDGET_ESP_RX}"
   [esp_rssi]="${BUDGET_ESP_RSSI}"
   [listen_block]="${BUDGET_LISTEN_BLOCK}"
+  [ledger_rssi]="${BUDGET_LEDGER_RSSI}"
 )
 
 printf '%-38s' "forks per call, meters on air ->"

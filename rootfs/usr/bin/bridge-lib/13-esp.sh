@@ -248,6 +248,39 @@ _esp_rx_handle_message() {
   fi
 }
 
+# Per-message bookkeeping that has moved out of bash lives in this long-lived
+# Python process (see its header). WMBUS_LEDGER=bash runs the in-shell
+# handlers instead; it is kept while the move is watched on real sites.
+BRIDGE_LEDGER="${BRIDGE_LEDGER:-${BRIDGE_SCRIPT_DIR:-/usr/bin}/bridge_ledger.py}"
+
+# The rssi/<id> subscriber loop (see start_esp_subscribers for what it stores
+# and why only for configured meters).
+_esp_rssi_subscriber() {
+  declare -A _RSSI_WANTED=()
+  _rssi_wanted_at=0
+  while true; do
+    _rssi_t0="$(epoch_now)"
+    if [[ "${WMBUS_LEDGER:-python}" == "bash" ]]; then
+      while IFS=$'\t' read -r _rssi_topic _rssi_val; do
+        _esp_rssi_handle_message "${_rssi_topic}" "${_rssi_val}"
+      done < <(
+        ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" -t "wmbus/+/rssi/+" -F '%t\t%p' -W 90 2>/dev/null
+      )
+    else
+      # If python3 dies, mosquitto_sub gets SIGPIPE on its next message and the
+      # pipeline ends like a dropped connection: `|| true` keeps set -e from
+      # ending the subscriber, and the loop starts both again after the usual
+      # reconnect pause. Rows already written stay; only the message being
+      # handled at that moment is lost.
+      ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" -t "wmbus/+/rssi/+" -F '%t\t%p' -W 90 2>/dev/null \
+        | python3 -u "${BRIDGE_LEDGER}" rssi \
+            --meter-dir "${METER_DIR}" --rssi-file "${STATUS_RSSI_FILE}" \
+        || true
+    fi
+    _sub_reconnect_sleep "${_rssi_t0}"
+  done
+}
+
 start_esp_subscribers() {
 # Track background subscriber PIDs so the soft-reload watcher in bridge.sh can
 # exclude them from its kill — these subscribers must survive pipeline restarts
@@ -353,19 +386,7 @@ STATUS_ESP_METERS_FILE="${BASE}/status_esp_meters.json"
 # decoded was a quarter of a CPU core on a 5-ESP install. The set of configured
 # ids is re-read from METER_DIR every 30 s (bash only, no forks), so meters added
 # by a soft reload start getting RSSI without restarting this subscriber.
-(
-  declare -A _RSSI_WANTED=()
-  _rssi_wanted_at=0
-  while true; do
-    _rssi_t0="$(epoch_now)"
-    while IFS=$'\t' read -r _rssi_topic _rssi_val; do
-      _esp_rssi_handle_message "${_rssi_topic}" "${_rssi_val}"
-    done < <(
-      ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" -t "wmbus/+/rssi/+" -F '%t\t%p' -W 90 2>/dev/null
-    )
-    _sub_reconnect_sleep "${_rssi_t0}"
-  done
-) &
+_esp_rssi_subscriber &
 ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 
 (
