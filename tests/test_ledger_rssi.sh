@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Regression test: the rssi/<id> subscriber booked by bridge_ledger.py.
 #
-# 1. Equivalence: the same messages through the bash handler
-#    (_esp_rssi_handle_message, still the WMBUS_LEDGER=bash fallback) and
-#    through `bridge_ledger.py rssi` must leave the same status_rssi.tsv, apart
-#    from the receive time. inject_rssi_into_json reads that file for every
-#    decoded telegram, so a different row would change what Home Assistant gets.
+# 1. Equivalence: the corpus through `bridge_ledger.py rssi` must leave the
+#    status_rssi.tsv the former bash handler (_esp_rssi_handle_message) wrote
+#    for it, apart from the receive time. That output was recorded before the
+#    bash handler was removed: tests/fixtures/ledger/rssi/status_rssi.tsv.
+#    inject_rssi_into_json reads this file for every decoded telegram, so a
+#    different row would change what Home Assistant gets.
 # 2. Restart: the real subscriber loop (_esp_rssi_subscriber) runs against a
 #    stub broker, with SIGPIPE ignored; python3 is killed in the middle of the
 #    stream. The loop must stop the subscription and start both again, and
@@ -18,8 +19,6 @@ LIB="${ROOT}/rootfs/usr/bin/bridge-lib"
 BRIDGE_LEDGER="${ROOT}/rootfs/usr/bin/bridge_ledger.py"
 # shellcheck source=rootfs/usr/bin/bridge-lib/01-utils.sh
 source "${LIB}/01-utils.sh"
-# shellcheck source=rootfs/usr/bin/bridge-lib/05-raw.sh
-source "${LIB}/05-raw.sh"
 # shellcheck source=rootfs/usr/bin/bridge-lib/13-esp.sh
 source "${LIB}/13-esp.sh"
 
@@ -83,26 +82,16 @@ CORPUS="${TMP}/corpus"
 } > "${CORPUS}"
 SEED=$'52632878\t-50\tolddev\t100\n99999999\t-40\tlilygo\t100\n'
 
-BASH_OUT="${TMP}/bash/status_rssi.tsv"
+GOLDEN="${ROOT}/tests/fixtures/ledger/rssi/status_rssi.tsv"
 PY_OUT="${TMP}/py/status_rssi.tsv"
-mkdir -p "${TMP}/bash" "${TMP}/py"
-printf '%s' "${SEED}" > "${BASH_OUT}"
+mkdir -p "${TMP}/py"
 printf '%s' "${SEED}" > "${PY_OUT}"
-
-(
-  STATUS_RSSI_FILE="${BASH_OUT}"
-  declare -A _RSSI_WANTED=()
-  _rssi_wanted_at=0
-  while IFS=$'\t' read -r _rssi_topic _rssi_val; do
-    _esp_rssi_handle_message "${_rssi_topic}" "${_rssi_val}"
-  done < "${CORPUS}"
-) 2>/dev/null  # -089 makes bash arithmetic complain; that rejection is the point
 python3 "${BRIDGE_LEDGER}" rssi --meter-dir "${METER_DIR}" --rssi-file "${PY_OUT}" < "${CORPUS}"
 
 # The receive time is the only column allowed to differ.
 normalize() { awk -F '\t' -v OFS='\t' '$4 > 1000000000 { $4 = "NOW" } { print }' "$1"; }
-if ! diff -u <(normalize "${BASH_OUT}") <(normalize "${PY_OUT}"); then
-  fail "bridge_ledger.py rssi and the bash handler wrote different rows"
+if ! diff -u "${GOLDEN}" <(normalize "${PY_OUT}"); then
+  fail "bridge_ledger.py rssi wrote different rows than the recorded bash handler"
 fi
 [[ "$(wc -l < "${PY_OUT}" | tr -d ' ')" -ge 8 ]] || fail "equivalence corpus stored too few rows to mean anything"
 
@@ -174,4 +163,4 @@ grep -q $'^52632878\t-80\tboard40\t' "${STATUS_RSSI_FILE}" \
 leftovers="$(find "${TMP}/live" -name '*.tmp.*')"
 [[ -z "${leftovers}" ]] || fail "restart: temporary files left behind: ${leftovers}"
 
-echo "PASS: rssi via bridge_ledger.py matches bash and survives python3 dying (${final}/${MESSAGES} booked)"
+echo "PASS: rssi via bridge_ledger.py matches the recorded bash output and survives python3 dying (${final}/${MESSAGES} booked)"

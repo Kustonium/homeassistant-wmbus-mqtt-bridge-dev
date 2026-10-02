@@ -3,19 +3,21 @@
 #
 # The /rx handler writes six files the WebUI reads (reception, link mode,
 # sequence continuity, boots, clock) or exports (esp_rf_rx_history.jsonl).
-# bridge_ledger.py replaces the bash handler, which ran jq twice and six locked
-# awk rewrites per message, so it must produce the same bytes:
+# bridge_ledger.py replaced the bash handler (_esp_rx_handle_message), which ran
+# jq twice and six locked awk rewrites per message, so it must produce the same
+# bytes:
 #   1. a hand-written corpus of awkward messages,
 #   2. 200 generated messages mixing valid and invalid field values,
-# each through _esp_rx_handle_message (still the WMBUS_LEDGER=bash fallback)
-# and through `bridge_ledger.py rx`, all six files compared;
+# each through `bridge_ledger.py rx`, all six files compared with what the bash
+# handler wrote for the same corpus - recorded before it was removed, in
+# tests/fixtures/ledger/rx/<corpus>/;
 #   3. the real subscriber loop against a stub broker, with SIGPIPE ignored,
 # python3 killed mid-stream: the loop must start it again and only the message
 # being handled may be lost. This subscription has no -W timeout, so without
 # that a dead python3 would stop /rx bookkeeping for good.
 #
-# Bash takes the time from the clock, so the receive time and what is derived
-# from it (clock skew) are compared as such; every other byte must match.
+# The receive time and what is derived from it (clock skew) come from the
+# clock, so they are compared as such; every other byte must match.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,8 +25,6 @@ LIB="${ROOT}/rootfs/usr/bin/bridge-lib"
 BRIDGE_LEDGER="${ROOT}/rootfs/usr/bin/bridge_ledger.py"
 # shellcheck source=rootfs/usr/bin/bridge-lib/01-utils.sh
 source "${LIB}/01-utils.sh"
-# shellcheck source=rootfs/usr/bin/bridge-lib/03-tsv.sh
-source "${LIB}/03-tsv.sh"
 # shellcheck source=rootfs/usr/bin/bridge-lib/13-esp.sh
 source "${LIB}/13-esp.sh"
 
@@ -64,21 +64,6 @@ seed() {
   printf 'olddev\t150\t200\t50\t007\t003\n' > "${d}/clock"
 }
 
-run_bash() {  # run_bash <dir> <corpus>
-  (
-    STATUS_ESP_RX_RECEPTION_FILE="$1/reception"
-    STATUS_ESP_RX_MODE_FILE="$1/mode"
-    ESP_RF_RX_HISTORY_FILE="$1/history"
-    STATUS_ESP_RX_SEQUENCE_FILE="$1/sequence"
-    STATUS_ESP_RX_BOOTS_FILE="$1/boots"
-    STATUS_ESP_RX_CLOCK_FILE="$1/clock"
-    _rx_meta_since_trim=0
-    while IFS=$'\t' read -r _rx_meta_topic _rx_meta_payload; do
-      _esp_rx_handle_message "${_rx_meta_topic}" "${_rx_meta_payload}"
-    done < "$2"
-  )
-}
-
 run_python() {  # run_python <dir> <corpus>
   python3 "${BRIDGE_LEDGER}" rx \
     --reception-file "$1/reception" --mode-file "$1/mode" --history-file "$1/history" \
@@ -86,9 +71,9 @@ run_python() {  # run_python <dir> <corpus>
 }
 
 # Receive times become NOW, and so does a clock skew written in this run: it is
-# the bridge time of the last stamped frame minus its stamp, and the two sides
-# read the clock at different moments. tests/test_bridge_ledger.py checks the
-# skew itself with a fixed clock.
+# the bridge time of the last stamped frame minus its stamp, so it depends on
+# when the test runs. tests/test_bridge_ledger.py checks the skew itself with a
+# fixed clock. The recorded files went through the same normalisation.
 normalize() {  # normalize <file> <kind> <since-epoch>
   case "$2" in
     history)  # textually: re-serialising with jq would hide byte differences
@@ -104,17 +89,15 @@ normalize() {  # normalize <file> <kind> <since-epoch>
 
 compare() {  # compare <label> <corpus>
   local label="$1" corpus="$2" since f
-  rm -rf "${TMP}/bash" "${TMP}/py"
-  seed "${TMP}/bash"
+  rm -rf "${TMP}/py"
   seed "${TMP}/py"
   since="$(date +%s)"
-  run_bash "${TMP}/bash" "${corpus}" 2>/dev/null
   run_python "${TMP}/py" "${corpus}"
   for f in "${FILES[@]}"; do
-    if ! diff -u <(normalize "${TMP}/bash/${f}" "${f}" "${since}") \
+    if ! diff -u "${ROOT}/tests/fixtures/ledger/rx/${label}/${f}" \
                  <(normalize "${TMP}/py/${f}" "${f}" "${since}") >"${TMP}/diff"; then
       cat "${TMP}/diff" >&2
-      fail "${label}: ${f} differs between the bash handler and bridge_ledger.py rx"
+      fail "${label}: ${f} differs from what the bash handler wrote (tests/fixtures/ledger/rx/${label})"
     fi
   done
   [[ -s "${TMP}/py/history" ]] || fail "${label}: nothing was booked - the corpus tests nothing"
@@ -286,4 +269,4 @@ tail -n 1 "${ESP_RF_RX_HISTORY_FILE}" | jq -e ".seq == ${MESSAGES}" >/dev/null \
 leftovers="$(find "${LIVE}" -name '*.tmp.*')"
 [[ -z "${leftovers}" ]] || fail "restart: temporary files left behind: ${leftovers}"
 
-echo "PASS: /rx via bridge_ledger.py matches bash (corpus + 200 generated, ${booked} valid) and survives python3 dying (${final}/${MESSAGES} booked)"
+echo "PASS: /rx via bridge_ledger.py matches the recorded bash output (corpus + 200 generated, ${booked} valid) and survives python3 dying (${final}/${MESSAGES} booked)"

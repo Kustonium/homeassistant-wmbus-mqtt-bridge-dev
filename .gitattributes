@@ -16,3 +16,8 @@
 # payload with ishex(), so a trailing CR makes it drop the frame silently -- the
 # worst possible failure for a corpus whose job is to prove frames are handled.
 tests/fixtures/qds_walkby/*.txt text eol=lf
+
+# Recorded output of the former bash bookkeeping (see tests/test_ledger_*.sh),
+# compared byte for byte: LF regardless of platform, and `-whitespace` because
+# TSV rows end with an empty field - a trailing TAB - by design.
+tests/fixtures/ledger/** text eol=lf -whitespace

@@ -1,0 +1,248 @@
+[wmbus-bridge] [DIAG] LISTEN-parse: JSON telegram received: {"_":"telegram","id":"52632878","media":"water","meter":"qwaterv2","meter_datetime":"2026-04-30 19:00","status":"OK","target_date":"2026-03-31","target_m3":7.3,
+[wmbus-bridge] [DIAG] LISTEN-parse: calling _store_candidate_value
+[wmbus-bridge] [DIAG] _store_candidate_value 52632878: value_key=total_m3 value=9.002
+[wmbus-bridge] [DIAG] _store_candidate_value 52632878: wrote to status_candidate_values.tsv
+[wmbus-bridge] [DIAG] autodecode 03314055: TMP/data/preview/etc/wmbusmeters.d/meter-preview-03314055 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 03314055: TMP/data/preview/etc/wmbusmeters.d/meter-preview-03314055 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 03314055: TMP/data/preview/etc/wmbusmeters.d/meter-preview-03314055 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 03314055: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-03314055 driver=mkradio4 type=Cold water (0x72) reload=true
+[wmbus-bridge] [DIAG] autodecode 03314055: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-03314055 driver=mkradio4 type=Cold water (0x72) reload=true
+[wmbus-bridge] [DIAG] autodecode 03314055: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-03314055 driver=mkradio4 type=Cold water (0x72) reload=true
+[wmbus-bridge] [DIAG] autodecode 03314055: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-03314055 driver=mkradio4 type=Cold water (0x72) reload=true
+[wmbus-bridge] [DIAG] autodecode 03314055: wrote TMP/data/preview/etc/wmbusmeters.d/meter-preview-03314055 (driver=mkradio4)
+[wmbus-bridge] [DIAG] autodecode 10094725: AES required, skipping preview
+[wmbus-bridge] [DIAG] autodecode 10094725: AES required, skipping preview
+[wmbus-bridge] [DIAG] autodecode 10094725: AES required, skipping preview
+[wmbus-bridge] [DIAG] autodecode 10094725: AES required, skipping preview
+[wmbus-bridge] [DIAG] autodecode 10094725: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-10094725 driver=aquastream type=Water meter (0x07) encrypted reload=true
+[wmbus-bridge] [DIAG] autodecode 10094725: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-10094725 driver=aquastream type=Water meter (0x07) encrypted reload=true
+[wmbus-bridge] [DIAG] autodecode 10094725: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-10094725 driver=aquastream type=Water meter (0x07) encrypted reload=true
+[wmbus-bridge] [DIAG] autodecode 10094725: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-10094725 driver=aquastream type=Water meter (0x07) encrypted reload=true
+[wmbus-bridge] [DIAG] autodecode 10101010: AES required, skipping preview
+[wmbus-bridge] [DIAG] autodecode 10101010: AES required, skipping preview
+[wmbus-bridge] [DIAG] autodecode 10101010: AES required, skipping preview
+[wmbus-bridge] [DIAG] autodecode 10101010: AES required, skipping preview
+[wmbus-bridge] [DIAG] autodecode 10101010: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-10101010 driver=amiplus type=Electricity meter (0x02) encrypted reload=true
+[wmbus-bridge] [DIAG] autodecode 10101010: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-10101010 driver=amiplus type=Electricity meter (0x02) encrypted reload=true
+[wmbus-bridge] [DIAG] autodecode 10101010: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-10101010 driver=amiplus type=Electricity meter (0x02) encrypted reload=true
+[wmbus-bridge] [DIAG] autodecode 10101010: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-10101010 driver=amiplus type=Electricity meter (0x02) encrypted reload=true
+[wmbus-bridge] [DIAG] autodecode 12345678: AES required, skipping preview
+[wmbus-bridge] [DIAG] autodecode 12345678: AES required, skipping preview
+[wmbus-bridge] [DIAG] autodecode 12345678: AES required, skipping preview
+[wmbus-bridge] [DIAG] autodecode 12345678: AES required, skipping preview
+[wmbus-bridge] [DIAG] autodecode 12345678: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-12345678 driver=unknown type=Electricity meter (0x02) encrypted reload=true
+[wmbus-bridge] [DIAG] autodecode 12345678: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-12345678 driver=unknown type=Electricity meter (0x02) encrypted reload=true
+[wmbus-bridge] [DIAG] autodecode 12345678: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-12345678 driver=unknown type=Electricity meter (0x02) encrypted reload=true
+[wmbus-bridge] [DIAG] autodecode 12345678: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-12345678 driver=unknown type=Electricity meter (0x02) encrypted reload=true
+[wmbus-bridge] [DIAG] autodecode 21031894: TMP/data/preview/etc/wmbusmeters.d/meter-preview-21031894 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 21031894: TMP/data/preview/etc/wmbusmeters.d/meter-preview-21031894 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 21031894: TMP/data/preview/etc/wmbusmeters.d/meter-preview-21031894 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 21031894: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-21031894 driver=evo868 type=Cold water meter (0x16) reload=true
+[wmbus-bridge] [DIAG] autodecode 21031894: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-21031894 driver=evo868 type=Cold water meter (0x16) reload=true
+[wmbus-bridge] [DIAG] autodecode 21031894: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-21031894 driver=evo868 type=Cold water meter (0x16) reload=true
+[wmbus-bridge] [DIAG] autodecode 21031894: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-21031894 driver=evo868 type=Cold water meter (0x16) reload=true
+[wmbus-bridge] [DIAG] autodecode 21031894: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-21031894 driver=evo868v2 type=Cold water meter (0x16) reload=true
+[wmbus-bridge] [DIAG] autodecode 21031894: wrote TMP/data/preview/etc/wmbusmeters.d/meter-preview-21031894 (driver=evo868)
+[wmbus-bridge] [DIAG] autodecode 21031894: wrote TMP/data/preview/etc/wmbusmeters.d/meter-preview-21031894 (driver=evo868v2)
+[wmbus-bridge] [DIAG] autodecode 2156B4C2: TMP/data/preview/etc/wmbusmeters.d/meter-preview-2156B4C2 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 2156B4C2: TMP/data/preview/etc/wmbusmeters.d/meter-preview-2156B4C2 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 2156B4C2: TMP/data/preview/etc/wmbusmeters.d/meter-preview-2156B4C2 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 2156B4C2: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-2156B4C2 driver=izarv2 type=Water meter (0x07) reload=true
+[wmbus-bridge] [DIAG] autodecode 2156B4C2: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-2156B4C2 driver=izarv2 type=Water meter (0x07) reload=true
+[wmbus-bridge] [DIAG] autodecode 2156B4C2: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-2156B4C2 driver=izarv2 type=Water meter (0x07) reload=true
+[wmbus-bridge] [DIAG] autodecode 2156B4C2: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-2156B4C2 driver=izarv2 type=Water meter (0x07) reload=true
+[wmbus-bridge] [DIAG] autodecode 2156B4C2: wrote TMP/data/preview/etc/wmbusmeters.d/meter-preview-2156B4C2 (driver=izarv2)
+[wmbus-bridge] [DIAG] autodecode 215F908A: TMP/data/preview/etc/wmbusmeters.d/meter-preview-215F908A unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 215F908A: TMP/data/preview/etc/wmbusmeters.d/meter-preview-215F908A unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 215F908A: TMP/data/preview/etc/wmbusmeters.d/meter-preview-215F908A unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 215F908A: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-215F908A driver=izarv2 type=Water meter (0x07) reload=true
+[wmbus-bridge] [DIAG] autodecode 215F908A: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-215F908A driver=izarv2 type=Water meter (0x07) reload=true
+[wmbus-bridge] [DIAG] autodecode 215F908A: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-215F908A driver=izarv2 type=Water meter (0x07) reload=true
+[wmbus-bridge] [DIAG] autodecode 215F908A: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-215F908A driver=izarv2 type=Water meter (0x07) reload=true
+[wmbus-bridge] [DIAG] autodecode 215F908A: wrote TMP/data/preview/etc/wmbusmeters.d/meter-preview-215F908A (driver=izarv2)
+[wmbus-bridge] [DIAG] autodecode 24271170: AES required, skipping preview
+[wmbus-bridge] [DIAG] autodecode 24271170: AES required, skipping preview
+[wmbus-bridge] [DIAG] autodecode 24271170: AES required, skipping preview
+[wmbus-bridge] [DIAG] autodecode 24271170: AES required, skipping preview
+[wmbus-bridge] [DIAG] autodecode 24271170: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-24271170 driver=elf2 type=Heat/Cooling load meter (0x0d) encrypted reload=true
+[wmbus-bridge] [DIAG] autodecode 24271170: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-24271170 driver=elf2 type=Heat/Cooling load meter (0x0d) encrypted reload=true
+[wmbus-bridge] [DIAG] autodecode 24271170: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-24271170 driver=elf2 type=Heat/Cooling load meter (0x0d) encrypted reload=true
+[wmbus-bridge] [DIAG] autodecode 24271170: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-24271170 driver=elf2 type=Heat/Cooling load meter (0x0d) encrypted reload=true
+[wmbus-bridge] [DIAG] autodecode 24360570: TMP/data/preview/etc/wmbusmeters.d/meter-preview-24360570 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 24360570: TMP/data/preview/etc/wmbusmeters.d/meter-preview-24360570 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 24360570: TMP/data/preview/etc/wmbusmeters.d/meter-preview-24360570 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 24360570: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-24360570 driver=iwmtx5 type=Warm Water (30°C-90°C) meter (0x06) reload=true
+[wmbus-bridge] [DIAG] autodecode 24360570: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-24360570 driver=iwmtx5 type=Warm Water (30°C-90°C) meter (0x06) reload=true
+[wmbus-bridge] [DIAG] autodecode 24360570: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-24360570 driver=iwmtx5 type=Warm Water (30°C-90°C) meter (0x06) reload=true
+[wmbus-bridge] [DIAG] autodecode 24360570: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-24360570 driver=iwmtx5 type=Warm Water (30°C-90°C) meter (0x06) reload=true
+[wmbus-bridge] [DIAG] autodecode 24360570: wrote TMP/data/preview/etc/wmbusmeters.d/meter-preview-24360570 (driver=iwmtx5)
+[wmbus-bridge] [DIAG] autodecode 32131245: TMP/data/preview/etc/wmbusmeters.d/meter-preview-32131245 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 32131245: TMP/data/preview/etc/wmbusmeters.d/meter-preview-32131245 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 32131245: TMP/data/preview/etc/wmbusmeters.d/meter-preview-32131245 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 32131245: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-32131245 driver=fhkvdataiii type=Heat Cost Allocator (0x08) reload=true
+[wmbus-bridge] [DIAG] autodecode 32131245: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-32131245 driver=fhkvdataiii type=Heat Cost Allocator (0x80) reload=true
+[wmbus-bridge] [DIAG] autodecode 32131245: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-32131245 driver=fhkvdataiii type=Heat Cost Allocator (0x80) reload=true
+[wmbus-bridge] [DIAG] autodecode 32131245: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-32131245 driver=fhkvdataiii type=Heat Cost Allocator (0x80) reload=true
+[wmbus-bridge] [DIAG] autodecode 32131245: wrote TMP/data/preview/etc/wmbusmeters.d/meter-preview-32131245 (driver=fhkvdataiii)
+[wmbus-bridge] [DIAG] autodecode 44556677: TMP/data/preview/etc/wmbusmeters.d/meter-preview-44556677 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 44556677: TMP/data/preview/etc/wmbusmeters.d/meter-preview-44556677 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 44556677: TMP/data/preview/etc/wmbusmeters.d/meter-preview-44556677 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 44556677: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-44556677 driver=qwaterv2 type=listen reload=true
+[wmbus-bridge] [DIAG] autodecode 44556677: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-44556677 driver=qwaterv2 type=listen reload=true
+[wmbus-bridge] [DIAG] autodecode 44556677: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-44556677 driver=qwaterv2 type=listen reload=true
+[wmbus-bridge] [DIAG] autodecode 44556677: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-44556677 driver=qwaterv2 type=listen reload=true
+[wmbus-bridge] [DIAG] autodecode 44556677: wrote TMP/data/preview/etc/wmbusmeters.d/meter-preview-44556677 (driver=qwaterv2)
+[wmbus-bridge] [DIAG] autodecode 52632878: TMP/data/preview/etc/wmbusmeters.d/meter-preview-52632878 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 52632878: TMP/data/preview/etc/wmbusmeters.d/meter-preview-52632878 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 52632878: TMP/data/preview/etc/wmbusmeters.d/meter-preview-52632878 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 52632878: TMP/data/preview/etc/wmbusmeters.d/meter-preview-52632878 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 52632878: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-52632878 driver=qwaterv2 type=Water meter (0x07) reload=true
+[wmbus-bridge] [DIAG] autodecode 52632878: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-52632878 driver=qwaterv2 type=Water meter (0x07) reload=true
+[wmbus-bridge] [DIAG] autodecode 52632878: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-52632878 driver=qwaterv2 type=Water meter (0x07) reload=true
+[wmbus-bridge] [DIAG] autodecode 52632878: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-52632878 driver=qwaterv2 type=Water meter (0x07) reload=true
+[wmbus-bridge] [DIAG] autodecode 52632878: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-52632878 driver=qwaterv2 type=water reload=false
+[wmbus-bridge] [DIAG] autodecode 52632878: wrote TMP/data/preview/etc/wmbusmeters.d/meter-preview-52632878 (driver=qwaterv2)
+[wmbus-bridge] [DIAG] autodecode 53119425: AES required, skipping preview
+[wmbus-bridge] [DIAG] autodecode 53119425: AES required, skipping preview
+[wmbus-bridge] [DIAG] autodecode 53119425: AES required, skipping preview
+[wmbus-bridge] [DIAG] autodecode 53119425: AES required, skipping preview
+[wmbus-bridge] [DIAG] autodecode 53119425: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-53119425 driver=kamwater type=Cold water meter (0x16) encrypted reload=true
+[wmbus-bridge] [DIAG] autodecode 53119425: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-53119425 driver=kamwater type=Cold water meter (0x16) encrypted reload=true
+[wmbus-bridge] [DIAG] autodecode 53119425: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-53119425 driver=kamwater type=Cold water meter (0x16) encrypted reload=true
+[wmbus-bridge] [DIAG] autodecode 53119425: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-53119425 driver=kamwater type=Cold water meter (0x16) encrypted reload=true
+[wmbus-bridge] [DIAG] autodecode 67250945: TMP/data/preview/etc/wmbusmeters.d/meter-preview-67250945 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 67250945: TMP/data/preview/etc/wmbusmeters.d/meter-preview-67250945 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 67250945: TMP/data/preview/etc/wmbusmeters.d/meter-preview-67250945 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 67250945: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-67250945 driver=qheatv2 type=Heat meter (0x04) reload=true
+[wmbus-bridge] [DIAG] autodecode 67250945: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-67250945 driver=qheatv2 type=Heat meter (0x04) reload=true
+[wmbus-bridge] [DIAG] autodecode 67250945: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-67250945 driver=qheatv2 type=Heat meter (0x04) reload=true
+[wmbus-bridge] [DIAG] autodecode 67250945: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-67250945 driver=qheatv2 type=Heat meter (0x04) reload=true
+[wmbus-bridge] [DIAG] autodecode 67250945: wrote TMP/data/preview/etc/wmbusmeters.d/meter-preview-67250945 (driver=qheatv2)
+[wmbus-bridge] [DIAG] autodecode 67433753: TMP/data/preview/etc/wmbusmeters.d/meter-preview-67433753 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 67433753: TMP/data/preview/etc/wmbusmeters.d/meter-preview-67433753 unchanged, no reload triggered
+[wmbus-bridge] [DIAG] autodecode 67433753: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-67433753 driver=qheatv2 type=Heat meter (0x04) reload=true
+[wmbus-bridge] [DIAG] autodecode 67433753: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-67433753 driver=qheatv2 type=Heat meter (0x04) reload=true
+[wmbus-bridge] [DIAG] autodecode 67433753: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-67433753 driver=qheatv2 type=Heat meter (0x04) reload=true
+[wmbus-bridge] [DIAG] autodecode 67433753: file=TMP/data/preview/etc/wmbusmeters.d/meter-preview-67433753 driver=qheatv2 type=Heat meter (0x04) reload=true
+[wmbus-bridge] [DIAG] autodecode 67433753: wrote TMP/data/preview/etc/wmbusmeters.d/meter-preview-67433753 (driver=qheatv2)
+[wmbus-bridge] [DIAG] autodecode 67433753: wrote TMP/data/preview/etc/wmbusmeters.d/meter-preview-67433753 (driver=qheatv2)
+[wmbus-bridge] [DIAG] candidate 52632878: updated manufacturer text from LISTEN block to (QDS) Qundis, Germany (0x4493)
+[wmbus-bridge][WARN]   no key:   {"id":"meter_03264950","meter_id":"03264950","type":"auto","type_other":"","key":""}
+[wmbus-bridge][WARN]   no key:   {"id":"meter_03314055","meter_id":"03314055","type":"auto","type_other":"","key":""}
+[wmbus-bridge][WARN]   no key:   {"id":"meter_10094725","meter_id":"10094725","type":"auto","type_other":"","key":""}
+[wmbus-bridge][WARN]   no key:   {"id":"meter_10101010","meter_id":"10101010","type":"auto","type_other":"","key":""}
+[wmbus-bridge][WARN]   no key:   {"id":"meter_12345678","meter_id":"12345678","type":"auto","type_other":"","key":""}
+[wmbus-bridge][WARN]   no key:   {"id":"meter_21031894","meter_id":"21031894","type":"auto","type_other":"","key":""}
+[wmbus-bridge][WARN]   no key:   {"id":"meter_2156B4C2","meter_id":"2156B4C2","type":"auto","type_other":"","key":""}
+[wmbus-bridge][WARN]   no key:   {"id":"meter_215F908A","meter_id":"215F908A","type":"auto","type_other":"","key":""}
+[wmbus-bridge][WARN]   no key:   {"id":"meter_24271170","meter_id":"24271170","type":"auto","type_other":"","key":""}
+[wmbus-bridge][WARN]   no key:   {"id":"meter_24360570","meter_id":"24360570","type":"auto","type_other":"","key":""}
+[wmbus-bridge][WARN]   no key:   {"id":"meter_32131245","meter_id":"32131245","type":"auto","type_other":"","key":""}
+[wmbus-bridge][WARN]   no key:   {"id":"meter_44556677","meter_id":"44556677","type":"auto","type_other":"","key":""}
+[wmbus-bridge][WARN]   no key:   {"id":"meter_52632878","meter_id":"52632878","type":"auto","type_other":"","key":""}
+[wmbus-bridge][WARN]   no key:   {"id":"meter_53119425","meter_id":"53119425","type":"auto","type_other":"","key":""}
+[wmbus-bridge][WARN]   no key:   {"id":"meter_53119425","meter_id":"53119425","type":"auto","type_other":"","key":""}
+[wmbus-bridge][WARN]   no key:   {"id":"meter_67250945","meter_id":"67250945","type":"auto","type_other":"","key":""}
+[wmbus-bridge][WARN]   no key:   {"id":"meter_67433753","meter_id":"67433753","type":"auto","type_other":"","key":""}
+[wmbus-bridge][WARN]   zero key: {"id":"meter_03264950","meter_id":"03264950","type":"auto","type_other":"","key":"00000000000000000000000000000000"}
+[wmbus-bridge][WARN]   zero key: {"id":"meter_03314055","meter_id":"03314055","type":"auto","type_other":"","key":"00000000000000000000000000000000"}
+[wmbus-bridge][WARN]   zero key: {"id":"meter_10094725","meter_id":"10094725","type":"auto","type_other":"","key":"00000000000000000000000000000000"}
+[wmbus-bridge][WARN]   zero key: {"id":"meter_10101010","meter_id":"10101010","type":"auto","type_other":"","key":"00000000000000000000000000000000"}
+[wmbus-bridge][WARN]   zero key: {"id":"meter_12345678","meter_id":"12345678","type":"auto","type_other":"","key":"00000000000000000000000000000000"}
+[wmbus-bridge][WARN]   zero key: {"id":"meter_21031894","meter_id":"21031894","type":"auto","type_other":"","key":"00000000000000000000000000000000"}
+[wmbus-bridge][WARN]   zero key: {"id":"meter_2156B4C2","meter_id":"2156B4C2","type":"auto","type_other":"","key":"00000000000000000000000000000000"}
+[wmbus-bridge][WARN]   zero key: {"id":"meter_215F908A","meter_id":"215F908A","type":"auto","type_other":"","key":"00000000000000000000000000000000"}
+[wmbus-bridge][WARN]   zero key: {"id":"meter_24271170","meter_id":"24271170","type":"auto","type_other":"","key":"00000000000000000000000000000000"}
+[wmbus-bridge][WARN]   zero key: {"id":"meter_24360570","meter_id":"24360570","type":"auto","type_other":"","key":"00000000000000000000000000000000"}
+[wmbus-bridge][WARN]   zero key: {"id":"meter_32131245","meter_id":"32131245","type":"auto","type_other":"","key":"00000000000000000000000000000000"}
+[wmbus-bridge][WARN]   zero key: {"id":"meter_44556677","meter_id":"44556677","type":"auto","type_other":"","key":"00000000000000000000000000000000"}
+[wmbus-bridge][WARN]   zero key: {"id":"meter_52632878","meter_id":"52632878","type":"auto","type_other":"","key":"00000000000000000000000000000000"}
+[wmbus-bridge][WARN]   zero key: {"id":"meter_53119425","meter_id":"53119425","type":"auto","type_other":"","key":"00000000000000000000000000000000"}
+[wmbus-bridge][WARN]   zero key: {"id":"meter_53119425","meter_id":"53119425","type":"auto","type_other":"","key":"00000000000000000000000000000000"}
+[wmbus-bridge][WARN]   zero key: {"id":"meter_67250945","meter_id":"67250945","type":"auto","type_other":"","key":"00000000000000000000000000000000"}
+[wmbus-bridge][WARN]   zero key: {"id":"meter_67433753","meter_id":"67433753","type":"auto","type_other":"","key":"00000000000000000000000000000000"}
+[wmbus-bridge][WARN] === NEW METER CANDIDATE DETECTED ===
+[wmbus-bridge][WARN] === NEW METER CANDIDATE DETECTED ===
+[wmbus-bridge][WARN] === NEW METER CANDIDATE DETECTED ===
+[wmbus-bridge][WARN] === NEW METER CANDIDATE DETECTED ===
+[wmbus-bridge][WARN] === NEW METER CANDIDATE DETECTED ===
+[wmbus-bridge][WARN] === NEW METER CANDIDATE DETECTED ===
+[wmbus-bridge][WARN] === NEW METER CANDIDATE DETECTED ===
+[wmbus-bridge][WARN] === NEW METER CANDIDATE DETECTED ===
+[wmbus-bridge][WARN] === NEW METER CANDIDATE DETECTED ===
+[wmbus-bridge][WARN] === NEW METER CANDIDATE DETECTED ===
+[wmbus-bridge][WARN] === NEW METER CANDIDATE DETECTED ===
+[wmbus-bridge][WARN] === NEW METER CANDIDATE DETECTED ===
+[wmbus-bridge][WARN] === NEW METER CANDIDATE DETECTED ===
+[wmbus-bridge][WARN] === NEW METER CANDIDATE DETECTED ===
+[wmbus-bridge][WARN] === NEW METER CANDIDATE DETECTED ===
+[wmbus-bridge][WARN] === NEW METER CANDIDATE DETECTED ===
+[wmbus-bridge][WARN] === NEW METER CANDIDATE DETECTED ===
+[wmbus-bridge][WARN] ==================================
+[wmbus-bridge][WARN] ==================================
+[wmbus-bridge][WARN] ==================================
+[wmbus-bridge][WARN] ==================================
+[wmbus-bridge][WARN] ==================================
+[wmbus-bridge][WARN] ==================================
+[wmbus-bridge][WARN] ==================================
+[wmbus-bridge][WARN] ==================================
+[wmbus-bridge][WARN] ==================================
+[wmbus-bridge][WARN] ==================================
+[wmbus-bridge][WARN] ==================================
+[wmbus-bridge][WARN] ==================================
+[wmbus-bridge][WARN] ==================================
+[wmbus-bridge][WARN] ==================================
+[wmbus-bridge][WARN] ==================================
+[wmbus-bridge][WARN] ==================================
+[wmbus-bridge][WARN] ==================================
+[wmbus-bridge][WARN] Add to options.json meters[] (example):
+[wmbus-bridge][WARN] Add to options.json meters[] (example):
+[wmbus-bridge][WARN] Add to options.json meters[] (example):
+[wmbus-bridge][WARN] Add to options.json meters[] (example):
+[wmbus-bridge][WARN] Add to options.json meters[] (example):
+[wmbus-bridge][WARN] Add to options.json meters[] (example):
+[wmbus-bridge][WARN] Add to options.json meters[] (example):
+[wmbus-bridge][WARN] Add to options.json meters[] (example):
+[wmbus-bridge][WARN] Add to options.json meters[] (example):
+[wmbus-bridge][WARN] Add to options.json meters[] (example):
+[wmbus-bridge][WARN] Add to options.json meters[] (example):
+[wmbus-bridge][WARN] Add to options.json meters[] (example):
+[wmbus-bridge][WARN] Add to options.json meters[] (example):
+[wmbus-bridge][WARN] Add to options.json meters[] (example):
+[wmbus-bridge][WARN] Add to options.json meters[] (example):
+[wmbus-bridge][WARN] Add to options.json meters[] (example):
+[wmbus-bridge][WARN] Add to options.json meters[] (example):
+[wmbus-bridge][WARN] Received telegram from: 03264950
+[wmbus-bridge][WARN] Received telegram from: 03314055
+[wmbus-bridge][WARN] Received telegram from: 10094725
+[wmbus-bridge][WARN] Received telegram from: 10101010
+[wmbus-bridge][WARN] Received telegram from: 12345678
+[wmbus-bridge][WARN] Received telegram from: 21031894
+[wmbus-bridge][WARN] Received telegram from: 2156B4C2
+[wmbus-bridge][WARN] Received telegram from: 215F908A
+[wmbus-bridge][WARN] Received telegram from: 24271170
+[wmbus-bridge][WARN] Received telegram from: 24360570
+[wmbus-bridge][WARN] Received telegram from: 32131245
+[wmbus-bridge][WARN] Received telegram from: 44556677
+[wmbus-bridge][WARN] Received telegram from: 52632878
+[wmbus-bridge][WARN] Received telegram from: 53119425
+[wmbus-bridge][WARN] Received telegram from: 53119425
+[wmbus-bridge][WARN] Received telegram from: 67250945
+[wmbus-bridge][WARN] Received telegram from: 67433753
+[wmbus-bridge][WARN] Suggested driver: amiplus
+[wmbus-bridge][WARN] Suggested driver: aquastream
+[wmbus-bridge][WARN] Suggested driver: elf2
+[wmbus-bridge][WARN] Suggested driver: evo868
+[wmbus-bridge][WARN] Suggested driver: fhkvdataiii
+[wmbus-bridge][WARN] Suggested driver: hydrodigit
+[wmbus-bridge][WARN] Suggested driver: iwmtx5
+[wmbus-bridge][WARN] Suggested driver: izarv2
+[wmbus-bridge][WARN] Suggested driver: izarv2
+[wmbus-bridge][WARN] Suggested driver: kamwater
+[wmbus-bridge][WARN] Suggested driver: kamwater
+[wmbus-bridge][WARN] Suggested driver: mkradio4
+[wmbus-bridge][WARN] Suggested driver: qheatv2
+[wmbus-bridge][WARN] Suggested driver: qheatv2
+[wmbus-bridge][WARN] Suggested driver: qwaterv2
+[wmbus-bridge][WARN] Suggested driver: qwaterv2
+[wmbus-bridge][WARN] Suggested driver: unknown

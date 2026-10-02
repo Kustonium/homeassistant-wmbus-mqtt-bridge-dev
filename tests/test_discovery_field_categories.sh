@@ -486,16 +486,18 @@ assert_json_field "multi ESP rssi" "${RSSI_MULTI}" rssi_xiao_seed_dbm -65
 assert_json_field "multi ESP rssi" "${RSSI_MULTI}" rssi_dbm missing
 assert_json_field "multi ESP rssi" "${RSSI_MULTI}" rssi_source missing
 
-# The production cache upsert is keyed by meter + ESP: a new board must not
-# erase another board, while an update from the same board replaces only its
-# own row.
+# The production cache upsert (bridge_ledger.py rssi_upsert) is keyed by
+# meter + ESP: a new board must not erase another board, while an update from
+# the same board replaces only its own row.
+rssi_upsert() {  # rssi_upsert <meter> <board> <rssi>
+  python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import bridge_ledger as bl
+bl.rssi_upsert(sys.argv[2], sys.argv[3], sys.argv[4], "\t".join([sys.argv[3], sys.argv[5], sys.argv[4], sys.argv[6]]))' \
+    "${ROOT_DIR}/rootfs/usr/bin" "${STATUS_RSSI_FILE}" "$1" "$2" "$3" "$(epoch_now)"
+}
 rm -f "${STATUS_RSSI_FILE}"
-_rssi_tsv_upsert "${STATUS_RSSI_FILE}" "21031894" "lilygo" \
-  "$(printf '%s\t%s\t%s\t%s' "21031894" "-78" "lilygo" "$(epoch_now)")"
-_rssi_tsv_upsert "${STATUS_RSSI_FILE}" "21031894" "xiao-seed" \
-  "$(printf '%s\t%s\t%s\t%s' "21031894" "-65" "xiao-seed" "$(epoch_now)")"
-_rssi_tsv_upsert "${STATUS_RSSI_FILE}" "21031894" "lilygo" \
-  "$(printf '%s\t%s\t%s\t%s' "21031894" "-72" "lilygo" "$(epoch_now)")"
+rssi_upsert 21031894 lilygo -78
+rssi_upsert 21031894 xiao-seed -65
+rssi_upsert 21031894 lilygo -72
 RSSI_UPSERTED="$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")"
 assert_json_field "multi ESP cache upsert" "${RSSI_UPSERTED}" rssi_lilygo_dbm -72
 assert_json_field "multi ESP cache upsert" "${RSSI_UPSERTED}" rssi_xiao_seed_dbm -65

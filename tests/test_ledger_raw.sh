@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Regression test: the RAW counter (status_raw_seen) booked by bridge_ledger.py.
+# Regression test: the RAW counter (formerly status_raw_seen) booked by bridge_ledger.py.
 #
 # Every RAW telegram from every board passes the decode pipeline's tee into
 # _raw_counter_stage. With bridge_ledger.py it writes the counter, last-seen
 # time, the recent-RAW ring, the candidate manufacturer fill, the every-25th
 # event, the per-minute rate and status.json, and asks the bash loop behind it
 # to register Diehl/SAP candidates and start preview one-shots. This test runs
-# the same lines through the stage twice - WMBUS_LEDGER=bash (status_raw_seen
-# per line) and the default - and compares:
+# corpora through the stage and compares with what the former bash counter
+# (status_raw_seen, one call per line) wrote for them - recorded before it was
+# removed, in tests/fixtures/ledger/raw/:
 #   - every file the counter writes, byte for byte apart from the time;
 #   - the decisions handed to bash: status_candidate_seen for SAP frames and
 #     the preview one-shot reaching its slot (both stubbed to log the call, so
@@ -75,9 +76,6 @@ STATUS_DISCOVERY_PUBLISHED_AT=""
 STATUS_LAST_DECODED_SEEN=""
 STATUS_LAST_ERROR="pipeline exited rc=1"
 STATUS_LAST_EVENT="MQTT broker ready"
-RAW_RATE_CUR_MIN_EPOCH=0
-RAW_RATE_CUR_MIN_COUNT=0
-RAW_RATE_PREV_MIN_COUNT=0
 
 # The two hand-overs to bash, logged instead of run.
 DECISIONS="${TMP}/decisions"
@@ -146,12 +144,13 @@ snapshot() {  # snapshot <dir>
 }
 
 # The pipeline, and with it the counter, runs with errexit off: bridge.sh does
-# `set +e` before run_once. status_raw_seen relies on that (a `read` from an
-# empty awk result returns 1 for an unknown SAP candidate), so the stage runs
-# the same way here.
+# `set +e` before run_once. status_raw_candidate_seen in the loop behind
+# python3 relies on that (a `read` from an empty awk result returns 1 for an
+# unknown SAP candidate), so the stage runs the same way here.
 stage() { ( set +e; _raw_counter_stage ); }
 
-# Both runs inside one minute, so the per-minute rate is comparable.
+# The run inside one minute, as the recording was, so the per-minute rate is
+# comparable.
 same_minute() { while (( $(date +%S | sed 's/^0//') > 45 )); do sleep 1; done; }
 
 # ── equivalence ─────────────────────────────────────────────────────────────
@@ -173,22 +172,19 @@ CORPUS="${TMP}/corpus"
   printf '%s\n' "${QWATER}"
 } > "${CORPUS}"
 
+GOLDEN="${ROOT}/tests/fixtures/ledger/raw"
 same_minute
-seed
-WMBUS_LEDGER=bash stage < "${CORPUS}"
-snapshot "${TMP}/bash"
-
 seed
 # python3 hands work to the bash loop asynchronously; the slow feed keeps
 # each hand-over finished before the next telegram, as on a real site.
 while IFS= read -r line; do printf '%s\n' "${line}"; sleep 0.05; done < "${CORPUS}" | stage
 snapshot "${TMP}/py"
 
-for f in "${TMP}/bash"/*; do
+for f in "${GOLDEN}/equivalence"/*; do
   name="$(basename "${f}")"
   if ! diff -u "${f}" "${TMP}/py/${name}" > "${TMP}/diff"; then
     cat "${TMP}/diff" >&2
-    fail "${name} differs between status_raw_seen and bridge_ledger.py raw"
+    fail "${name} differs from what status_raw_seen wrote (tests/fixtures/ledger/raw/equivalence)"
   fi
 done
 grep -q $'^register\t2156B4C2' "${TMP}/py/DECISIONS" || fail "no SAP registration was handed over - the corpus tests nothing"
@@ -202,7 +198,8 @@ expected=$(( 22 + $(wc -l < "${CORPUS}") ))
 # exactly that and the preview config would stay as it is, bridge_ledger.py
 # writes the reception refresh itself (seen row with its 2 s threshold, stats,
 # candidate row, RAW analysis) and nothing reaches bash. status_candidate_seen
-# is the real one here, so every file the two runs write must be identical.
+# is the real one here, so every file must be identical to what the bash
+# counter wrote (tests/fixtures/ledger/raw/sap.dump).
 # The clock is fixed per batch (date in bash, time.time in python3): the 2 s
 # threshold and the stats depend on it.
 mkdir -p "${TMP}/clock"
@@ -264,31 +261,27 @@ dump() {
 # One batch per clock value. A batch's only hand-over is its last frame, and
 # the stage returns when the bash loop has finished it, so the python3 run is
 # as deterministic as the bash one.
-sap_batches() {  # sap_batches bash|python
+sap_batches() {  # sap_batches
   local e frames
   for e in "0 A B C A" "1 A B" "2 B" "5 A C D"; do
     frames=()
     for f in ${e#* }; do v="SAP_${f}"; frames+=("${!v}"); done
     printf '%s\n' "${frames[@]}" | (
-      export LEDGER_TEST_EPOCH=$(( T0 + ${e%% *} )) PYTHONPATH="${TMP}/clock" WMBUS_LEDGER="$1"
+      export LEDGER_TEST_EPOCH=$(( T0 + ${e%% *} )) PYTHONPATH="${TMP}/clock"
       # The loop's status is that of the last request it ran; status_candidate_seen
       # ends on `[[ false == true ]] && ...`. Nothing in the pipeline reads it.
       stage || true )
   done
 }
 seed_sap
-sap_batches bash
-dump "${TMP}/sap_bash"
-cp "${DECISIONS}" "${TMP}/sap_bash_decisions"
-seed_sap
-sap_batches python
+sap_batches
 dump "${TMP}/sap_py"
-diff -u "${TMP}/sap_bash" "${TMP}/sap_py" >&2 \
-  || fail "SAP auto refresh: files differ between status_raw_seen and bridge_ledger.py raw"
+diff -u "${GOLDEN}/sap.dump" "${TMP}/sap_py" >&2 \
+  || fail "SAP auto refresh: files differ from what status_raw_seen wrote (tests/fixtures/ledger/raw/sap.dump)"
+# The bash counter registered the corpus 10 times; only the type change may
+# still reach bash.
 [[ "$(cat "${DECISIONS}")" == $'register\t11556677\tauto\tUnknown meter type (0x01)' ]] \
   || { cat "${DECISIONS}" >&2; fail "SAP auto refresh: only the type change of 11556677 may reach bash"; }
-[[ "$(grep -c '^register' "${TMP}/sap_bash_decisions")" == 10 ]] \
-  || fail "SAP auto refresh: bash registered $(grep -c '^register' "${TMP}/sap_bash_decisions") times, not 10 - the corpus tests nothing"
 [[ "$(grep -c $'^215F908A\tcandidate\t' "${STATUS_SEEN_FILE}")" == 3 ]] \
   || fail "SAP auto refresh: 215F908A at +0, +1 and +2 s must be booked at +0 and +2 s only"
 status_candidate_seen() { printf 'register\t%s\t%s\t%s\n' "$1" "$2" "$3" >> "${DECISIONS}"; }
@@ -322,32 +315,41 @@ seed_preview() {
 eval "real_$(declare -f preview_decode_raw_if_requested)"
 # shellcheck disable=SC2329  # called by the stage
 preview_decode_raw_if_requested() { [[ -n "${2:-}" ]] && printf '%s\n' "$2" >> "${TMP}/preview_requests"; real_preview_decode_raw_if_requested "$@"; }
-preview_at() {  # preview_at bash|python <seconds after T0> <frame>...
-  local mode="$1" offset="$2"
-  shift 2
+preview_at() {  # preview_at <seconds after T0> <frame>...
+  local offset="$1"
+  shift
   printf '%s\n' "$@" | (
-    export LEDGER_TEST_EPOCH=$(( T0 + offset )) PYTHONPATH="${TMP}/clock" WMBUS_LEDGER="${mode}"
+    export LEDGER_TEST_EPOCH=$(( T0 + offset )) PYTHONPATH="${TMP}/clock"
     stage || true )
 }
-for mode in bash python; do
-  seed_preview
-  : > "${TMP}/preview_requests"
-  for offset in 21 150 299; do preview_at "${mode}" "${offset}" "${PV_D}"; done
-  [[ ! -s "${DECISIONS}" ]] \
-    || { cat "${DECISIONS}" >&2; fail "${mode}: decoded_value decoded again within 300 s"; }
-  [[ "${mode}" == bash || ! -s "${TMP}/preview_requests" ]] \
-    || fail "python: decoded_value handed to bash within 300 s"
-  preview_at "${mode}" 300 "${PV_D}"
-  [[ "$(cat "${DECISIONS}")" == $'preview\t11111111' ]] \
-    || { cat "${DECISIONS}" >&2; fail "${mode}: decoded_value not decoded again after 300 s"; }
-  : > "${DECISIONS}"
-  preview_at "${mode}" 10 "${PV_P}" "${PV_N}"
-  [[ ! -s "${DECISIONS}" ]] \
-    || { cat "${DECISIONS}" >&2; fail "${mode}: pending/no_decode_result decoded within the 20 s throttle"; }
-  preview_at "${mode}" 21 "${PV_P}" "${PV_N}"
-  [[ "$(cat "${DECISIONS}")" == $'preview\t22222222\npreview\t33333333' ]] \
-    || { cat "${DECISIONS}" >&2; fail "${mode}: pending/no_decode_result not decoded after 20 s"; }
+seed_preview
+: > "${TMP}/preview_requests"
+for offset in 21 150 299; do preview_at "${offset}" "${PV_D}"; done
+[[ ! -s "${DECISIONS}" ]] \
+  || { cat "${DECISIONS}" >&2; fail "decoded_value decoded again within 300 s"; }
+[[ ! -s "${TMP}/preview_requests" ]] || fail "decoded_value handed to bash within 300 s"
+preview_at 300 "${PV_D}"
+[[ "$(cat "${DECISIONS}")" == $'preview\t11111111' ]] \
+  || { cat "${DECISIONS}" >&2; fail "decoded_value not decoded again after 300 s"; }
+: > "${DECISIONS}"
+preview_at 10 "${PV_P}" "${PV_N}"
+[[ ! -s "${DECISIONS}" ]] \
+  || { cat "${DECISIONS}" >&2; fail "pending/no_decode_result decoded within the 20 s throttle"; }
+preview_at 21 "${PV_P}" "${PV_N}"
+[[ "$(cat "${DECISIONS}")" == $'preview\t22222222\npreview\t33333333' ]] \
+  || { cat "${DECISIONS}" >&2; fail "pending/no_decode_result not decoded after 20 s"; }
+# bash repeats the rule when it is asked directly (ensure_candidate_autodecode
+# calls it, and it guards every request it gets).
+seed_preview
+for offset in 21 299; do
+  ( LEDGER_TEST_EPOCH=$(( T0 + offset )); real_preview_decode_raw_if_requested "${PV_D}" 11111111 ) || true
 done
+[[ ! -s "${DECISIONS}" ]] \
+  || { cat "${DECISIONS}" >&2; fail "bash: decoded_value decoded again within 300 s"; }
+( LEDGER_TEST_EPOCH=$(( T0 + 300 )); real_preview_decode_raw_if_requested "${PV_D}" 11111111 ) || true
+( LEDGER_TEST_EPOCH=$(( T0 + 21 )); real_preview_decode_raw_if_requested "${PV_P}" 22222222 ) || true
+[[ "$(cat "${DECISIONS}")" == $'preview\t11111111\npreview\t22222222' ]] \
+  || { cat "${DECISIONS}" >&2; fail "bash: the 300 s / 20 s rule does not hold"; }
 unset -f date
 
 # ── restart after python3 dies ──────────────────────────────────────────────
@@ -376,4 +378,4 @@ final=$(( $(cat "${STATUS_RAW_COUNT_FILE}") - 22 ))
 jq -e ".pipeline.raw_count == $(( 22 + final ))" "${STATUS_JSON}" >/dev/null \
   || fail "restart: status.json does not show the final count"
 
-echo "PASS: RAW counter via bridge_ledger.py matches status_raw_seen and survives python3 dying (${final}/${MESSAGES} counted)"
+echo "PASS: RAW counter via bridge_ledger.py matches the recorded bash output and survives python3 dying (${final}/${MESSAGES} counted)"
