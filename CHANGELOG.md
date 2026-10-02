@@ -1,3 +1,14 @@
+## 1.5.70-dev.339
+
+### Added
+- add bridge_ledger.py with lock-compatible TSV helpers (4530cb9)
+
+### Changed
+- book rssi/<id> messages in bridge_ledger.py (5391c3a)
+
+### Fixed
+- stop the rssi subscription when bridge_ledger.py ends (36e2b4f)
+
 ## 1.5.70-dev.338
 
 ### Added
