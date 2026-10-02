@@ -1,3 +1,12 @@
+## 1.5.70-dev.340
+
+### Changed
+- book /rx messages in bridge_ledger.py (d547f21)
+- book rssi/<id> messages in bridge_ledger.py (5391c3a)
+
+### Fixed
+- stop the rssi subscription when bridge_ledger.py ends (36e2b4f)
+
 ## 1.5.70-dev.339
 
 ### Added
