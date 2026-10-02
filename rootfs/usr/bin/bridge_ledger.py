@@ -927,13 +927,25 @@ def seen_stats(path: str, meter: str) -> Tuple[int, int, int, int]:
 
 
 def upsert_candidate_row(path: str, meter: str, driver: str, type_line: str, last_seen: str,
-                         stats: Tuple[int, int, int, int], manufacturer: str = "") -> None:
-    """_upsert_candidate_row: the row moves to the end; an empty manufacturer keeps the old one."""
+                         stats: Tuple[int, int, int, int], manufacturer: str = "",
+                         expect: Optional[Tuple[str, str]] = None) -> bool:
+    """_upsert_candidate_row: the row moves to the end; an empty manufacturer keeps the old one.
+
+    With `expect`, the first row of the id must still hold that driver and
+    type under the lock, or nothing is written and False is returned: another
+    writer (a preview one-shot, a bash registration) changed it after the
+    caller read it, and its newer classification must not be overwritten.
+    """
     k = _b(meter)
     with locked(path):
+        lines = _read_lines(path)
+        if expect is not None:
+            row = next((_s(ln).split("\t") for ln in lines if _first_field(ln) == k), None)
+            if row is None or (_field(row, 2), _field(row, 3)) != expect:
+                return False
         final = manufacturer
         out = []
-        for line in _read_lines(path):
+        for line in lines:
             if _first_field(line) == k:
                 f = _s(line).split("\t")
                 if final == "" and len(f) >= 9 and f[8] != "":
@@ -943,6 +955,7 @@ def upsert_candidate_row(path: str, meter: str, driver: str, type_line: str, las
         out.append(_b("\t".join([meter, driver, type_line, last_seen]
                                 + [str(n) for n in stats] + [final])))
         _replace_with(path, out)
+    return True
 
 
 def find_recent_raw(path: str, meter: str) -> Optional[Tuple[str, str, str]]:
@@ -988,20 +1001,26 @@ def analyze_candidate_from_text(files: CandidateFiles, meter: str, type_line: st
 
 
 def candidate_seen_refresh(files: CandidateFiles, meter: str, driver: str, type_line: str,
-                           manufacturer: str = "") -> None:
+                           manufacturer: str = "") -> bool:
     """status_candidate_seen for a candidate that is already registered.
 
     The reception row (2 s threshold), the stats, the candidate row and the
     RAW analysis, written as the bash function writes them. What is left of
     status_candidate_seen stays in bash: the "Candidate detected" event of a
     new row, the preview config and its state machine (ensure_candidate_autodecode)
-    and status.json. Call it only when autodecode_unchanged() holds.
+    and status.json. Call it only when autodecode_unchanged() holds and the
+    row holds this driver and type; that is checked again under the lock, and
+    when another writer changed the row in between, nothing more is written
+    and False is returned - the caller then hands the telegram to bash.
     """
     record_seen(files.seen, meter, "candidate")
     last_seen = iso_now()
-    upsert_candidate_row(files.candidates, meter, driver, type_line, last_seen,
-                         seen_stats(files.seen, meter), manufacturer)
+    if not upsert_candidate_row(files.candidates, meter, driver, type_line, last_seen,
+                                seen_stats(files.seen, meter), manufacturer,
+                                expect=(driver, type_line)):
+        return False
     analyze_candidate_from_text(files, meter, type_line)
+    return True
 
 
 def autodecode_unchanged(files: CandidateFiles, meter: str, driver: str, type_line: str) -> bool:
@@ -1141,8 +1160,8 @@ class RawBook:
             new_driver = "auto"
             new_type = map_device_type(dev_type) + (" encrypted" if raw_is_encrypted(norm) else "")
         if (driver == new_driver and type_line == new_type
-                and autodecode_unchanged(self.candidates, meter, new_driver, new_type)):
-            candidate_seen_refresh(self.candidates, meter, new_driver, new_type)
+                and autodecode_unchanged(self.candidates, meter, new_driver, new_type)
+                and candidate_seen_refresh(self.candidates, meter, new_driver, new_type)):
             return
         self.request("sap", raw)
 

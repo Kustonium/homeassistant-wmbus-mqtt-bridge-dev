@@ -77,6 +77,12 @@ BUDGET_LEDGER_RAW=6            #  4: _raw_counter_stage, LEDGER_BATCH telegrams
 # which bash registers as "auto" on every telegram. Python books the reception
 # itself; nothing may be handed to bash (each hand-over costs ~50 forks).
 BUDGET_LEDGER_SAP=6            #  4: _raw_counter_stage, LEDGER_BATCH SAP telegrams
+# Boards hearing the same air: every telegram arrives once per board, so the
+# ledger paths see BOARDS times the messages. Per message they must stay at
+# zero forks: a batch from BOARDS boards may cost at most SCALE_TOLERANCE more
+# than the same telegrams from one board.
+BOARDS=5
+AIR_BATCH=40                   # telegrams on air per batch
 LEDGER_BATCH=200
 BUDGET_LISTEN_BLOCK=74         # 59: LISTEN block of a known candidate
 # How much ONE call may cost more at 200 meters on air than at 10.
@@ -381,6 +387,39 @@ status_raw_candidate_seen() { printf 'sap\n' >> "${HANDOVERS}"; _perf_real_statu
 eval "_perf_real_$(declare -f preview_decode_raw_if_requested)"
 preview_decode_raw_if_requested() { printf 'preview\n' >> "${HANDOVERS}"; _perf_real_preview_decode_raw_if_requested "$@"; }
 restore_state_handovers() { restore_state; : > "${HANDOVERS}"; }
+
+# The same AIR_BATCH telegrams heard by 1 and by BOARDS boards (board-major
+# within a telegram, as copies arrive close together).
+air_batches() {  # air_batches <boards> <dir>
+  local b="$1" d="$2" n k
+  mkdir -p "${d}"
+  : > "${d}/rssi"; : > "${d}/rx"; : > "${d}/tracker"; : > "${d}/raw"
+  for (( n = 1; n <= AIR_BATCH; n++ )); do
+    for (( k = 0; k < b; k++ )); do
+      printf 'wmbus/board%d/rssi/%s\t-%d\n' "${k}" "${METER_ID}" $(( 50 + n % 40 )) >> "${d}/rssi"
+      printf 'wmbus/board%d/rx\t{"schema":1,"boot_id":"A84F12C%d","seq":%d,"rx_task_wakeup_us":1,"meter_id":"%s","mode":"T1","frame_crc32":"7F56A83C","frame_length":123,"received_at":"2026-10-02T10:00:00.123Z"}\n' \
+        "${k}" "${k}" "${n}" "${METER_ID}" >> "${d}/rx"
+      printf 'wmbus/board%d/telegram\t%s\n' "${k}" "${RAW_HEX}" >> "${d}/tracker"
+      printf '%s\n' "${RAW_HEX}" >> "${d}/raw"
+    done
+  done
+}
+air_batches 1 "${TMP}/air1"
+air_batches "${BOARDS}" "${TMP}/air${BOARDS}"
+AIR_DIR=""
+air_rssi() { python3 "${BRIDGE_LEDGER}" rssi --meter-dir "${METER_DIR}" --rssi-file "${STATUS_RSSI_FILE}" < "${AIR_DIR}/rssi"; }
+air_rx() {
+  python3 "${BRIDGE_LEDGER}" rx \
+    --reception-file "${STATUS_ESP_RX_RECEPTION_FILE}" --mode-file "${STATUS_ESP_RX_MODE_FILE}" \
+    --history-file "${ESP_RF_RX_HISTORY_FILE}" --sequence-file "${STATUS_ESP_RX_SEQUENCE_FILE}" \
+    --boots-file "${STATUS_ESP_RX_BOOTS_FILE}" --clock-file "${STATUS_ESP_RX_CLOCK_FILE}" < "${AIR_DIR}/rx"
+}
+air_tracker() {
+  python3 "${BRIDGE_LEDGER}" tracker --dev-pos 1 \
+    --devices-file "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" --meter-device-file "${STATUS_ESP_METER_DEVICE_FILE}" \
+    --reception-file "${STATUS_ESP_METER_RECEPTION_FILE}" --history-file "${ESP_RX_HISTORY_FILE}" < "${AIR_DIR}/tracker"
+}
+air_raw() { ( set +e; _raw_counter_stage < "${AIR_DIR}/raw"; exit 0 ); }
 run_ledger_rssi() {
   python3 "${BRIDGE_LEDGER}" rssi --meter-dir "${METER_DIR}" --rssi-file "${STATUS_RSSI_FILE}" \
     < "${TMP}/rssi_batch"
@@ -544,8 +583,39 @@ for s in "${STEPS[@]}"; do
   fi
 done
 
+# ── boards hearing the same air ─────────────────────────────────────────────
+build_fixture "${METER_COUNTS[0]}"
+printf '\n%-38s%6s%6s%9s\n' "forks per batch of ${AIR_BATCH} telegrams ->" "1" "${BOARDS}" "budget"
+for path in rssi rx tracker raw; do
+  declare -A AIR=()
+  for b in 1 "${BOARDS}"; do
+    AIR_DIR="${TMP}/air${b}"
+    measure restore_state_handovers "air_${path}"
+    AIR[${b}]="${MEASURED}"
+    [[ ! -s "${HANDOVERS}" ]] || fail "${path}, ${b} boards: $(wc -l < "${HANDOVERS}") messages handed to bash"
+    case "${path}" in
+      rssi) got="$(awk -F '\t' -v id="${METER_ID}" '$1==id && $3 ~ /^board[0-4]$/' "${STATUS_RSSI_FILE}" | wc -l)"; want="${b}" ;;
+      rx) got="$(wc -l < "${ESP_RF_RX_HISTORY_FILE}")"; want=$(( AIR_BATCH * b )) ;;
+      tracker) got="$(awk -F '\t' '$1 ~ /^board[0-4]$/ {n += $4} END {print n + 0}' "${STATUS_ESP_TELEGRAM_DEVICES_FILE}")"; want=$(( AIR_BATCH * b )) ;;
+      raw) got="$(cat "${STATUS_RAW_COUNT_FILE}")"; want=$(( 1000 + AIR_BATCH * b )) ;;
+    esac
+    [[ "${got// /}" == "${want}" ]] || fail "${path}, ${b} boards: booked ${got} instead of ${want} (fixture broken)"
+  done
+  case "${path}" in
+    raw) budget="${BUDGET_LEDGER_RAW}" ;;
+    *) budget=2 ;;
+  esac
+  printf '%-38s%6s%6s%9s\n' "ledger ${path}, boards" "${AIR[1]}" "${AIR[${BOARDS}]}" "${budget}"
+  if (( AIR[${BOARDS}] > budget )); then
+    failures+=("ledger ${path}: ${AIR[${BOARDS}]} forks for ${AIR_BATCH} telegrams from ${BOARDS} boards, budget ${budget}")
+  fi
+  if (( AIR[${BOARDS}] - AIR[1] > SCALE_TOLERANCE )); then
+    failures+=("ledger ${path}: cost grows with boards - ${AIR[1]} forks from 1 board, ${AIR[${BOARDS}]} from ${BOARDS} for the same ${AIR_BATCH} telegrams; a message now costs a process")
+  fi
+done
+
 if (( ${#failures[@]} > 0 )); then
   for f in "${failures[@]}"; do echo "FAIL: ${f}" >&2; done
   exit 1
 fi
-echo "OK: fork budget per telegram holds and does not grow with meters on air"
+echo "OK: fork budget per telegram holds and does not grow with meters on air or with boards"
