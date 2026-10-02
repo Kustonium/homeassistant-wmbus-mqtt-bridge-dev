@@ -1,0 +1,85 @@
+Started config hextty on stdin listening on any
+No meters configured. Printing id:s of all telegrams heard!
+Received telegram from: 10101010
+          manufacturer: (APA) Apator, Poland (0x601)
+                  type: Electricity meter (0x02) encrypted
+                   ver: 0x02
+                driver: amiplus
+Received telegram from: 10094725
+          manufacturer: (IMT) INTEGRA METERING, Switzerland (0x25b4)
+                  type: Bus/System component (0x0e) encrypted
+                   ver: 0x05
+      Concerning meter: 06015256
+          manufacturer: (IMT) INTEGRA METERING, Switzerland (0x25b4)
+                  type: Water meter (0x07) encrypted
+                   ver: 0x01
+                driver: aquastream
+Received telegram from: 24271170
+          manufacturer: (APA) Apator, Poland (0x601)
+                  type: Heat/Cooling load meter (0x0d) encrypted
+                   ver: 0x42
+                driver: elf2
+Received telegram from: 21031894
+          manufacturer: (MAD) Maddalena, Italy (0x3424)
+                  type: Cold water meter (0x16)
+                   ver: 0x50
+                driver: evo868
+Received telegram from: 32131245
+          manufacturer: (TCH) Techem (0x5068)
+                  type: Heat Cost Allocator (0x80)
+                   ver: 0x69
+                driver: fhkvdataiii
+Received telegram from: 03264950
+          manufacturer: (BMT) BMETERS, Italy (0x9b4)
+                  type: Water meter (0x07)
+                   ver: 0x17
+                driver: hydrodigit
+Received telegram from: 24360570
+          manufacturer: (BMT) BMETERS, Italy (0x9b4)
+                  type: Warm Water (30°C-90°C) meter (0x06)
+                   ver: 0x18
+                driver: iwmtx5
+Received telegram from: 2156b4c2
+          manufacturer: (SAP) Diehl Metering, Germany (0x4c30)
+                  type: Water meter (0x07)
+                   ver: 0x00
+                driver: izarv2
+Received telegram from: 215f908a
+          manufacturer: (SAP) Diehl Metering, Germany (0x4c30)
+                  type: Water meter (0x07)
+                   ver: 0x00
+                driver: izarv2
+Received telegram from: 53119425
+          manufacturer: (KAW) Kamstrup, Denmark (0x2c37)
+                  type: Cold water meter (0x16) encrypted
+                   ver: 0x3c
+                driver: kamwater
+Received telegram from: 12345678
+          manufacturer: (KPL) KPLC Power, Kenya (0x2e0c)
+                  type: Electricity meter (0x02) encrypted
+                   ver: 0x01
+                driver: unknown!
+Received telegram from: 03314055
+          manufacturer: (TCH) Techem (0x5068)
+                  type: Cold water (0x72)
+                   ver: 0x95
+                driver: mkradio4
+Received telegram from: 67250945
+          manufacturer: (LSE) Landis Staefa electronic (0xb265)
+                  type: Heat meter (0x04)
+                   ver: 0x23
+                driver: qheatv2
+Received telegram from: 67433753
+          manufacturer: (QDS) Qundis, Germany (0x4493)
+                  type: Radio converter (meter side) (0x37)
+                   ver: 0x46
+      Concerning meter: 67433753
+          manufacturer: (QDS) Qundis, Germany (0x4493)
+                  type: Heat meter (0x04)
+                   ver: 0x46
+                driver: qheatv2 qheatv2
+Received telegram from: 52632878
+          manufacturer: (QDS) Qundis, Germany (0x4493)
+                  type: Water meter (0x07)
+                   ver: 0x1a
+                driver: qwaterv2

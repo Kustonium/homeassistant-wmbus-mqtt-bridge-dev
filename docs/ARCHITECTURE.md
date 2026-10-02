@@ -381,7 +381,14 @@ they re-register as `auto` on every telegram - is refreshed by Python itself:
 `candidate_seen_refresh` writes the reception row, the stats, the candidate row
 and the RAW analysis as `status_candidate_seen` does, as long as the preview
 config would stay unchanged. The "Candidate detected" event, the preview config
-and its state machine stay in bash.
+and its state machine stay in bash. The parser of the pure LISTEN instance
+(`_listen_parse_stage`) works the same way: Python collects each text block and
+books a candidate that is already registered with the same driver and type,
+already announced in `seen_ids.txt` and whose preview config would stay
+unchanged, through the same `candidate_seen_refresh`; new or changed candidates
+(`emit_snippet_if_new`), SEARCH and decoded JSON lines go to a bash loop in the
+same stage. The inline listen parser of the DECODE loop, active only while no
+meter is configured, stays in bash.
 `WMBUS_LEDGER=bash` selects the previous in-shell handlers while the move is in
 progress.
 
