@@ -1,3 +1,9 @@
+## 1.5.74-dev.351
+
+### Fixed
+- never give water or gas fields state_class measurement (de57e73)
+- never give energy fields state_class measurement (c96c28f)
+
 ## 1.5.74-dev.350
 
 ### Fixed
