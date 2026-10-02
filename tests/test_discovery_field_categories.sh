@@ -134,6 +134,16 @@ assert_measurement() {
   fi
 }
 
+assert_state_class() {  # assert_state_class <field> <expected state_class, or "missing">
+  local field="$1" expected="$2" got
+  got="$(field_prop "$(payload_for "${field}")" state_class)"
+  if [[ "${got}" == "${expected}" ]]; then
+    pass "${field}: state_class=${got}"
+  else
+    fail "${field}: state_class=${got} (expected ${expected})"
+  fi
+}
+
 assert_no_entity() {
   local field="$1"
   if grep -q -F "homeassistant/sensor/wmbus_${METER_ID}/${field}/config" "${CAPTURE}"; then
@@ -229,6 +239,36 @@ run_telegram 88776655 '{"_":"telegram","total_energy_consumption_kwh":3861.107,"
 assert_measurement total_energy_consumption_kwh "kWh"
 assert_measurement total_reactive_energy_consumption_kvarh "kVARh"
 assert_measurement current_power_consumption_kw "kW"
+
+# --- energy never gets state_class measurement ------------------------------
+# Home Assistant accepts only total / total_increasing for device_class energy
+# and warns "impossible considering device class" otherwise. vario451 reports
+# the energy so far in the billing period and the previous period's energy
+# next to its total; both used to be published as measurement.
+run_telegram 74114550 '{"_":"telegram","total_kwh":4518,"current_kwh":312,"previous_kwh":1490,"id":"74114550","media":"heat","meter":"vario451","name":"Heat_4550","timestamp":"2026-08-13T14:30:19Z"}'
+
+assert_measurement total_kwh "kWh"
+assert_measurement current_kwh "kWh"
+assert_measurement previous_kwh "kWh"
+assert_state_class total_kwh total_increasing
+assert_state_class current_kwh total_increasing
+assert_state_class previous_kwh missing
+for f in total_kwh current_kwh previous_kwh; do
+  if [[ "$(field_prop "$(payload_for "${f}")" device_class)" == "energy" ]]; then
+    pass "${f}: device_class=energy"
+  else
+    fail "${f}: device_class is not energy"
+  fi
+done
+# Every energy entity of this telegram, whatever its name.
+if grep -F '"device_class":"energy"' "${CAPTURE}" | grep -q -F '"state_class":"measurement"'; then
+  fail "an energy entity was published with state_class measurement"
+else
+  pass "no energy entity has state_class measurement"
+fi
+run_telegram 88776655 '{"_":"telegram","total_energy_consumption_kwh":3861.107,"current_power_consumption_kw":0.35,"id":"88776655","media":"electricity","meter":"amiplus","name":"Power_6655","timestamp":"2026-08-13T14:30:19Z"}'
+assert_state_class total_energy_consumption_kwh total_increasing
+assert_state_class current_power_consumption_kw measurement
 
 # --- per-meter exclude_fields: glob patterns suppress and remove entities ----
 # METER_EXCLUDE_FIELDS is declared by 08-discovery-helpers.sh and filled by
