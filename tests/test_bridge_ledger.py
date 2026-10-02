@@ -7,6 +7,7 @@ files must be byte-identical.
 from __future__ import annotations
 
 import io
+import json
 import os
 import stat
 import subprocess
@@ -88,7 +89,9 @@ class TsvTest(unittest.TestCase):
     def test_append_and_trim_match_bash(self):
         a, b = self.pair(b"")
         for n in range(1, 8):
-            bash('_append_esp_rx_history "$1" "$2" lilygo 52632878 wmbus/lilygo/telegram', str(a), str(n))
+            # What the former bash _append_esp_rx_history wrote (jq -c, one line).
+            with open(a, "ab") as fh:
+                fh.write(f'{{"time":{n},"source":"lilygo","meter_id":"52632878","topic":"wmbus/lilygo/telegram"}}\n'.encode())
             bl.append_locked(str(b), f'{{"time":{n},"source":"lilygo","meter_id":"52632878","topic":"wmbus/lilygo/telegram"}}')
         self.assertEqual(a.read_bytes(), b.read_bytes())
         for max_lines, keep in ((7, 3), (6, 3)):  # at the limit nothing happens; above it, trim
@@ -97,6 +100,97 @@ class TsvTest(unittest.TestCase):
                 bl.trim_locked(str(b), max_lines, keep)
                 self.assertEqual(a.read_bytes(), b.read_bytes())
         self.assertEqual(len(b.read_bytes().splitlines()), 3)
+
+
+class ReceptionHistoryTest(unittest.TestCase):
+    """The ESP reception files the WebUI reads, as tests/test_esp_reception_history.sh
+    checked them on the former bash helpers (same cases, same expectations)."""
+
+    def setUp(self) -> None:
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.d = Path(self.dir.name)
+
+    def rows(self, name: str):
+        return [ln.split("\t") for ln in (self.d / name).read_text().splitlines()]
+
+    def test_reception_first_last_count_per_board(self):
+        f = str(self.d / "reception.tsv")
+        bl.upsert_meter_reception(f, "00089907", "lr1121", 100, "wmbus/lr1121/telegram")
+        bl.upsert_meter_reception(f, "00089907", "heltec", 101, "wmbus/heltec/telegram")
+        bl.upsert_meter_reception(f, "00089907", "lr1121", 105, "wmbus/lr1121/telegram")
+        rows = {r[1]: r[2:5] for r in self.rows("reception.tsv") if r[0] == "00089907"}
+        self.assertEqual(rows, {"lr1121": ["100", "105", "2"], "heltec": ["101", "101", "1"]})
+
+    def test_history_retention(self):
+        f = str(self.d / "history.jsonl")
+        for n in range(1, 6):
+            bl.append_locked(f, bl.jq_dumps({"time": n, "source": "lr1121", "meter_id": "00089907",
+                                             "topic": "wmbus/lr1121/telegram"}))
+        bl.trim_locked(f, 4, 3)
+        lines = [json.loads(x) for x in (self.d / "history.jsonl").read_text().splitlines()]
+        self.assertEqual([x["time"] for x in lines], [3, 4, 5])
+        self.assertTrue(all(x["meter_id"] == "00089907" for x in lines))
+
+    def test_rf_history_and_normalisation(self):
+        files = {n: str(self.d / n) for n in ("reception", "mode", "history", "sequence", "boots", "clock")}
+        book = bl.RxBook(files["reception"], files["mode"], files["history"], files["sequence"],
+                         files["boots"], files["clock"])
+        payload = ('{"schema":1,"boot_id":"A84F12C7","seq":7,"rx_task_wakeup_us":123456,'
+                   '"meter_id":"00089907","mode":"T1","rssi_dbm":-54,"frame_crc32":"7F56A83C",'
+                   '"frame_length":123}')
+        norm = bl.normalize_rx(bl.jq_values(payload)[0])
+        self.assertEqual((norm["meter_id"], norm["boot_id"], norm["frame_crc32"]),
+                         ("00089907", "A84F12C7", "7F56A83C"))
+        self.assertIsNone(bl.normalize_rx(bl.jq_values('{"schema":1,"meter_id":"NOT_AN_ID"}')[0]))
+        old = bl.now
+        bl.now = lambda: 200.0
+        self.addCleanup(setattr, bl, "now", old)
+        book(b"wmbus/lr1121/rx", payload.encode())
+        rows = [json.loads(x) for x in (self.d / "history").read_text().splitlines()]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]["source"], rows[0]["bridge_rx_time"], rows[0]["seq"]), ("lr1121", 200, 7))
+
+    def test_sequence_gaps_reorder_and_boot_reset(self):
+        f = str(self.d / "sequence.tsv")
+        for seq, ts in (("7", 200), ("10", 201), ("10", 202)):
+            bl.upsert_rx_sequence(f, "lr1121", "A84F12C7", seq, ts)
+        self.assertEqual(self.rows("sequence.tsv")[0][2:5], ["10", "2", "1"])  # gap + duplicate
+        bl.upsert_rx_sequence(f, "lr1121", "DEADBEEF", "1", 203)
+        self.assertEqual(self.rows("sequence.tsv")[0][1:5], ["DEADBEEF", "1", "0", "0"])
+        # A late or redelivered frame must not invent a gap (seen on hardware
+        # 2026-08-21: three boards reported missing=1 while the broker redelivered).
+        g = str(self.d / "reorder.tsv")
+        for n in ("1", "2", "3", "5", "4", "6", "7"):
+            bl.upsert_rx_sequence(g, "lilygo", "AAAA", n, 1000)
+        self.assertEqual(self.rows("reorder.tsv")[0][2:5], ["7", "1", "1"])
+
+    def test_one_row_per_boot_and_scientific_looking_ids(self):
+        f = str(self.d / "boots.tsv")
+        for boot, ts in (("AAAA", 1000), ("AAAA", 1100), ("BBBB", 2000)):
+            bl.upsert_rx_boot(f, "lilygo", boot, ts)
+        rows = self.rows("boots.tsv")
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(next(r for r in rows if r[1] == "AAAA")[2:5], ["1000", "1100", "2"])
+        # BusyBox awk read 651E6871 / 999E9999 as numbers; XIAO produced 651E6871 in the field.
+        g = str(self.d / "sci.tsv")
+        bl.upsert_rx_boot(g, "xiaoseed", "999E9999", 1000)
+        for n in range(1, 6):
+            bl.upsert_rx_boot(g, "xiaoseed", "651E6871", 1000 + n)
+        rows = self.rows("sci.tsv")
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(next(r for r in rows if r[1] == "651E6871")[2:5], ["1001", "1005", "5"])
+        h = str(self.d / "sciseq.tsv")
+        bl.upsert_rx_sequence(h, "xiaoseed", "999E9999", "40", 1000)
+        bl.upsert_rx_sequence(h, "xiaoseed", "651E6871", "1", 1001)
+        self.assertEqual(self.rows("sciseq.tsv")[0][1:5], ["651E6871", "1", "0", "0"])
+
+    def test_band_counts_per_meter(self):
+        f = str(self.d / "modes.tsv")
+        for mode, ts in (("T1", 300), ("C1", 301), ("T1", 302), ("S1", 303), ("XX", 304)):
+            bl.upsert_meter_mode(f, "90830781", mode, ts)
+        rows = {r[1]: r[2:4] for r in self.rows("modes.tsv")}
+        self.assertEqual(rows, {"T1": ["2", "302"], "C1": ["1", "301"], "S1": ["1", "303"]})
 
 
 class SplitMessageTest(unittest.TestCase):

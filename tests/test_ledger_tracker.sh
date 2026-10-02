@@ -5,11 +5,13 @@
 # is alive (status_esp_telegram_devices.tsv), which board delivered which meter
 # (status_esp_meter_device.tsv), per-board reception counts
 # (status_esp_meter_reception.tsv) and a bounded history (esp_rx_history.jsonl).
-# bridge_ledger.py replaces the bash handler, so it must produce the same bytes:
+# bridge_ledger.py replaced the bash handler (_esp_tracker_handle_message), so
+# it must produce the same bytes:
 #   1. a hand-written corpus of awkward messages,
 #   2. 200 generated messages built from the fixture frames,
-# each through _esp_tracker_handle_message (still the WMBUS_LEDGER=bash
-# fallback) and through `bridge_ledger.py tracker`, all four files compared;
+# each through `bridge_ledger.py tracker`, all four files compared with what
+# the bash handler wrote for the same corpus - recorded before it was removed,
+# in tests/fixtures/ledger/tracker/<corpus>/;
 #   3. the real subscriber loop against a stub broker, with SIGPIPE ignored,
 # python3 killed mid-stream: the loop must start it again and only the message
 # being handled may be lost.
@@ -68,28 +70,14 @@ seed() {
   : > "${d}/history"
 }
 
-run_bash() {  # run_bash <dir> <corpus>
-  (
-    STATUS_ESP_TELEGRAM_DEVICES_FILE="$1/devices"
-    STATUS_ESP_METER_DEVICE_FILE="$1/meter_device"
-    STATUS_ESP_METER_RECEPTION_FILE="$1/reception"
-    ESP_RX_HISTORY_FILE="$1/history"
-    _RT_DEV_POS=1
-    _rx_history_since_trim=0
-    declare -A _MD_LAST=()
-    while IFS=$'\t' read -r _tg_topic _tg_payload; do
-      _esp_tracker_handle_message "${_tg_topic}" "${_tg_payload}"
-    done < "$2"
-  )
-}
-
 run_python() {  # run_python <dir> <corpus>
   python3 "${BRIDGE_LEDGER}" tracker --dev-pos 1 \
     --devices-file "$1/devices" --meter-device-file "$1/meter_device" \
     --reception-file "$1/reception" --history-file "$1/history" < "$2"
 }
 
-# Receive times become NOW; every other byte must match.
+# Receive times become NOW; every other byte must match. The recorded files
+# went through the same normalisation.
 normalize() {  # normalize <file> <kind> <since-epoch>
   case "$2" in
     history) sed -E 's/"time":[0-9]+/"time":"NOW"/' "$1" ;;
@@ -99,17 +87,15 @@ normalize() {  # normalize <file> <kind> <since-epoch>
 
 compare() {  # compare <label> <corpus>
   local label="$1" corpus="$2" since f
-  rm -rf "${TMP}/bash" "${TMP}/py"
-  seed "${TMP}/bash"
+  rm -rf "${TMP}/py"
   seed "${TMP}/py"
   since="$(date +%s)"
-  run_bash "${TMP}/bash" "${corpus}" 2>/dev/null
   run_python "${TMP}/py" "${corpus}"
   for f in "${FILES[@]}"; do
-    if ! diff -u <(normalize "${TMP}/bash/${f}" "${f}" "${since}") \
+    if ! diff -u "${ROOT}/tests/fixtures/ledger/tracker/${label}/${f}" \
                  <(normalize "${TMP}/py/${f}" "${f}" "${since}") >"${TMP}/diff"; then
       cat "${TMP}/diff" >&2
-      fail "${label}: ${f} differs between the bash handler and bridge_ledger.py tracker"
+      fail "${label}: ${f} differs from what the bash handler wrote (tests/fixtures/ledger/tracker/${label})"
     fi
   done
   [[ -s "${TMP}/py/history" ]] || fail "${label}: nothing was booked - the corpus tests nothing"
@@ -248,4 +234,4 @@ grep -q "^board${MESSAGES}"$'\t' "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" \
 leftovers="$(find "${LIVE}" -name '*.tmp*')"
 [[ -z "${leftovers}" ]] || fail "restart: temporary files left behind: ${leftovers}"
 
-echo "PASS: tracker via bridge_ledger.py matches bash (corpus + 200 generated, ${booked} with a meter id) and survives python3 dying (${final}/${MESSAGES} booked)"
+echo "PASS: tracker via bridge_ledger.py matches the recorded bash output (corpus + 200 generated, ${booked} with a meter id) and survives python3 dying (${final}/${MESSAGES} booked)"

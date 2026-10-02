@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Regression test: bridge_ledger.py and the bash helpers share their locks.
 #
-# While per-message bookkeeping moves to bridge_ledger.py one path at a time,
-# bash keeps writing some of the same files (the decode loop, the LISTEN path,
-# the tickers). Both sides must serialise on "<file>.lock": flock(1) in bash,
+# Per-message bookkeeping is done by bridge_ledger.py, but bash still writes
+# some of the same files (the candidate registrations it is handed, the decode
+# loop, the tickers, the history trim at subscriber start). Both sides must
+# serialise on "<file>.lock": flock(1) in bash,
 # fcntl.flock() in Python. If they did not, a read-modify-write from one side
 # would silently drop the row the other side had just written - no error, just
 # a candidate or a reading that vanishes. This test runs both writers at once
@@ -71,16 +72,18 @@ for (( w = 0; w < WORKERS; w++ )); do
   done
 done
 
-# ── locked appends from both sides ──────────────────────────────────────────
-# The JSONL histories are appended under the same lock; interleaved writers
-# must never split or merge a line.
+# ── python appends while bash trims ─────────────────────────────────────────
+# python3 appends the JSONL histories under the lock; bash trims them
+# (_trim_esp_rx_history, at subscriber start) under the same lock. A trim that
+# ran unlocked would rename its copy over lines appended meanwhile, or cut one
+# in half.
 JSONL="${TMP}/history.jsonl"
 : > "${JSONL}"
 
-bash_appends() {
-  local w="$1" i
+bash_trims() {
+  local i
   for (( i = 0; i < ROUNDS; i++ )); do
-    _append_esp_rx_history "${JSONL}" "${i}" "bash${w}" 52632878 wmbus/lilygo/telegram
+    _trim_esp_rx_history "${JSONL}" 30 20
   done
 }
 
@@ -99,19 +102,18 @@ PY
 
 pids=()
 for (( w = 0; w < WORKERS; w++ )); do
-  bash_appends "${w}" & pids+=("$!")
+  bash_trims & pids+=("$!")
   py_appends "${w}" & pids+=("$!")
 done
-for pid in "${pids[@]}"; do wait "${pid}" || fail "an append worker failed"; done
+for pid in "${pids[@]}"; do wait "${pid}" || fail "an append or trim worker failed"; done
 
-expected=$(( 2 * WORKERS * ROUNDS ))
-[[ "$(wc -l < "${JSONL}" | tr -d ' ')" == "${expected}" ]] \
-  || fail "appends: expected ${expected} lines, found $(wc -l < "${JSONL}" | tr -d ' ')"
-jq -e -s "length == ${expected}" "${JSONL}" >/dev/null \
-  || fail "appends: a line is not valid JSON - writers interleaved inside a line"
+lines="$(wc -l < "${JSONL}" | tr -d ' ')"
+(( lines > 0 && lines <= WORKERS * ROUNDS )) || fail "appends/trims: ${lines} lines left"
+jq -e -s "length == ${lines}" "${JSONL}" >/dev/null \
+  || fail "appends/trims: a line is not valid JSON - a trim cut or merged a line"
 
 # Nothing may be left behind by either side's temporary files.
 leftovers="$(find "${TMP}" -name '*.tmp.*')"
 [[ -z "${leftovers}" ]] || fail "temporary files left behind: ${leftovers}"
 
-echo "PASS: bash and bridge_ledger.py serialise on the same locks (${WORKERS}+${WORKERS} writers, no row lost)"
+echo "PASS: bash and bridge_ledger.py serialise on the same locks (${WORKERS}+${WORKERS} writers, no row lost, no line cut)"

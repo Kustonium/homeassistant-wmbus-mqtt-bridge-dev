@@ -1,0 +1,26 @@
+{
+  "updated_at": "ISO",
+  "config": {
+    "raw_topic": "wmbus/+/telegram",
+    "state_prefix": "wmbusmeters",
+    "discovery_prefix": "homeassistant",
+    "search_mode": false,
+    "loglevel": "normal"
+  },
+  "mqtt": {
+    "host": "core-mosquitto",
+    "port": "1883",
+    "connected": true
+  },
+  "pipeline": {
+    "raw_count": 43,
+    "decoded_count": 0,
+    "wmbusmeters_running": true,
+    "discovery_published": true,
+    "discovery_published_at": "ISO",
+    "last_raw_seen": "ISO",
+    "last_decoded_seen": "",
+    "last_error": "pipeline exited rc=1",
+    "last_event": "RAW telegram received (52 hex chars)"
+  }
+}

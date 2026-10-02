@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 # Performance regression test: process (fork) budget per telegram.
 #
-# Every RAW telegram from every ESP runs status_raw_seen and the per-ESP
-# tracker, every /rx and rssi/<id> message runs its subscriber, every
-# transmission heard by the parallel LISTEN instance runs its block handler, and
-# every decoded telegram runs status_meter_seen, inject_rssi_into_json and
+# Every RAW telegram from every ESP runs the RAW counter and the per-ESP
+# tracker, every /rx and rssi/<id> message runs its subscriber, every telegram
+# heard by the parallel LISTEN instance runs its parser, and every decoded
+# telegram runs status_meter_seen, inject_rssi_into_json and
 # emit_discovery_from_json. On a 5-ESP site with ~210 meters on air (~3 RAW
-# telegrams/s) these bash paths used ~200% CPU, almost all of it spent
-# starting processes - e.g. two subshells per meter-preview-<id> file per RAW
-# telegram (ee7a849). Nothing failed when that happened, so this test counts
-# the processes instead.
+# telegrams/s) these paths used ~200% CPU when they were bash, almost all of it
+# spent starting processes - e.g. two subshells per meter-preview-<id> file per
+# RAW telegram (ee7a849). Nothing failed when that happened, so this test
+# counts the processes instead. The per-message paths now run in
+# bridge_ledger.py (a batch costs the forks of starting it, none per message);
+# the decoded-telegram steps are still bash, measured per call.
 #
 # The cost has two independent dimensions:
 #   - boards: every ESP delivers its own copy, so the number of calls grows with
@@ -52,16 +54,10 @@ done
 # process, including a $(...) subshell that runs a shell function and execs
 # nothing. Raise a budget only together with an explanation in the commit that
 # added the processes.
-BUDGET_RAW_NO_PREVIEW=38       # 30: RAW telegram of a meter without a preview file (bash fallback)
-BUDGET_RAW_PREVIEW=43          # 34: RAW telegram of a candidate with a preview file (bash fallback)
 BUDGET_METER_SEEN=49           # 39: status_meter_seen
 BUDGET_INJECT_RSSI=8           #  6: line="$(inject_rssi_into_json ...)"
 BUDGET_DISCOVERY=12            #  9: emit_discovery_from_json, discovery cache full
 BUDGET_JSON_TOTAL=68           # 54: sum of the three decoded-telegram steps
-BUDGET_ESP_TRACKER=17          # 13: per-ESP tracker, one /telegram message (bash fallback)
-BUDGET_ESP_RX=42               # 33: /rx subscriber, one message (bash fallback)
-BUDGET_ESP_RSSI=9              #  7: rssi/<id> subscriber, configured meter
-                               #     (bash handler, the WMBUS_LEDGER=bash fallback)
 # Paths booked by bridge_ledger.py: forks for a whole batch of LEDGER_BATCH
 # messages through one process. Starting python3 is the only fork; per
 # message the cost must stay zero.
@@ -87,7 +83,6 @@ BUDGET_LEDGER_LISTEN=6         #  4: _listen_parse_stage, LEDGER_BATCH blocks
 BOARDS=5
 AIR_BATCH=40                   # telegrams on air per batch
 LEDGER_BATCH=200
-BUDGET_LISTEN_BLOCK=74         # 59: LISTEN block of a known candidate
 # How much ONE call may cost more at 200 meters on air than at 10.
 SCALE_TOLERANCE=2
 METER_COUNTS=(10 50 200)
@@ -97,9 +92,6 @@ REPEATS=5
 RAW_HEX="$(tr -d '[:space:]' < "${FIXTURE_DIR}/52632878.hex")"
 JSON_LINE="$(jq -c '. + {timestamp: "2026-10-02T10:00:00Z"}' "${FIXTURE_DIR}/52632878.golden.json")"
 METER_ID="52632878"
-# Same frame with the A-field of a meter (77665544) that has no preview file:
-# the preview scan then visits every file and matches none.
-RAW_HEX_OTHER="${RAW_HEX:0:8}44556677${RAW_HEX:16}"
 # A candidate that is not a configured meter: the first id fixture_ids makes.
 CANDIDATE_ID="10001003"
 # Diehl/SAP IZAR frames (device type 01): one candidate registered as auto with
@@ -176,9 +168,6 @@ STATUS_LAST_RAW_SEEN=""
 STATUS_LAST_DECODED_SEEN=""
 STATUS_LAST_ERROR=""
 STATUS_LAST_EVENT="running"
-RAW_RATE_CUR_MIN_EPOCH=0
-RAW_RATE_CUR_MIN_COUNT=0
-RAW_RATE_PREV_MIN_COUNT=0
 
 # ── fork counter ────────────────────────────────────────────────────────────
 # Reads /proc/stat with the read builtin: the counter itself costs no fork.
@@ -219,13 +208,13 @@ measure() {
 # ── fixture with M meters on air ────────────────────────────────────────────
 # Ids sort before 52632878, so the preview scan visits every other file before
 # it reaches the matching one. None of their little-endian forms occurs in
-# either frame.
+# any of the test frames.
 fixture_ids() {
   local m="$1" i id le
   for (( i = 1; i < m; i++ )); do
     printf -v id '%08X' $(( 0x10000000 + i * 4099 ))
     le="${id:6:2}${id:4:2}${id:2:2}${id:0:2}"
-    if [[ "${RAW_HEX,,}${RAW_HEX_OTHER,,}${SAP_AUTO_HEX,,}${SAP_KNOWN_HEX,,}" == *"${le,,}"* ]]; then
+    if [[ "${RAW_HEX,,}${SAP_AUTO_HEX,,}${SAP_KNOWN_HEX,,}" == *"${le,,}"* ]]; then
       continue
     fi
     printf '%s\n' "${id}"
@@ -285,7 +274,7 @@ build_fixture() {
   printf '%s\twater\tqwaterv2\twater\ttotal_m3\t9.001\t%s\tpublished\t20\t30\t5\t20\t\n' \
     "${METER_ID}" "${iso}" > "${STATUS_METERS_FILE}"
 
-  # Full recent-RAW ring (200 rows, the size status_store_recent_raw keeps).
+  # Full recent-RAW ring (200 rows, the size the RAW counter keeps).
   : > "${STATUS_RECENT_RAW_FILE}"
   for (( n = 0; n < 200; n++ )); do
     printf '%s\t%s\t%s\n' "${iso}" "${#RAW_HEX}" "${RAW_HEX}" >> "${STATUS_RECENT_RAW_FILE}"
@@ -324,10 +313,6 @@ build_fixture() {
 restore_state() {
   rm -rf "${BASE}"
   cp -a "${TMP}/snapshot" "${BASE}"
-  # Same minute as the previous telegram and not a 25th telegram: the common
-  # case, without the once-per-minute / once-per-25 bookkeeping.
-  RAW_RATE_CUR_MIN_EPOCH=$(( $(date +%s) / 60 ))
-  RAW_RATE_CUR_MIN_COUNT=3
 }
 
 # Decoded-telegram steps, called the way bridge.sh calls them.
@@ -335,22 +320,9 @@ run_meter_seen() { status_meter_seen "${JSON_LINE}"; }
 run_inject_rssi() { PERF_LINE="$(inject_rssi_into_json "${METER_ID}" "${JSON_LINE}")"; }
 run_discovery() { emit_discovery_from_json "${PERF_LINE}"; }
 
-# Per-message handlers of the background subscribers and of LISTEN, with the
-# state their loops keep. The tracker has already attributed the meter to this
-# board (steady state: no meter-device rewrite).
-_RT_DEV_POS=1
-declare -A _MD_LAST=()
-_rx_history_since_trim=0
-_rx_meta_since_trim=0
-declare -A _RSSI_WANTED=()
-_rssi_wanted_at=0
+# The ledger paths, batch by batch, as their subscribers and stages run them.
 SEARCH_MODE="false"
 SEARCH_EXPECTED_VALUE_M3="0"
-RX_PAYLOAD='{"schema":1,"boot_id":"A84F12C7","seq":7,"rx_task_wakeup_us":123456,"meter_id":"52632878","mode":"T1","rssi_dbm":-54,"frame_crc32":"7F56A83C","frame_length":123,"received_at":"2026-10-02T10:00:00.123Z"}'
-run_tracker() { _MD_LAST["${METER_ID}"]="lilygo"; _esp_tracker_handle_message "wmbus/lilygo/telegram" "${RAW_HEX}"; }
-run_rx() { _esp_rx_handle_message "wmbus/lilygo/rx" "${RX_PAYLOAD}"; }
-run_rssi() { _esp_rssi_handle_message "wmbus/lilygo/rssi/${METER_ID}" "-70"; }
-run_listen() { _process_listen_text_block "${CANDIDATE_ID}" "qwaterv2" "Water meter (0x07)" "(QDS) Qundis"; }
 BRIDGE_LEDGER="${ROOT_DIR}/rootfs/usr/bin/bridge_ledger.py"
 for (( n = 1; n <= LEDGER_BATCH; n++ )); do
   printf 'wmbus/board%d/rssi/%s\t-%d\n' $(( n % 5 )) "${METER_ID}" $(( 50 + n % 40 ))
@@ -440,13 +412,6 @@ run_ledger_rssi() {
     < "${TMP}/rssi_batch"
 }
 
-check_raw_effect() {
-  [[ "$(cat "${STATUS_RAW_COUNT_FILE}")" == "1001" ]] \
-    || fail "status_raw_seen did not count the telegram (fixture or stub broken)"
-  jq -e '.pipeline.raw_count == 1001' "${STATUS_JSON}" >/dev/null \
-    || fail "status_raw_seen did not write status.json (fixture or stub broken)"
-}
-
 # ── run the matrix ──────────────────────────────────────────────────────────
 declare -A R
 # Discovery steady state: the cache is in memory and survives the restores, so
@@ -461,14 +426,6 @@ emit_discovery_from_json "${PERF_LINE}" >/dev/null 2>&1
 
 for m in "${METER_COUNTS[@]}"; do
   build_fixture "${m}"
-
-  measure restore_state status_raw_seen "${RAW_HEX_OTHER}"
-  R[raw_no_preview,${m}]="${MEASURED}"
-  check_raw_effect
-
-  measure restore_state status_raw_seen "${RAW_HEX}"
-  R[raw_preview,${m}]="${MEASURED}"
-  check_raw_effect
 
   measure restore_state run_meter_seen
   R[meter_seen,${m}]="${MEASURED}"
@@ -485,22 +442,6 @@ for m in "${METER_COUNTS[@]}"; do
     || fail "emit_discovery_from_json republished ${PERF_PUBS} configs at M=${m}: not the steady state the budget is for"
 
   R[json_total,${m}]=$(( R[meter_seen,${m}] + R[inject_rssi,${m}] + R[discovery,${m}] ))
-
-  measure restore_state run_tracker
-  R[esp_tracker,${m}]="${MEASURED}"
-  [[ "$(awk -F '\t' '$1=="lilygo" {print $4}' "${STATUS_ESP_TELEGRAM_DEVICES_FILE}")" == "1" ]] \
-    || fail "tracker did not count the telegram for its board (fixture broken)"
-  [[ -s "${ESP_RX_HISTORY_FILE}" ]] || fail "tracker did not append reception history (fixture broken)"
-
-  measure restore_state run_rx
-  R[esp_rx,${m}]="${MEASURED}"
-  [[ "$(awk -F '\t' '$1=="lilygo" {print $2 "/" $3}' "${STATUS_ESP_RX_SEQUENCE_FILE}")" == "A84F12C7/7" ]] \
-    || fail "/rx handler did not record the sequence (fixture broken)"
-
-  measure restore_state run_rssi
-  R[esp_rssi,${m}]="${MEASURED}"
-  [[ "$(awk -F '\t' -v id="${METER_ID}" '$1==id && $3=="lilygo" {print $2}' "${STATUS_RSSI_FILE}")" == "-70" ]] \
-    || fail "rssi handler did not store the reading (fixture broken)"
 
   measure restore_state run_ledger_rssi
   R[ledger_rssi,${m}]="${MEASURED}"
@@ -537,30 +478,16 @@ for m in "${METER_COUNTS[@]}"; do
     || fail "bridge_ledger.py listen handed $(wc -l < "${HANDOVERS}") blocks of a known candidate to bash"
   grep -q "^${CANDIDATE_ID}"$'\t' "${STATUS_CANDIDATE_ANALYSIS_FILE}" \
     || fail "bridge_ledger.py listen did not refresh the known candidate (fixture broken)"
-
-  measure restore_state run_listen
-  R[listen_block,${m}]="${MEASURED}"
-  [[ "$(awk -F '\t' -v id="${CANDIDATE_ID}" '$1==id && $2=="candidate"' "${STATUS_SEEN_FILE}" | wc -l)" == "21" ]] \
-    || fail "LISTEN block did not record the candidate reception (fixture broken)"
-  [[ ! -s "${STATUS_CANDIDATE_PREVIEW_STATE_FILE}" && -z "$(ls -A "${BASE}/.preview_decode_locks")" ]] \
-    || fail "LISTEN block rewrote the preview or started a one-shot: not the steady state the budget is for"
 done
 
 # ── report and verdict ──────────────────────────────────────────────────────
-STEPS=(raw_no_preview raw_preview meter_seen inject_rssi discovery json_total
-       esp_tracker esp_rx esp_rssi listen_block ledger_rssi ledger_rx ledger_tracker ledger_raw
-       ledger_sap ledger_listen)
+STEPS=(meter_seen inject_rssi discovery json_total
+       ledger_rssi ledger_rx ledger_tracker ledger_raw ledger_sap ledger_listen)
 declare -A LABEL=(
-  [raw_no_preview]="status_raw_seen, no preview (bash)"
-  [raw_preview]="status_raw_seen, preview (bash)"
   [meter_seen]="status_meter_seen"
   [inject_rssi]="inject_rssi_into_json"
   [discovery]="emit_discovery_from_json"
   [json_total]="decoded JSON path (sum)"
-  [esp_tracker]="ESP tracker (bash fallback)"
-  [esp_rx]="ESP /rx subscriber (bash fallback)"
-  [esp_rssi]="ESP rssi subscriber (bash fallback)"
-  [listen_block]="LISTEN block (known candidate)"
   [ledger_rssi]="ledger rssi, ${LEDGER_BATCH} msgs, 1 process"
   [ledger_rx]="ledger /rx, ${LEDGER_BATCH} msgs, 1 process"
   [ledger_tracker]="ledger tracker, ${LEDGER_BATCH} msgs, 1 proc"
@@ -569,16 +496,10 @@ declare -A LABEL=(
   [ledger_listen]="ledger LISTEN, ${LEDGER_BATCH} known blocks"
 )
 declare -A BUDGET=(
-  [raw_no_preview]="${BUDGET_RAW_NO_PREVIEW}"
-  [raw_preview]="${BUDGET_RAW_PREVIEW}"
   [meter_seen]="${BUDGET_METER_SEEN}"
   [inject_rssi]="${BUDGET_INJECT_RSSI}"
   [discovery]="${BUDGET_DISCOVERY}"
   [json_total]="${BUDGET_JSON_TOTAL}"
-  [esp_tracker]="${BUDGET_ESP_TRACKER}"
-  [esp_rx]="${BUDGET_ESP_RX}"
-  [esp_rssi]="${BUDGET_ESP_RSSI}"
-  [listen_block]="${BUDGET_LISTEN_BLOCK}"
   [ledger_rssi]="${BUDGET_LEDGER_RSSI}"
   [ledger_rx]="${BUDGET_LEDGER_RX}"
   [ledger_tracker]="${BUDGET_LEDGER_TRACKER}"

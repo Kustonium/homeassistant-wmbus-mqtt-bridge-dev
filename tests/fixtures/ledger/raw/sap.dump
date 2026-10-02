@@ -1,0 +1,100 @@
+== ./.preview_decode_last/11556677
+1791021600
+== ./.preview_decode_last/2156B4C2
+1791021600
+== ./.preview_decode_last/215F908A
+1791021600
+== ./etc/wmbusmeters.d/meter-official
+name=official
+id=00112233
+driver=izar
+== ./preview/etc/wmbusmeters.d/meter-preview-11556677
+name=preview_11556677
+id=11556677
+== ./preview/etc/wmbusmeters.d/meter-preview-2156B4C2
+name=preview_2156B4C2
+id=2156b4c2
+== ./preview/etc/wmbusmeters.d/meter-preview-215F908A
+name=preview_215F908A
+id=215f908a
+== ./status.json
+{
+  "updated_at": "2026-10-02T10:00:05+00:00",
+  "config": {
+    "raw_topic": "wmbus/+/telegram",
+    "state_prefix": "wmbusmeters",
+    "discovery_prefix": "homeassistant",
+    "search_mode": false,
+    "loglevel": "normal"
+  },
+  "mqtt": {
+    "host": "core-mosquitto",
+    "port": "1883",
+    "connected": true
+  },
+  "pipeline": {
+    "raw_count": 32,
+    "decoded_count": 0,
+    "wmbusmeters_running": true,
+    "discovery_published": false,
+    "discovery_published_at": "",
+    "last_raw_seen": "2026-10-02T10:00:05+00:00",
+    "last_decoded_seen": "",
+    "last_error": "pipeline exited rc=1",
+    "last_event": "MQTT broker ready"
+  }
+}
+== ./status_candidate_analysis.tsv
+215F908A	unknown	RAW was mapped to this candidate, but no backend security parser has classified AES yet	a2		52	2026-10-02T10:00:02+00:00
+2156B4C2	unknown	RAW was mapped to this candidate, but no backend security parser has classified AES yet	a2		52	2026-10-02T10:00:05+00:00
+00112233	unknown	RAW was mapped to this candidate, but no backend security parser has classified AES yet	a2		52	2026-10-02T10:00:05+00:00
+11556677	unknown	RAW was mapped to this candidate, but no backend security parser has classified AES yet	a2		52	2026-10-02T10:00:05+00:00
+== ./status_candidate_preview_state.tsv
+11556677	pending	2026-10-02T10:00:05+00:00	
+== ./status_candidate_raw.tsv
+215F908A	2026-10-02T10:00:02+00:00	52	1944304c8a905f21d401a23101001358b0b245a8b66ddd4f48fa
+2156B4C2	2026-10-02T10:00:05+00:00	52	1944304cc2b45621d401a2410500130c30bd8651391dccb6eafa
+00112233	2026-10-02T10:00:05+00:00	52	1944304c33221100d401a2410500130c30bd8651391dccb6eafa
+11556677	2026-10-02T10:00:05+00:00	52	1944304c77665511d401a2410500130c30bd8651391dccb6eafa
+== ./status_candidates.tsv
+77665544	qwaterv2	Water meter (0x07)	OLD	3	30	1	2	QDS
+215F908A	auto	Unknown meter type (0x01)	2026-10-02T10:00:02+00:00	4	1334	3	3	(SAP) Diehl Metering
+2156B4C2	auto	Unknown meter type (0x01)	2026-10-02T10:00:05+00:00	4	1335	3	3	(SAP) Diehl Metering
+00112233	auto	Unknown meter type (0x01)	2026-10-02T10:00:05+00:00	4	1335	3	3	(SAP) Diehl Metering
+11556677	auto	Unknown meter type (0x01)	2026-10-02T10:00:05+00:00	3	2003	2	2	(SAP) Diehl Metering
+== ./status_events.tsv
+2026-10-02T10:00:00+00:00	ok	RAW telegram received (52 hex chars)
+== ./status_last_raw_seen.txt
+2026-10-02T10:00:05+00:00
+== ./status_rate_1m.json
+{"current_min":3,"prev_min":0,"epoch":1790935205}
+== ./status_raw_count.txt
+32
+== ./status_recent_raw.tsv
+2026-10-02T10:00:00+00:00	52	1944304CC2B45621D401A2410500130C30BD8651391DCCB6EAFA
+2026-10-02T10:00:00+00:00	52	1944304C8A905F21D401A23101001358B0B245A8B66DDD4F48FA
+2026-10-02T10:00:00+00:00	52	1944304C33221100D401A2410500130C30BD8651391DCCB6EAFA
+2026-10-02T10:00:00+00:00	52	1944304CC2B45621D401A2410500130C30BD8651391DCCB6EAFA
+2026-10-02T10:00:01+00:00	52	1944304CC2B45621D401A2410500130C30BD8651391DCCB6EAFA
+2026-10-02T10:00:01+00:00	52	1944304C8A905F21D401A23101001358B0B245A8B66DDD4F48FA
+2026-10-02T10:00:02+00:00	52	1944304C8A905F21D401A23101001358B0B245A8B66DDD4F48FA
+2026-10-02T10:00:05+00:00	52	1944304CC2B45621D401A2410500130C30BD8651391DCCB6EAFA
+2026-10-02T10:00:05+00:00	52	1944304C33221100D401A2410500130C30BD8651391DCCB6EAFA
+2026-10-02T10:00:05+00:00	52	1944304C77665511D401A2410500130C30BD8651391DCCB6EAFA
+== ./status_seen.tsv
+2156B4C2	candidate	1790931200
+2156B4C2	meter	1790934500
+215F908A	candidate	1790931200
+215F908A	meter	1790934500
+00112233	candidate	1790931200
+00112233	meter	1790934500
+11556677	candidate	1790931200
+11556677	meter	1790934500
+2156B4C2	meter	1790935199
+2156B4C2	candidate	1790935200
+215F908A	candidate	1790935200
+00112233	candidate	1790935200
+215F908A	candidate	1790935202
+2156B4C2	candidate	1790935205
+00112233	candidate	1790935205
+11556677	candidate	1790935205

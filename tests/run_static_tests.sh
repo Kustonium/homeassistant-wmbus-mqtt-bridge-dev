@@ -13,7 +13,6 @@ bash tests/test_discovery_publish_order.sh
 bash tests/test_discovery_field_categories.sh
 bash tests/test_issue_report_sources.sh
 bash tests/test_calculated_fields.sh
-bash tests/test_esp_reception_history.sh
 bash tests/test_esp_boot_dedup.sh
 bash tests/test_esp_diag_retained.sh
 bash tests/test_esp_coverage_sensor.sh
