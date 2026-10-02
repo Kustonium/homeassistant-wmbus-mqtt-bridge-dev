@@ -59,13 +59,14 @@ BUDGET_INJECT_RSSI=8           #  6: line="$(inject_rssi_into_json ...)"
 BUDGET_DISCOVERY=12            #  9: emit_discovery_from_json, discovery cache full
 BUDGET_JSON_TOTAL=68           # 54: sum of the three decoded-telegram steps
 BUDGET_ESP_TRACKER=17          # 13: per-ESP tracker, one /telegram message
-BUDGET_ESP_RX=42               # 33: /rx subscriber, one message
+BUDGET_ESP_RX=42               # 33: /rx subscriber, one message (bash fallback)
 BUDGET_ESP_RSSI=9              #  7: rssi/<id> subscriber, configured meter
                                #     (bash handler, the WMBUS_LEDGER=bash fallback)
 # Paths booked by bridge_ledger.py: forks for a whole batch of LEDGER_BATCH
 # messages through one process. Starting python3 is the only fork; per
 # message the cost must stay zero.
 BUDGET_LEDGER_RSSI=2           #  1: rssi/<id>, LEDGER_BATCH messages
+BUDGET_LEDGER_RX=2             #  1: /rx, LEDGER_BATCH messages
 LEDGER_BATCH=200
 BUDGET_LISTEN_BLOCK=74         # 59: LISTEN block of a known candidate
 # How much ONE call may cost more at 200 meters on air than at 10.
@@ -313,6 +314,17 @@ BRIDGE_LEDGER="${ROOT_DIR}/rootfs/usr/bin/bridge_ledger.py"
 for (( n = 1; n <= LEDGER_BATCH; n++ )); do
   printf 'wmbus/board%d/rssi/%s\t-%d\n' $(( n % 5 )) "${METER_ID}" $(( 50 + n % 40 ))
 done > "${TMP}/rssi_batch"
+for (( n = 1; n <= LEDGER_BATCH; n++ )); do
+  printf 'wmbus/board%d/rx\t{"schema":1,"boot_id":"A84F12C7","seq":%d,"rx_task_wakeup_us":1,"meter_id":"%s","mode":"T1","frame_crc32":"7F56A83C","frame_length":123,"received_at":"2026-10-02T10:00:00.123Z"}\n' \
+    $(( n % 5 )) "${n}" "${METER_ID}"
+done > "${TMP}/rx_batch"
+run_ledger_rx() {
+  python3 "${BRIDGE_LEDGER}" rx \
+    --reception-file "${STATUS_ESP_RX_RECEPTION_FILE}" --mode-file "${STATUS_ESP_RX_MODE_FILE}" \
+    --history-file "${ESP_RF_RX_HISTORY_FILE}" --sequence-file "${STATUS_ESP_RX_SEQUENCE_FILE}" \
+    --boots-file "${STATUS_ESP_RX_BOOTS_FILE}" --clock-file "${STATUS_ESP_RX_CLOCK_FILE}" \
+    < "${TMP}/rx_batch"
+}
 run_ledger_rssi() {
   python3 "${BRIDGE_LEDGER}" rssi --meter-dir "${METER_DIR}" --rssi-file "${STATUS_RSSI_FILE}" \
     < "${TMP}/rssi_batch"
@@ -385,6 +397,11 @@ for m in "${METER_COUNTS[@]}"; do
   [[ "$(awk -F '\t' -v id="${METER_ID}" '$1==id && $3 ~ /^board[0-4]$/' "${STATUS_RSSI_FILE}" | wc -l)" == "5" ]] \
     || fail "bridge_ledger.py rssi did not store one row per board (fixture broken)"
 
+  measure restore_state run_ledger_rx
+  R[ledger_rx,${m}]="${MEASURED}"
+  [[ "$(wc -l < "${ESP_RF_RX_HISTORY_FILE}" | tr -d ' ')" == "${LEDGER_BATCH}" ]] \
+    || fail "bridge_ledger.py rx did not book every message (fixture broken)"
+
   measure restore_state run_listen
   R[listen_block,${m}]="${MEASURED}"
   [[ "$(awk -F '\t' -v id="${CANDIDATE_ID}" '$1==id && $2=="candidate"' "${STATUS_SEEN_FILE}" | wc -l)" == "21" ]] \
@@ -395,7 +412,7 @@ done
 
 # ── report and verdict ──────────────────────────────────────────────────────
 STEPS=(raw_no_preview raw_preview meter_seen inject_rssi discovery json_total
-       esp_tracker esp_rx esp_rssi listen_block ledger_rssi)
+       esp_tracker esp_rx esp_rssi listen_block ledger_rssi ledger_rx)
 declare -A LABEL=(
   [raw_no_preview]="status_raw_seen (no preview match)"
   [raw_preview]="status_raw_seen (preview match)"
@@ -404,10 +421,11 @@ declare -A LABEL=(
   [discovery]="emit_discovery_from_json"
   [json_total]="decoded JSON path (sum)"
   [esp_tracker]="ESP tracker (/telegram)"
-  [esp_rx]="ESP /rx subscriber"
+  [esp_rx]="ESP /rx subscriber (bash fallback)"
   [esp_rssi]="ESP rssi subscriber (bash fallback)"
   [listen_block]="LISTEN block (known candidate)"
   [ledger_rssi]="ledger rssi, ${LEDGER_BATCH} msgs, 1 process"
+  [ledger_rx]="ledger /rx, ${LEDGER_BATCH} msgs, 1 process"
 )
 declare -A BUDGET=(
   [raw_no_preview]="${BUDGET_RAW_NO_PREVIEW}"
@@ -421,6 +439,7 @@ declare -A BUDGET=(
   [esp_rssi]="${BUDGET_ESP_RSSI}"
   [listen_block]="${BUDGET_LISTEN_BLOCK}"
   [ledger_rssi]="${BUDGET_LEDGER_RSSI}"
+  [ledger_rx]="${BUDGET_LEDGER_RX}"
 )
 
 printf '%-38s' "forks per call, meters on air ->"

@@ -288,6 +288,43 @@ _esp_rssi_subscriber() {
   done
 }
 
+# The wmbus/+/rx subscriber loop (see start_esp_subscribers).
+_esp_rx_subscriber() {
+  _rx_meta_since_trim=0
+  _trim_esp_rx_history "${ESP_RF_RX_HISTORY_FILE}" 100000 90000 || true
+  while true; do
+    _sub_t0="$(epoch_now)"
+    if [[ "${WMBUS_LEDGER:-python}" == "bash" ]]; then
+      while IFS=$'\t' read -r _rx_meta_topic _rx_meta_payload; do
+        _esp_rx_handle_message "${_rx_meta_topic}" "${_rx_meta_payload}"
+      done < <(
+        ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" "${SUB_EXTRA[@]}" \
+          -t 'wmbus/+/rx' -F '%t\t%p' 2>/dev/null
+      )
+    else
+      # Same arrangement as the rssi subscriber: python3 reads through a
+      # descriptor and mosquitto_sub is stopped as soon as python3 ends. It
+      # matters even more here: this subscription has no -W timeout, so a
+      # writer left running into a dead pipe would never reconnect.
+      exec {_rx_fd}< <(
+        ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" "${SUB_EXTRA[@]}" \
+          -t 'wmbus/+/rx' -F '%t\t%p' 2>/dev/null
+      )
+      _rx_sub_pid=$!
+      python3 -u "${BRIDGE_LEDGER}" rx \
+        --reception-file "${STATUS_ESP_RX_RECEPTION_FILE}" \
+        --mode-file "${STATUS_ESP_RX_MODE_FILE}" \
+        --history-file "${ESP_RF_RX_HISTORY_FILE}" \
+        --sequence-file "${STATUS_ESP_RX_SEQUENCE_FILE}" \
+        --boots-file "${STATUS_ESP_RX_BOOTS_FILE}" \
+        --clock-file "${STATUS_ESP_RX_CLOCK_FILE}" <&"${_rx_fd}" || true
+      kill "${_rx_sub_pid}" 2>/dev/null || true
+      exec {_rx_fd}<&-
+    fi
+    _sub_reconnect_sleep "${_sub_t0}"
+  done
+}
+
 start_esp_subscribers() {
 # Track background subscriber PIDs so the soft-reload watcher in bridge.sh can
 # exclude them from its kill — these subscribers must survive pipeline restarts
@@ -557,20 +594,7 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 # the unchanged /telegram HEX stream. It is deliberately a separate subscriber:
 # a malformed or absent /rx topic can never interrupt the decoder pipeline or
 # the legacy tracker used by older firmware.
-(
-  _rx_meta_since_trim=0
-  _trim_esp_rx_history "${ESP_RF_RX_HISTORY_FILE}" 100000 90000 || true
-  while true; do
-    _sub_t0="$(epoch_now)"
-    while IFS=$'\t' read -r _rx_meta_topic _rx_meta_payload; do
-      _esp_rx_handle_message "${_rx_meta_topic}" "${_rx_meta_payload}"
-    done < <(
-      ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" "${SUB_EXTRA[@]}" \
-        -t 'wmbus/+/rx' -F '%t\t%p' 2>/dev/null
-    )
-    _sub_reconnect_sleep "${_sub_t0}"
-  done
-) &
+_esp_rx_subscriber &
 ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 
 # Background subscriber for all ESP diagnostic events.

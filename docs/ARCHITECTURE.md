@@ -364,9 +364,13 @@ Bookkeeping that runs for every MQTT message is moving out of bash into
 message for it, which on a busy multi-ESP site kept a CPU core busy. The
 subscriber loop stays in bash and pipes `mosquitto_sub` into the Python
 process; if Python dies, the loop restarts it like a dropped connection.
-Formats and locks stay those described in Appendix A. Moved so far: the
-`rssi/<meter_id>` subscriber. `WMBUS_LEDGER=bash` selects the previous
-in-shell handlers while the move is in progress.
+Python reads the subscription through a descriptor, so the loop holds
+`mosquitto_sub`'s PID and stops it the moment Python ends - a plain pipe is not
+enough where SIGPIPE is ignored. Formats and locks stay those described in
+Appendix A; the `/rx` history is written byte for byte as jq writes it, number
+literals included. Moved so far: the `rssi/<meter_id>` and `/rx` subscribers.
+`WMBUS_LEDGER=bash` selects the previous in-shell handlers while the move is in
+progress.
 
 ### 5.4 Wired M-Bus: a third instance, not a second transport
 
