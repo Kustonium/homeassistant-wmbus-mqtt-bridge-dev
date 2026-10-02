@@ -282,7 +282,13 @@ when configured meters exist.
 When a candidate needs a value preview, the bridge creates a preview meter file
 and runs a bounded, one-shot decoder for a matching RAW frame. Preview decoders
 are rate-limited and concurrency-limited; the always-on LISTEN instance remains
-pure listen and is not polluted with preview meter files.
+pure listen and is not polluted with preview meter files. A candidate is
+decoded at most every 20 s (`PREVIEW_DECODE_MIN_INTERVAL_SECONDS`); once its
+preview shows a value (`decoded_value`), at most every 300 s
+(`PREVIEW_DECODED_MIN_INTERVAL_SECONDS`) - the one-shot then only refreshes
+the value, and on a site with hundreds of candidates it was the largest cost
+of the RAW stage. Any change of the preview config sets `pending` first,
+which decodes at once.
 
 Candidate preview states are explicit:
 

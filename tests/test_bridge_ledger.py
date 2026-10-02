@@ -329,7 +329,7 @@ class RawBookRequestTest(unittest.TestCase):
                 "rate", "rate-history", "status-json", "discovery-flag")),
             f"--candidates-file={self.candidates}",
             *(f"--{n}-file={d / n}" for n in ("seen", "candidate-raw", "candidate-analysis")),
-            f"--meter-dir={d / 'meters'}",
+            f"--meter-dir={d / 'meters'}", f"--preview-state-file={d / 'states'}",
             f"--preview-meter-dir={d / 'preview'}", f"--preview-last-dir={d / 'last'}"])
         (d / "meters").mkdir()
         self.d = d
@@ -371,6 +371,17 @@ class RawBookRequestTest(unittest.TestCase):
         (self.preview / "meter-preview-abcdef12").write_text("id=abcdef12\n")
         abcd = self.QWATER[:8] + "12EFCDAB" + self.QWATER[16:]
         self.assertEqual(self.requests(abcd), [])  # bash looks for meter-preview-ABCDEF12
+
+    def test_decoded_value_is_decoded_again_only_after_300_s(self):
+        (self.preview / "meter-preview-52632878").write_text("id=52632878\n")
+        request = [f"preview\t{self.QWATER}\t52632878"]
+        for state, ago, expected in (("decoded_value", 100, []), ("decoded_value", 299, []),
+                                     ("decoded_value", 300, request), ("pending", 21, request),
+                                     ("no_decode_result", 21, request), ("pending", 19, [])):
+            with self.subTest(state=state, ago=ago):
+                (self.d / "states").write_text(f"52632878\t{state}\tT\t\n")
+                (self.last / "52632878").write_text(f"{int(bl.now()) - ago}\n")
+                self.assertEqual(self.requests(self.QWATER), expected)
 
     def test_sap_auto_candidate_registered_as_is_is_refreshed_without_bash(self):
         sap01 = self.frame("44332211")  # 11223344, device type 01: bash registers it as auto

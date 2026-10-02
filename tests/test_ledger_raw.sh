@@ -16,7 +16,8 @@
 # again and lose at most the telegram being handled.
 #
 # The file paths are the ones bridge.sh derives from ${BASE}.
-# shellcheck disable=SC2034,SC2153
+# The clock and the ledger mode are set in subshells on purpose (SC2030/SC2031).
+# shellcheck disable=SC2034,SC2153,SC2030,SC2031
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -290,8 +291,64 @@ diff -u "${TMP}/sap_bash" "${TMP}/sap_py" >&2 \
   || fail "SAP auto refresh: bash registered $(grep -c '^register' "${TMP}/sap_bash_decisions") times, not 10 - the corpus tests nothing"
 [[ "$(grep -c $'^215F908A\tcandidate\t' "${STATUS_SEEN_FILE}")" == 3 ]] \
   || fail "SAP auto refresh: 215F908A at +0, +1 and +2 s must be booked at +0 and +2 s only"
-unset -f date
 status_candidate_seen() { printf 'register\t%s\t%s\t%s\n' "$1" "$2" "$3" >> "${DECISIONS}"; }
+
+# ── preview one-shot interval by state ──────────────────────────────────────
+# A candidate whose preview shows a value (decoded_value) is decoded again at
+# most every PREVIEW_DECODED_MIN_INTERVAL_SECONDS (300 s); pending and
+# no_decode_result keep the 20 s throttle. The last one-shot of every candidate
+# ran at T0; the one-shot itself is the logging stub, so it does not move that.
+PV_D="${QWATER:0:8}11111111${QWATER:16}"   # 11111111: decoded_value
+PV_P="${QWATER:0:8}22222222${QWATER:16}"   # 22222222: pending
+PV_N="${QWATER:0:8}33333333${QWATER:16}"   # 33333333: no_decode_result
+seed_preview() {
+  rm -rf "${BASE}"
+  mkdir -p "${BASE}" "${PREVIEW_METER_DIR}" "${METER_DIR}" "${BASE}/.preview_decode_last" \
+    "${BASE}/.preview_decode_locks" "${BASE}/.preview_decode_slots" "${BASE}/.preview_attempts"
+  local id state
+  for id in 11111111 22222222 33333333; do
+    printf 'name=preview_%s\nid=%s\ndriver=qwaterv2\n' "${id}" "${id}" > "${PREVIEW_METER_DIR}/meter-preview-${id}"
+    printf '%s\n' "${T0}" > "${BASE}/.preview_decode_last/${id}"
+  done
+  for state in "11111111 decoded_value" "22222222 pending" "33333333 no_decode_result"; do
+    printf '%s\t%s\t2026-10-02T10:00:00+00:00\t\n' "${state%% *}" "${state#* }"
+  done > "${STATUS_CANDIDATE_PREVIEW_STATE_FILE}"
+  : > "${STATUS_CANDIDATES_FILE}"
+  printf '%s\n' 22 > "${STATUS_RAW_COUNT_FILE}"
+  : > "${DECISIONS}"
+}
+# Hand-overs of the python3 run: within 300 s a decoded_value candidate must
+# not even be asked of bash (each request costs a bash call).
+eval "real_$(declare -f preview_decode_raw_if_requested)"
+# shellcheck disable=SC2329  # called by the stage
+preview_decode_raw_if_requested() { [[ -n "${2:-}" ]] && printf '%s\n' "$2" >> "${TMP}/preview_requests"; real_preview_decode_raw_if_requested "$@"; }
+preview_at() {  # preview_at bash|python <seconds after T0> <frame>...
+  local mode="$1" offset="$2"
+  shift 2
+  printf '%s\n' "$@" | (
+    export LEDGER_TEST_EPOCH=$(( T0 + offset )) PYTHONPATH="${TMP}/clock" WMBUS_LEDGER="${mode}"
+    stage || true )
+}
+for mode in bash python; do
+  seed_preview
+  : > "${TMP}/preview_requests"
+  for offset in 21 150 299; do preview_at "${mode}" "${offset}" "${PV_D}"; done
+  [[ ! -s "${DECISIONS}" ]] \
+    || { cat "${DECISIONS}" >&2; fail "${mode}: decoded_value decoded again within 300 s"; }
+  [[ "${mode}" == bash || ! -s "${TMP}/preview_requests" ]] \
+    || fail "python: decoded_value handed to bash within 300 s"
+  preview_at "${mode}" 300 "${PV_D}"
+  [[ "$(cat "${DECISIONS}")" == $'preview\t11111111' ]] \
+    || { cat "${DECISIONS}" >&2; fail "${mode}: decoded_value not decoded again after 300 s"; }
+  : > "${DECISIONS}"
+  preview_at "${mode}" 10 "${PV_P}" "${PV_N}"
+  [[ ! -s "${DECISIONS}" ]] \
+    || { cat "${DECISIONS}" >&2; fail "${mode}: pending/no_decode_result decoded within the 20 s throttle"; }
+  preview_at "${mode}" 21 "${PV_P}" "${PV_N}"
+  [[ "$(cat "${DECISIONS}")" == $'preview\t22222222\npreview\t33333333' ]] \
+    || { cat "${DECISIONS}" >&2; fail "${mode}: pending/no_decode_result not decoded after 20 s"; }
+done
+unset -f date
 
 # ── restart after python3 dies ──────────────────────────────────────────────
 seed
