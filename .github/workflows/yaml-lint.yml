@@ -44,6 +44,7 @@ jobs:
             .github/workflows/shellcheck.yml \
             .github/workflows/yaml-lint.yml \
             .github/workflows/build.yaml \
+            .github/workflows/static-tests.yml \
             .github/workflows/changelog-draft.yml \
             .github/workflows/wmbusmeters-pin-bump.yml \
             .github/dependabot.yml \

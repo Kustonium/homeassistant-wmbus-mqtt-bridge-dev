@@ -103,21 +103,8 @@ jobs:
 
       - name: Run static regression tests
         shell: bash
-        run: |
-          set -euo pipefail
-          bash tests/test_driver_catalog_contract.sh
-          bash tests/test_discovery_publish_order.sh
-          bash tests/test_discovery_field_categories.sh
-          bash tests/test_issue_report_sources.sh
-          bash tests/test_calculated_fields.sh
-          bash tests/test_esp_reception_history.sh
-          bash tests/test_esp_boot_dedup.sh
-          bash tests/test_esp_diag_retained.sh
-          bash tests/test_esp_coverage_sensor.sh
-          bash tests/test_mbus_meter_files.sh
-          bash tests/test_perf_fork_budget.sh
-          python3 -m unittest tests/test_mbus_webui.py -v
-          python3 -m unittest tests/test_meter_rename.py -v
+        # Same list as static-tests.yml runs on pull requests.
+        run: bash tests/run_static_tests.sh
 
   # ---------------------------------------------------------------------------
   # Build — build + push BOTH arch images tagged :dev and :dev.<run_number>.
