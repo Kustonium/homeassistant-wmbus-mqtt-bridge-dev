@@ -52,8 +52,8 @@ done
 # process, including a $(...) subshell that runs a shell function and execs
 # nothing. Raise a budget only together with an explanation in the commit that
 # added the processes.
-BUDGET_RAW_NO_PREVIEW=38       # 30: RAW telegram of a meter without a preview file
-BUDGET_RAW_PREVIEW=43          # 34: RAW telegram of a candidate with a preview file
+BUDGET_RAW_NO_PREVIEW=38       # 30: RAW telegram of a meter without a preview file (bash fallback)
+BUDGET_RAW_PREVIEW=43          # 34: RAW telegram of a candidate with a preview file (bash fallback)
 BUDGET_METER_SEEN=49           # 39: status_meter_seen
 BUDGET_INJECT_RSSI=8           #  6: line="$(inject_rssi_into_json ...)"
 BUDGET_DISCOVERY=12            #  9: emit_discovery_from_json, discovery cache full
@@ -68,6 +68,10 @@ BUDGET_ESP_RSSI=9              #  7: rssi/<id> subscriber, configured meter
 BUDGET_LEDGER_RSSI=2           #  1: rssi/<id>, LEDGER_BATCH messages
 BUDGET_LEDGER_RX=2             #  1: /rx, LEDGER_BATCH messages
 BUDGET_LEDGER_TRACKER=2        #  1: /telegram tracker, LEDGER_BATCH messages
+# The RAW counter stage: python3 plus the bash loop that takes its hand-overs
+# (subshells of the stage pipeline). Telegrams of a candidate whose preview is
+# throttled, so nothing is handed over.
+BUDGET_LEDGER_RAW=6            #  4: _raw_counter_stage, LEDGER_BATCH telegrams
 LEDGER_BATCH=200
 BUDGET_LISTEN_BLOCK=74         # 59: LISTEN block of a known candidate
 # How much ONE call may cost more at 200 meters on air than at 10.
@@ -335,6 +339,9 @@ run_ledger_tracker() {
     --reception-file "${STATUS_ESP_METER_RECEPTION_FILE}" --history-file "${ESP_RX_HISTORY_FILE}" \
     < "${TMP}/tracker_batch"
 }
+for (( n = 1; n <= LEDGER_BATCH; n++ )); do printf '%s\n' "${RAW_HEX}"; done > "${TMP}/raw_batch"
+# The pipeline runs with errexit off (bridge.sh: set +e before run_once).
+run_ledger_raw() { ( set +e; _raw_counter_stage < "${TMP}/raw_batch" ); }
 run_ledger_rssi() {
   python3 "${BRIDGE_LEDGER}" rssi --meter-dir "${METER_DIR}" --rssi-file "${STATUS_RSSI_FILE}" \
     < "${TMP}/rssi_batch"
@@ -417,6 +424,11 @@ for m in "${METER_COUNTS[@]}"; do
   [[ "$(awk -F '\t' '$1 ~ /^board[0-4]$/ {n += $4} END {print n}' "${STATUS_ESP_TELEGRAM_DEVICES_FILE}")" == "${LEDGER_BATCH}" ]] \
     || fail "bridge_ledger.py tracker did not count every message (fixture broken)"
 
+  measure restore_state run_ledger_raw
+  R[ledger_raw,${m}]="${MEASURED}"
+  [[ "$(cat "${STATUS_RAW_COUNT_FILE}")" == "$(( 1000 + LEDGER_BATCH ))" ]] \
+    || fail "bridge_ledger.py raw did not count every telegram (fixture broken)"
+
   measure restore_state run_listen
   R[listen_block,${m}]="${MEASURED}"
   [[ "$(awk -F '\t' -v id="${CANDIDATE_ID}" '$1==id && $2=="candidate"' "${STATUS_SEEN_FILE}" | wc -l)" == "21" ]] \
@@ -427,10 +439,10 @@ done
 
 # ── report and verdict ──────────────────────────────────────────────────────
 STEPS=(raw_no_preview raw_preview meter_seen inject_rssi discovery json_total
-       esp_tracker esp_rx esp_rssi listen_block ledger_rssi ledger_rx ledger_tracker)
+       esp_tracker esp_rx esp_rssi listen_block ledger_rssi ledger_rx ledger_tracker ledger_raw)
 declare -A LABEL=(
-  [raw_no_preview]="status_raw_seen (no preview match)"
-  [raw_preview]="status_raw_seen (preview match)"
+  [raw_no_preview]="status_raw_seen, no preview (bash)"
+  [raw_preview]="status_raw_seen, preview (bash)"
   [meter_seen]="status_meter_seen"
   [inject_rssi]="inject_rssi_into_json"
   [discovery]="emit_discovery_from_json"
@@ -442,6 +454,7 @@ declare -A LABEL=(
   [ledger_rssi]="ledger rssi, ${LEDGER_BATCH} msgs, 1 process"
   [ledger_rx]="ledger /rx, ${LEDGER_BATCH} msgs, 1 process"
   [ledger_tracker]="ledger tracker, ${LEDGER_BATCH} msgs, 1 proc"
+  [ledger_raw]="ledger RAW stage, ${LEDGER_BATCH} telegrams"
 )
 declare -A BUDGET=(
   [raw_no_preview]="${BUDGET_RAW_NO_PREVIEW}"
@@ -457,6 +470,7 @@ declare -A BUDGET=(
   [ledger_rssi]="${BUDGET_LEDGER_RSSI}"
   [ledger_rx]="${BUDGET_LEDGER_RX}"
   [ledger_tracker]="${BUDGET_LEDGER_TRACKER}"
+  [ledger_raw]="${BUDGET_LEDGER_RAW}"
 )
 
 printf '%-38s' "forks per call, meters on air ->"

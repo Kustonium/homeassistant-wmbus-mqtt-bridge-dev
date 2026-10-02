@@ -309,5 +309,65 @@ class TrackerBookTest(unittest.TestCase):
         self.assertFalse(self.files["devices"].exists())  # awk on a missing file writes nothing
 
 
+class RawBookRequestTest(unittest.TestCase):
+    """Work handed to bash only when the bash code would get past its own checks:
+    an extra request is invisible in the files, but costs a bash call."""
+
+    IZAR = "".join((ROOT / "tests/fixtures/izar/2156B4C2.hex").read_text().split())
+    QWATER = "".join((ROOT / "tests/fixtures/qwaterv2/52632878.hex").read_text().split())
+
+    def setUp(self) -> None:
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        d = Path(self.dir.name)
+        (d / "preview").mkdir()
+        (d / "last").mkdir()
+        self.candidates = d / "candidates.tsv"
+        self.args = bl._parser().parse_args([
+            "raw", *(f"--{n}-file={d / n}" for n in (
+                "raw-count", "last-raw", "recent-raw", "broker-error", "events",
+                "rate", "rate-history", "status-json", "discovery-flag")),
+            f"--candidates-file={self.candidates}",
+            f"--preview-meter-dir={d / 'preview'}", f"--preview-last-dir={d / 'last'}"])
+        self.preview, self.last = d / "preview", d / "last"
+        self.out = io.StringIO()
+        self.book = bl.RawBook(self.args, self.out)
+
+    def requests(self, raw: str):
+        self.out.seek(0)
+        self.out.truncate()
+        self.book.candidate(raw)
+        self.book.preview(raw)
+        return self.out.getvalue().splitlines()
+
+    def frame(self, meter_le: str) -> str:
+        return self.IZAR[:8] + meter_le + self.IZAR[16:]
+
+    def test_sap_registration_requested_only_when_bash_would_register(self):
+        rows = {"11223344": "\tauto\tWater meter (0x07)",  # unknown driver: register
+                "22334455": "\tizar\tWater meter (0x07)",  # known driver
+                "33445566": "\tauto\tWater meter (0x07) encrypted",
+                "44556677": "\t\tWater meter (0x07)"}  # read shifts the type into the driver
+        self.candidates.write_text("".join(k + v + "\n" for k, v in rows.items()))
+        def le(meter): return meter[6:8] + meter[4:6] + meter[2:4] + meter[0:2]
+        self.assertEqual(self.requests(self.frame(le("11223344"))), [f"sap\t{self.frame(le('11223344'))}"])
+        for meter in ("22334455", "33445566", "44556677"):
+            with self.subTest(meter=meter):
+                self.assertEqual(self.requests(self.frame(le(meter))), [])
+        self.assertEqual(self.requests(self.frame(le("55667788"))), [f"sap\t{self.frame(le('55667788'))}"])  # no row
+        self.assertEqual(self.requests(self.QWATER), [])  # not SAP
+
+    def test_preview_requested_only_past_the_throttle(self):
+        (self.preview / "meter-preview-52632878").write_text("id=52632878\n")
+        self.assertEqual(self.requests(self.QWATER), [f"preview\t{self.QWATER}\t52632878"])
+        (self.last / "52632878").write_text(f"{int(bl.now())}\n")
+        self.assertEqual(self.requests(self.QWATER), [])  # decoded less than 20 s ago
+        (self.preview / "meter-preview-52632878").unlink()
+        (self.last / "52632878").unlink()
+        (self.preview / "meter-preview-abcdef12").write_text("id=abcdef12\n")
+        abcd = self.QWATER[:8] + "12EFCDAB" + self.QWATER[16:]
+        self.assertEqual(self.requests(abcd), [])  # bash looks for meter-preview-ABCDEF12
+
+
 if __name__ == "__main__":
     unittest.main()
