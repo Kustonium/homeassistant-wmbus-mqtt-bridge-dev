@@ -144,6 +144,19 @@ assert_state_class() {  # assert_state_class <field> <expected state_class, or "
   fi
 }
 
+# Home Assistant accepts only total / total_increasing for device_class
+# energy, water and gas (DEVICE_CLASS_STATE_CLASSES in
+# homeassistant/components/sensor/const.py; the state classes allowed per
+# device class are listed in the developer docs,
+# https://developers.home-assistant.io/docs/core/entity/sensor/#available-device-classes).
+assert_no_measurement_for_totals() {
+  if grep -E '"device_class":"(energy|water|gas)"' "${CAPTURE}" | grep -q -F '"state_class":"measurement"'; then
+    fail "${METER_ID}: an energy/water/gas entity was published with state_class measurement"
+  else
+    pass "${METER_ID}: no energy/water/gas entity has state_class measurement"
+  fi
+}
+
 assert_no_entity() {
   local field="$1"
   if grep -q -F "homeassistant/sensor/wmbus_${METER_ID}/${field}/config" "${CAPTURE}"; then
@@ -174,6 +187,9 @@ run_telegram 04913581 '{"_":"telegram","current_status":"OK","frame_status":"SUM
 
 assert_measurement total_m3 "m³"
 assert_measurement historic_m3 "m³"
+assert_state_class total_m3 total_increasing
+assert_state_class historic_m3 missing   # the reading at the last billing date
+assert_no_measurement_for_totals
 for f in current_status frame_status historic_status historic_datetime meter_datetime historic_age_h; do
   assert_diagnostic "${f}"
 done
@@ -208,6 +224,9 @@ run_telegram 03534159 '{"_":"telegram","backflow_m3":3724541.952,"contents":"BAC
 assert_measurement total_m3 "m³"
 assert_measurement backflow_m3 "m³"
 assert_measurement voltage_v "V"
+assert_state_class backflow_m3 total_increasing
+assert_state_class voltage_v measurement
+assert_no_measurement_for_totals
 for f in contents fraud_type meter_datetime fraud_date leak_date; do
   assert_diagnostic "${f}"
 done
@@ -270,6 +289,21 @@ run_telegram 88776655 '{"_":"telegram","total_energy_consumption_kwh":3861.107,"
 assert_state_class total_energy_consumption_kwh total_increasing
 assert_state_class current_power_consumption_kw measurement
 
+# --- gas: the same rule as water ---------------------------------------------
+run_telegram 66554433 '{"_":"telegram","total_m3":1234.567,"target_m3":1200.5,"current_m3":34.1,"id":"66554433","media":"gas","meter":"gasdriver","name":"Gas_4433","timestamp":"2026-08-13T14:30:19Z"}'
+
+assert_state_class total_m3 total_increasing
+assert_state_class current_m3 total_increasing
+assert_state_class target_m3 missing
+for f in total_m3 current_m3 target_m3; do
+  if [[ "$(field_prop "$(payload_for "${f}")" device_class)" == "gas" ]]; then
+    pass "${f}: device_class=gas"
+  else
+    fail "${f}: device_class is not gas"
+  fi
+done
+assert_no_measurement_for_totals
+
 # --- per-meter exclude_fields: glob patterns suppress and remove entities ----
 # METER_EXCLUDE_FIELDS is declared by 08-discovery-helpers.sh and filled by
 # refresh_meter_files() from options.json; the test fills it directly, which is
@@ -298,6 +332,8 @@ run_telegram 03314055 '{"_":"telegram","total_m3":29.9,"target_m3":28.0,"status"
 
 assert_measurement total_m3 "m³"
 assert_measurement target_m3 "m³"
+assert_state_class target_m3 missing     # the reading at the target date
+assert_no_measurement_for_totals
 if [[ "$(field_prop "$(payload_for status)" enabled_by_default)" == "missing" ]]; then
   pass "no exclude_fields: status keeps its dedicated sensor"
 else
