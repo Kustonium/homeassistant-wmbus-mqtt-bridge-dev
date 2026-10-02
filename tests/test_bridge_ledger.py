@@ -402,6 +402,23 @@ class RawBookRequestTest(unittest.TestCase):
                     meter.unlink()
                 change()
                 self.assertEqual(self.requests(sap01), [f"sap\t{sap01}"])
+        with self.subTest("a one-shot reclassifies the row while the refresh runs"):
+            self.candidates.write_text(f"11223344\tauto\t{label}\n")
+            (self.preview / "meter-preview-11223344").write_text("name=preview_11223344\nid=11223344\n")
+            for meter in (self.d / "meters").iterdir():
+                meter.unlink()
+            real = bl.record_seen
+
+            def one_shot_writes(*args):  # status_candidate_seen_from_json, between read and write
+                real(*args)
+                self.candidates.write_text("11223344\tizarv2\twater\n")
+            bl.record_seen = one_shot_writes
+            try:
+                self.assertEqual(self.requests(sap01), [f"sap\t{sap01}"])  # bash decides again
+            finally:
+                bl.record_seen = real
+            self.assertEqual(self.candidates.read_text(), "11223344\tizarv2\twater\n")
+            (self.d / "meters" / "meter-x").write_text("id=11223344\n")
         with self.subTest("official meter without a preview config"):
             self.candidates.write_text(f"11223344\tauto\t{label}\n")
             (self.preview / "meter-preview-11223344").unlink()
