@@ -7,9 +7,10 @@
 #    from the receive time. inject_rssi_into_json reads that file for every
 #    decoded telegram, so a different row would change what Home Assistant gets.
 # 2. Restart: the real subscriber loop (_esp_rssi_subscriber) runs against a
-#    stub broker; python3 is killed in the middle of the stream. The loop must
-#    start it again, and only the message being handled at that moment may be
-#    lost - like a dropped broker connection today.
+#    stub broker, with SIGPIPE ignored; python3 is killed in the middle of the
+#    stream. The loop must stop the subscription and start both again, and
+#    only the message being handled at that moment may be lost - like a
+#    dropped broker connection today.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -150,7 +151,9 @@ wait_for() {  # wait_for <seconds> <predicate...>; the predicate is re-run each 
   until "$@"; do (( SECONDS < deadline )) || return 1; sleep 0.1; done
 }
 
-_esp_rssi_subscriber 2>"${TMP}/subscriber.err" &
+# SIGPIPE ignored, the worst case and how GitHub's runners start jobs: a dead
+# reader then does not stop the writer, so the loop itself has to.
+( trap '' PIPE; _esp_rssi_subscriber ) 2>"${TMP}/subscriber.err" &
 SUB_PID=$!
 
 wait_for 15 rows_at_least 10 || fail "restart: python3 never booked the first messages"
