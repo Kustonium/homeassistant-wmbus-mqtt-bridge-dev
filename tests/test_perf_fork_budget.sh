@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Performance regression test: process (fork) budget per telegram.
 #
-# Every RAW telegram from every ESP runs status_raw_seen, and every decoded
-# telegram runs status_meter_seen, inject_rssi_into_json and
+# Every RAW telegram from every ESP runs status_raw_seen and the per-ESP
+# tracker, every /rx and rssi/<id> message runs its subscriber, every
+# transmission heard by the parallel LISTEN instance runs its block handler, and
+# every decoded telegram runs status_meter_seen, inject_rssi_into_json and
 # emit_discovery_from_json. On a 5-ESP site with ~210 meters on air (~3 RAW
 # telegrams/s) these bash paths used ~200% CPU, almost all of it spent
 # starting processes - e.g. two subshells per meter-preview-<id> file per RAW
@@ -56,6 +58,10 @@ BUDGET_METER_SEEN=49           # 39: status_meter_seen
 BUDGET_INJECT_RSSI=8           #  6: line="$(inject_rssi_into_json ...)"
 BUDGET_DISCOVERY=12            #  9: emit_discovery_from_json, discovery cache full
 BUDGET_JSON_TOTAL=68           # 54: sum of the three decoded-telegram steps
+BUDGET_ESP_TRACKER=17          # 13: per-ESP tracker, one /telegram message
+BUDGET_ESP_RX=42               # 33: /rx subscriber, one message
+BUDGET_ESP_RSSI=9              #  7: rssi/<id> subscriber, configured meter
+BUDGET_LISTEN_BLOCK=74         # 59: LISTEN block of a known candidate
 # How much ONE call may cost more at 200 meters on air than at 10.
 SCALE_TOLERANCE=2
 METER_COUNTS=(10 50 200)
@@ -68,9 +74,16 @@ METER_ID="52632878"
 # Same frame with the A-field of a meter (77665544) that has no preview file:
 # the preview scan then visits every file and matches none.
 RAW_HEX_OTHER="${RAW_HEX:0:8}44556677${RAW_HEX:16}"
+# A candidate that is not a configured meter: the first id fixture_ids makes.
+CANDIDATE_ID="10001003"
 
 TMP="$(mktemp -d)"
+PERF_CURRENT=""
 cleanup() {
+  local rc=$?
+  if (( rc != 0 )) && [[ -n "${PERF_CURRENT}" ]]; then
+    echo "FAIL: '${PERF_CURRENT}' failed (rc=${rc}): fixture, stub or function missing" >&2
+  fi
   wait 2>/dev/null || true
   rm -rf "${TMP}"
 }
@@ -154,7 +167,11 @@ measure() {
   for (( n = 0; n < REPEATS; n++ )); do
     "${prepare}"
     _proc_forks; before="${REPLY}"
+    # Called bare, as the bridge calls it, so set -e applies inside exactly as
+    # in production; if it fails, the EXIT trap names it.
+    PERF_CURRENT="$*"
     "$@" >/dev/null 2>&1
+    PERF_CURRENT=""
     _proc_forks
     (( REPLY - before >= 0 )) || fail "fork counter went backwards"
     if [[ -z "${best}" ]] || (( REPLY - before < best )); then
@@ -203,7 +220,9 @@ build_fixture() {
     # Candidate row with the manufacturer already known: steady state.
     printf '%s\tqwaterv2\tWater meter (0x07)\t%s\t42\t30\t5\t20\t(QDS) Qundis\n' \
       "${id}" "${iso}" >> "${STATUS_CANDIDATES_FILE}"
-    printf 'name=%s\nid=%s\ndriver=auto\n' "${id}" "${id}" \
+    # Exactly what ensure_candidate_autodecode writes for this row, so a
+    # LISTEN block finds the preview unchanged: the steady state.
+    printf 'name=preview_%s\nid=%s\ndriver=qwaterv2\n' "${id}" "${id,,}" \
       > "${PREVIEW_METER_DIR}/meter-preview-${id}"
     printf '%s\t-%d\tlilygo\t%d\n' "${id}" $(( 60 + ${#id} )) "${now}" >> "${STATUS_RSSI_FILE}"
     for (( n = 20; n > 0; n-- )); do
@@ -233,6 +252,22 @@ build_fixture() {
   # a running system between two decodes. A time in the future keeps it
   # throttled however long the test takes.
   printf '%s\n' $(( now + 86400 )) > "${BASE}/.preview_decode_last/${METER_ID}"
+  printf '%s\n' $(( now + 86400 )) > "${BASE}/.preview_decode_last/${CANDIDATE_ID}"
+  # ESP subscriber state, and the candidate already announced once.
+  : > "${STATUS_ESP_TELEGRAM_DEVICES_FILE}"
+  : > "${STATUS_ESP_METER_DEVICE_FILE}"
+  : > "${STATUS_ESP_METER_RECEPTION_FILE}"
+  : > "${ESP_RX_HISTORY_FILE}"
+  : > "${STATUS_ESP_RX_RECEPTION_FILE}"
+  : > "${STATUS_ESP_RX_MODE_FILE}"
+  : > "${ESP_RF_RX_HISTORY_FILE}"
+  : > "${STATUS_ESP_RX_SEQUENCE_FILE}"
+  : > "${STATUS_ESP_RX_BOOTS_FILE}"
+  : > "${STATUS_ESP_RX_CLOCK_FILE}"
+  : > "${STATUS_CANDIDATE_ANALYSIS_FILE}"
+  : > "${STATUS_CANDIDATE_RAW_FILE}"
+  : > "${STATUS_CANDIDATE_PREVIEW_STATE_FILE}"
+  printf '%s\n' "${CANDIDATE_ID}" > "${SNIPPET_STATE}"
 
   rm -rf "${TMP}/snapshot"
   cp -a "${BASE}" "${TMP}/snapshot"
@@ -251,6 +286,23 @@ restore_state() {
 run_meter_seen() { status_meter_seen "${JSON_LINE}"; }
 run_inject_rssi() { PERF_LINE="$(inject_rssi_into_json "${METER_ID}" "${JSON_LINE}")"; }
 run_discovery() { emit_discovery_from_json "${PERF_LINE}"; }
+
+# Per-message handlers of the background subscribers and of LISTEN, with the
+# state their loops keep. The tracker has already attributed the meter to this
+# board (steady state: no meter-device rewrite).
+_RT_DEV_POS=1
+declare -A _MD_LAST=()
+_rx_history_since_trim=0
+_rx_meta_since_trim=0
+declare -A _RSSI_WANTED=()
+_rssi_wanted_at=0
+SEARCH_MODE="false"
+SEARCH_EXPECTED_VALUE_M3="0"
+RX_PAYLOAD='{"schema":1,"boot_id":"A84F12C7","seq":7,"rx_task_wakeup_us":123456,"meter_id":"52632878","mode":"T1","rssi_dbm":-54,"frame_crc32":"7F56A83C","frame_length":123,"received_at":"2026-10-02T10:00:00.123Z"}'
+run_tracker() { _MD_LAST["${METER_ID}"]="lilygo"; _esp_tracker_handle_message "wmbus/lilygo/telegram" "${RAW_HEX}"; }
+run_rx() { _esp_rx_handle_message "wmbus/lilygo/rx" "${RX_PAYLOAD}"; }
+run_rssi() { _esp_rssi_handle_message "wmbus/lilygo/rssi/${METER_ID}" "-70"; }
+run_listen() { _process_listen_text_block "${CANDIDATE_ID}" "qwaterv2" "Water meter (0x07)" "(QDS) Qundis"; }
 
 check_raw_effect() {
   [[ "$(cat "${STATUS_RAW_COUNT_FILE}")" == "1001" ]] \
@@ -297,10 +349,34 @@ for m in "${METER_COUNTS[@]}"; do
     || fail "emit_discovery_from_json republished ${PERF_PUBS} configs at M=${m}: not the steady state the budget is for"
 
   R[json_total,${m}]=$(( R[meter_seen,${m}] + R[inject_rssi,${m}] + R[discovery,${m}] ))
+
+  measure restore_state run_tracker
+  R[esp_tracker,${m}]="${MEASURED}"
+  [[ "$(awk -F '\t' '$1=="lilygo" {print $4}' "${STATUS_ESP_TELEGRAM_DEVICES_FILE}")" == "1" ]] \
+    || fail "tracker did not count the telegram for its board (fixture broken)"
+  [[ -s "${ESP_RX_HISTORY_FILE}" ]] || fail "tracker did not append reception history (fixture broken)"
+
+  measure restore_state run_rx
+  R[esp_rx,${m}]="${MEASURED}"
+  [[ "$(awk -F '\t' '$1=="lilygo" {print $2 "/" $3}' "${STATUS_ESP_RX_SEQUENCE_FILE}")" == "A84F12C7/7" ]] \
+    || fail "/rx handler did not record the sequence (fixture broken)"
+
+  measure restore_state run_rssi
+  R[esp_rssi,${m}]="${MEASURED}"
+  [[ "$(awk -F '\t' -v id="${METER_ID}" '$1==id && $3=="lilygo" {print $2}' "${STATUS_RSSI_FILE}")" == "-70" ]] \
+    || fail "rssi handler did not store the reading (fixture broken)"
+
+  measure restore_state run_listen
+  R[listen_block,${m}]="${MEASURED}"
+  [[ "$(awk -F '\t' -v id="${CANDIDATE_ID}" '$1==id && $2=="candidate"' "${STATUS_SEEN_FILE}" | wc -l)" == "21" ]] \
+    || fail "LISTEN block did not record the candidate reception (fixture broken)"
+  [[ ! -s "${STATUS_CANDIDATE_PREVIEW_STATE_FILE}" && -z "$(ls -A "${BASE}/.preview_decode_locks")" ]] \
+    || fail "LISTEN block rewrote the preview or started a one-shot: not the steady state the budget is for"
 done
 
 # ── report and verdict ──────────────────────────────────────────────────────
-STEPS=(raw_no_preview raw_preview meter_seen inject_rssi discovery json_total)
+STEPS=(raw_no_preview raw_preview meter_seen inject_rssi discovery json_total
+       esp_tracker esp_rx esp_rssi listen_block)
 declare -A LABEL=(
   [raw_no_preview]="status_raw_seen (no preview match)"
   [raw_preview]="status_raw_seen (preview match)"
@@ -308,6 +384,10 @@ declare -A LABEL=(
   [inject_rssi]="inject_rssi_into_json"
   [discovery]="emit_discovery_from_json"
   [json_total]="decoded JSON path (sum)"
+  [esp_tracker]="ESP tracker (/telegram)"
+  [esp_rx]="ESP /rx subscriber"
+  [esp_rssi]="ESP rssi subscriber"
+  [listen_block]="LISTEN block (known candidate)"
 )
 declare -A BUDGET=(
   [raw_no_preview]="${BUDGET_RAW_NO_PREVIEW}"
@@ -316,6 +396,10 @@ declare -A BUDGET=(
   [inject_rssi]="${BUDGET_INJECT_RSSI}"
   [discovery]="${BUDGET_DISCOVERY}"
   [json_total]="${BUDGET_JSON_TOTAL}"
+  [esp_tracker]="${BUDGET_ESP_TRACKER}"
+  [esp_rx]="${BUDGET_ESP_RX}"
+  [esp_rssi]="${BUDGET_ESP_RSSI}"
+  [listen_block]="${BUDGET_LISTEN_BLOCK}"
 )
 
 printf '%-38s' "forks per call, meters on air ->"
