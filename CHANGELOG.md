@@ -1,3 +1,11 @@
+## 1.5.74-dev.352
+
+### Changed
+- remove the bash bookkeeping that bridge_ledger.py replaced (37544ed)
+
+### Fixed
+- never give water or gas fields state_class measurement (de57e73)
+
 ## 1.5.74-dev.351
 
 ### Fixed
