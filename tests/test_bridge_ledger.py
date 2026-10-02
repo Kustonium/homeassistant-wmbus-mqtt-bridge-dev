@@ -263,5 +263,111 @@ class RxBookTest(unittest.TestCase):
         self.assertEqual(len(self.read("history")), 90000)
 
 
+class TrackerBookTest(unittest.TestCase):
+    QWATER = "".join((ROOT / "tests/fixtures/qwaterv2/52632878.hex").read_text().split())
+
+    def setUp(self) -> None:
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.d = Path(self.dir.name)
+        self.clock = [1_790_935_200.0]
+        self.addCleanup(setattr, bl, "now", bl.now)
+        bl.now = lambda: self.clock[0]
+        self.files = {n: self.d / n for n in ("devices", "meter_device", "reception", "history")}
+        for name in ("devices", "meter_device"):
+            self.files[name].write_text("")  # created by bridge.sh at start
+        self.book = bl.TrackerBook(1, *(str(self.files[n]) for n in ("devices", "meter_device", "reception", "history")))
+
+    def send(self, board: str) -> None:
+        self.book(f"wmbus/{board}/telegram".encode(), self.QWATER.encode())
+        self.clock[0] += 10
+
+    def test_meter_board_row_is_written_only_when_the_board_changes(self):
+        self.send("lilygo")
+        self.send("lilygo")
+        self.assertEqual(self.files["meter_device"].read_text(), "52632878\tlilygo\t1790935200\n")
+        self.send("heltec")
+        self.assertEqual(self.files["meter_device"].read_text(), "52632878\theltec\t1790935220\n")
+        self.assertEqual(self.files["devices"].read_text().splitlines(),
+                         ["lilygo\t1790935210\twmbus/lilygo/telegram\t2",
+                          "heltec\t1790935220\twmbus/heltec/telegram\t1"])
+
+    def test_meter_id_matches_the_bash_parser_on_every_fixture(self):
+        lib = ROOT / "rootfs" / "usr" / "bin" / "bridge-lib" / "05-raw.sh"
+        for path in sorted((ROOT / "tests" / "fixtures").glob("*/*.hex")):
+            raw = "".join(path.read_text().split()).upper()
+            for frame in (raw, raw[:-2], raw[:8] + "0001E003" + raw[16:]):
+                with self.subTest(frame=path.name):
+                    expected = subprocess.run(
+                        ["bash", "-c", f'source "{lib}"; meter_id_from_raw_hex "$1"', "bash", frame],
+                        capture_output=True, text=True, check=True).stdout.strip()
+                    self.assertEqual(bl.meter_id_from_raw_hex(frame), expected)
+
+    def test_missing_files_are_not_created(self):
+        self.files["devices"].unlink()
+        self.send("lilygo")
+        self.assertFalse(self.files["devices"].exists())  # awk on a missing file writes nothing
+
+
+class RawBookRequestTest(unittest.TestCase):
+    """Work handed to bash only when the bash code would get past its own checks:
+    an extra request is invisible in the files, but costs a bash call."""
+
+    IZAR = "".join((ROOT / "tests/fixtures/izar/2156B4C2.hex").read_text().split())
+    QWATER = "".join((ROOT / "tests/fixtures/qwaterv2/52632878.hex").read_text().split())
+
+    def setUp(self) -> None:
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        d = Path(self.dir.name)
+        (d / "preview").mkdir()
+        (d / "last").mkdir()
+        self.candidates = d / "candidates.tsv"
+        self.args = bl._parser().parse_args([
+            "raw", *(f"--{n}-file={d / n}" for n in (
+                "raw-count", "last-raw", "recent-raw", "broker-error", "events",
+                "rate", "rate-history", "status-json", "discovery-flag")),
+            f"--candidates-file={self.candidates}",
+            f"--preview-meter-dir={d / 'preview'}", f"--preview-last-dir={d / 'last'}"])
+        self.preview, self.last = d / "preview", d / "last"
+        self.out = io.StringIO()
+        self.book = bl.RawBook(self.args, self.out)
+
+    def requests(self, raw: str):
+        self.out.seek(0)
+        self.out.truncate()
+        self.book.candidate(raw)
+        self.book.preview(raw)
+        return self.out.getvalue().splitlines()
+
+    def frame(self, meter_le: str) -> str:
+        return self.IZAR[:8] + meter_le + self.IZAR[16:]
+
+    def test_sap_registration_requested_only_when_bash_would_register(self):
+        rows = {"11223344": "\tauto\tWater meter (0x07)",  # unknown driver: register
+                "22334455": "\tizar\tWater meter (0x07)",  # known driver
+                "33445566": "\tauto\tWater meter (0x07) encrypted",
+                "44556677": "\t\tWater meter (0x07)"}  # read shifts the type into the driver
+        self.candidates.write_text("".join(k + v + "\n" for k, v in rows.items()))
+        def le(meter): return meter[6:8] + meter[4:6] + meter[2:4] + meter[0:2]
+        self.assertEqual(self.requests(self.frame(le("11223344"))), [f"sap\t{self.frame(le('11223344'))}"])
+        for meter in ("22334455", "33445566", "44556677"):
+            with self.subTest(meter=meter):
+                self.assertEqual(self.requests(self.frame(le(meter))), [])
+        self.assertEqual(self.requests(self.frame(le("55667788"))), [f"sap\t{self.frame(le('55667788'))}"])  # no row
+        self.assertEqual(self.requests(self.QWATER), [])  # not SAP
+
+    def test_preview_requested_only_past_the_throttle(self):
+        (self.preview / "meter-preview-52632878").write_text("id=52632878\n")
+        self.assertEqual(self.requests(self.QWATER), [f"preview\t{self.QWATER}\t52632878"])
+        (self.last / "52632878").write_text(f"{int(bl.now())}\n")
+        self.assertEqual(self.requests(self.QWATER), [])  # decoded less than 20 s ago
+        (self.preview / "meter-preview-52632878").unlink()
+        (self.last / "52632878").unlink()
+        (self.preview / "meter-preview-abcdef12").write_text("id=abcdef12\n")
+        abcd = self.QWATER[:8] + "12EFCDAB" + self.QWATER[16:]
+        self.assertEqual(self.requests(abcd), [])  # bash looks for meter-preview-ABCDEF12
+
+
 if __name__ == "__main__":
     unittest.main()
