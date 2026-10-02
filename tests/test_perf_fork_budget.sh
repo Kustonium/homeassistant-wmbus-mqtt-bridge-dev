@@ -77,6 +77,9 @@ BUDGET_LEDGER_RAW=6            #  4: _raw_counter_stage, LEDGER_BATCH telegrams
 # which bash registers as "auto" on every telegram. Python books the reception
 # itself; nothing may be handed to bash (each hand-over costs ~50 forks).
 BUDGET_LEDGER_SAP=6            #  4: _raw_counter_stage, LEDGER_BATCH SAP telegrams
+# The parser of the pure LISTEN instance: LEDGER_BATCH blocks of a known,
+# announced candidate; nothing may be handed to bash.
+BUDGET_LEDGER_LISTEN=6         #  4: _listen_parse_stage, LEDGER_BATCH blocks
 # Boards hearing the same air: every telegram arrives once per board, so the
 # ledger paths see BOARDS times the messages. Per message they must stay at
 # zero forks: a batch from BOARDS boards may cost at most SCALE_TOLERANCE more
@@ -387,13 +390,23 @@ status_raw_candidate_seen() { printf 'sap\n' >> "${HANDOVERS}"; _perf_real_statu
 eval "_perf_real_$(declare -f preview_decode_raw_if_requested)"
 preview_decode_raw_if_requested() { printf 'preview\n' >> "${HANDOVERS}"; _perf_real_preview_decode_raw_if_requested "$@"; }
 restore_state_handovers() { restore_state; : > "${HANDOVERS}"; }
+listen_block() {  # what the pure LISTEN wmbusmeters prints for the known candidate
+  printf 'Received telegram from: %s\n          manufacturer: (QDS) Qundis\n' "${CANDIDATE_ID}"
+  printf '                  type: Water meter (0x07)\n                driver: qwaterv2\n'
+}
+for (( n = 1; n <= LEDGER_BATCH; n++ )); do listen_block; done > "${TMP}/listen_batch"
+run_ledger_listen() { ( set +e; _listen_parse_stage < "${TMP}/listen_batch" >/dev/null 2>&1; exit 0 ); }
+eval "_perf_real_$(declare -f emit_snippet_if_new)"
+emit_snippet_if_new() { printf 'snippet\n' >> "${HANDOVERS}"; _perf_real_emit_snippet_if_new "$@"; }
+eval "_perf_real_$(declare -f search_cache_candidate)"
+search_cache_candidate() { printf 'search\n' >> "${HANDOVERS}"; _perf_real_search_cache_candidate "$@"; }
 
 # The same AIR_BATCH telegrams heard by 1 and by BOARDS boards (board-major
 # within a telegram, as copies arrive close together).
 air_batches() {  # air_batches <boards> <dir>
   local b="$1" d="$2" n k
   mkdir -p "${d}"
-  : > "${d}/rssi"; : > "${d}/rx"; : > "${d}/tracker"; : > "${d}/raw"
+  : > "${d}/rssi"; : > "${d}/rx"; : > "${d}/tracker"; : > "${d}/raw"; : > "${d}/listen"
   for (( n = 1; n <= AIR_BATCH; n++ )); do
     for (( k = 0; k < b; k++ )); do
       printf 'wmbus/board%d/rssi/%s\t-%d\n' "${k}" "${METER_ID}" $(( 50 + n % 40 )) >> "${d}/rssi"
@@ -401,6 +414,7 @@ air_batches() {  # air_batches <boards> <dir>
         "${k}" "${k}" "${n}" "${METER_ID}" >> "${d}/rx"
       printf 'wmbus/board%d/telegram\t%s\n' "${k}" "${RAW_HEX}" >> "${d}/tracker"
       printf '%s\n' "${RAW_HEX}" >> "${d}/raw"
+      listen_block >> "${d}/listen"
     done
   done
 }
@@ -420,6 +434,7 @@ air_tracker() {
     --reception-file "${STATUS_ESP_METER_RECEPTION_FILE}" --history-file "${ESP_RX_HISTORY_FILE}" < "${AIR_DIR}/tracker"
 }
 air_raw() { ( set +e; _raw_counter_stage < "${AIR_DIR}/raw"; exit 0 ); }
+air_listen() { ( set +e; _listen_parse_stage < "${AIR_DIR}/listen" >/dev/null 2>&1; exit 0 ); }
 run_ledger_rssi() {
   python3 "${BRIDGE_LEDGER}" rssi --meter-dir "${METER_DIR}" --rssi-file "${STATUS_RSSI_FILE}" \
     < "${TMP}/rssi_batch"
@@ -516,6 +531,13 @@ for m in "${METER_COUNTS[@]}"; do
   grep -q "^${SAP_AUTO_ID}"$'\t' "${STATUS_CANDIDATE_ANALYSIS_FILE}" \
     || fail "bridge_ledger.py raw did not refresh the auto SAP candidate (fixture broken)"
 
+  measure restore_state_handovers run_ledger_listen
+  R[ledger_listen,${m}]="${MEASURED}"
+  [[ ! -s "${HANDOVERS}" ]] \
+    || fail "bridge_ledger.py listen handed $(wc -l < "${HANDOVERS}") blocks of a known candidate to bash"
+  grep -q "^${CANDIDATE_ID}"$'\t' "${STATUS_CANDIDATE_ANALYSIS_FILE}" \
+    || fail "bridge_ledger.py listen did not refresh the known candidate (fixture broken)"
+
   measure restore_state run_listen
   R[listen_block,${m}]="${MEASURED}"
   [[ "$(awk -F '\t' -v id="${CANDIDATE_ID}" '$1==id && $2=="candidate"' "${STATUS_SEEN_FILE}" | wc -l)" == "21" ]] \
@@ -527,7 +549,7 @@ done
 # ── report and verdict ──────────────────────────────────────────────────────
 STEPS=(raw_no_preview raw_preview meter_seen inject_rssi discovery json_total
        esp_tracker esp_rx esp_rssi listen_block ledger_rssi ledger_rx ledger_tracker ledger_raw
-       ledger_sap)
+       ledger_sap ledger_listen)
 declare -A LABEL=(
   [raw_no_preview]="status_raw_seen, no preview (bash)"
   [raw_preview]="status_raw_seen, preview (bash)"
@@ -544,6 +566,7 @@ declare -A LABEL=(
   [ledger_tracker]="ledger tracker, ${LEDGER_BATCH} msgs, 1 proc"
   [ledger_raw]="ledger RAW stage, ${LEDGER_BATCH} telegrams"
   [ledger_sap]="ledger RAW stage, ${LEDGER_BATCH} known SAP"
+  [ledger_listen]="ledger LISTEN, ${LEDGER_BATCH} known blocks"
 )
 declare -A BUDGET=(
   [raw_no_preview]="${BUDGET_RAW_NO_PREVIEW}"
@@ -561,6 +584,7 @@ declare -A BUDGET=(
   [ledger_tracker]="${BUDGET_LEDGER_TRACKER}"
   [ledger_raw]="${BUDGET_LEDGER_RAW}"
   [ledger_sap]="${BUDGET_LEDGER_SAP}"
+  [ledger_listen]="${BUDGET_LEDGER_LISTEN}"
 )
 
 printf '%-38s' "forks per call, meters on air ->"
@@ -586,7 +610,7 @@ done
 # ── boards hearing the same air ─────────────────────────────────────────────
 build_fixture "${METER_COUNTS[0]}"
 printf '\n%-38s%6s%6s%9s\n' "forks per batch of ${AIR_BATCH} telegrams ->" "1" "${BOARDS}" "budget"
-for path in rssi rx tracker raw; do
+for path in rssi rx tracker raw listen; do
   declare -A AIR=()
   for b in 1 "${BOARDS}"; do
     AIR_DIR="${TMP}/air${b}"
@@ -598,11 +622,13 @@ for path in rssi rx tracker raw; do
       rx) got="$(wc -l < "${ESP_RF_RX_HISTORY_FILE}")"; want=$(( AIR_BATCH * b )) ;;
       tracker) got="$(awk -F '\t' '$1 ~ /^board[0-4]$/ {n += $4} END {print n + 0}' "${STATUS_ESP_TELEGRAM_DEVICES_FILE}")"; want=$(( AIR_BATCH * b )) ;;
       raw) got="$(cat "${STATUS_RAW_COUNT_FILE}")"; want=$(( 1000 + AIR_BATCH * b )) ;;
+      listen) got="$(grep -c "^${CANDIDATE_ID}"$'\t' "${STATUS_CANDIDATE_ANALYSIS_FILE}")"; want=1 ;;
     esac
     [[ "${got// /}" == "${want}" ]] || fail "${path}, ${b} boards: booked ${got} instead of ${want} (fixture broken)"
   done
   case "${path}" in
     raw) budget="${BUDGET_LEDGER_RAW}" ;;
+    listen) budget="${BUDGET_LEDGER_LISTEN}" ;;
     *) budget=2 ;;
   esac
   printf '%-38s%6s%6s%9s\n' "ledger ${path}, boards" "${AIR[1]}" "${AIR[${BOARDS}]}" "${budget}"

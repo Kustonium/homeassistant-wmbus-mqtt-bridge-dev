@@ -491,5 +491,65 @@ class CandidateRefreshTest(unittest.TestCase):
                                  "a2", "", str(len(sap))])
 
 
+class ListenBookTest(unittest.TestCase):
+    """parse_listen_candidates: blocks, the official-meter gate and what goes to bash."""
+
+    def setUp(self) -> None:
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        d = Path(self.dir.name)
+        self.d = d
+        (d / "preview").mkdir()
+        (d / "meters").mkdir()
+        (d / "count").write_text("1\n")
+        (d / "snippets").write_text("")
+        (d / "candidates").write_text("")
+        self.args = bl._parser().parse_args([
+            "listen", *(f"--{n}-file={d / n}" for n in (
+                "candidates", "seen", "recent-raw", "candidate-raw", "candidate-analysis")),
+            f"--snippet-file={d / 'snippets'}", f"--official-count-file={d / 'count'}",
+            f"--meter-dir={d / 'meters'}", f"--preview-meter-dir={d / 'preview'}",
+            "--official-count-default=0", "--search-mode=false", "--search-expected=0"])
+        self.out = io.StringIO()
+        self.err = io.StringIO()
+
+    def feed(self, text: str, **overrides):
+        for k, v in overrides.items():
+            setattr(self.args, k, v)
+        book = bl.ListenBook(self.args, self.out, self.err)
+        bl.run_listen(book, io.BytesIO(text.encode()), self.err)
+        return [ln.split("\x1f") for ln in self.out.getvalue().splitlines()]
+
+    BLOCKS = ("Received telegram from: 2156b4c2\n"
+              "          manufacturer: (SAP) Diehl Metering\n"
+              "                  type: Water meter (0x07)\n"
+              "                driver: izarv2\n"
+              "Received telegram from: 12345678\n"
+              "                  type: Electricity meter (0x02) encrypted\n"
+              "Received telegram from: 44556677\n"
+              "                driver: unknown!\n")
+
+    def test_blocks_are_handed_over_with_empty_fields_kept(self):
+        self.assertEqual(self.feed(self.BLOCKS), [
+            ["snippet", "2156B4C2", "izarv2", "Water meter (0x07)", "(SAP) Diehl Metering"],
+            ["snippet", "44556677", "unknown", "", ""]])  # no driver: line, no booking
+
+    def test_nothing_is_booked_without_official_meters(self):
+        (self.d / "count").write_text("0\n")
+        self.assertEqual(self.feed(self.BLOCKS), [])
+        (self.d / "count").unlink()  # missing file: the count bash had at start
+        self.assertEqual(len(self.feed(self.BLOCKS, official_count_default="2")), 2)
+
+    def test_search_and_json_go_to_bash(self):
+        json_line = '{"_":"telegram","id":"52632878","total_m3":1.5}'
+        self.assertEqual(self.feed(json_line + "\n" + self.BLOCKS, search_mode="true", search_expected="12.5"), [
+            ["json", json_line],
+            ["search", "2156B4C2", "izarv2", "Water meter (0x07)"],
+            ["search", "44556677", "unknown", ""]])
+
+    def test_unterminated_last_line_is_not_read(self):
+        self.assertEqual(self.feed("Received telegram from: 2156B4C2\n                driver: izarv2"), [])
+
+
 if __name__ == "__main__":
     unittest.main()
