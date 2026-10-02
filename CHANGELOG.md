@@ -1,3 +1,8 @@
+## 1.5.69-dev.333
+
+### Changed
+- match preview files without subshells on every RAW telegram (ee7a849)
+
 ## 1.5.69-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
