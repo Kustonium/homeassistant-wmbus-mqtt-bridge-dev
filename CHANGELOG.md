@@ -1,3 +1,8 @@
+## 1.5.72-dev.344
+
+### Changed
+- refresh registered Diehl/SAP candidates in bridge_ledger.py (3938da5)
+
 ## 1.5.72-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
