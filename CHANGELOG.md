@@ -1,3 +1,11 @@
+## 1.5.70-dev.338
+
+### Added
+- add bridge_ledger.py with lock-compatible TSV helpers (4530cb9)
+
+### Changed
+- move per-message bodies of the tracker, /rx and rssi subscribers into functions (939c249)
+
 ## 1.5.70-dev.337
 
 ### Changed
