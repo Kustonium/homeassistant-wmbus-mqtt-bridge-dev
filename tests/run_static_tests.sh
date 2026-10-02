@@ -20,6 +20,7 @@ bash tests/test_esp_coverage_sensor.sh
 bash tests/test_mbus_meter_files.sh
 bash tests/test_perf_fork_budget.sh
 bash tests/test_ledger_lock_interop.sh
+bash tests/test_ledger_rssi.sh
 python3 -m unittest tests/test_mbus_webui.py -v
 python3 -m unittest tests/test_meter_rename.py -v
 python3 -m unittest tests/test_bridge_ledger.py -v
