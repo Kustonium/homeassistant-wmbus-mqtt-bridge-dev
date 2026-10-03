@@ -20,7 +20,7 @@ docker run -d --name wmbus-zero --network host -v $E/config:/config -e WMBUS_BAS
   -v $E/svc_run:/etc/services.d/wmbus_mqtt_bridge/run:ro \
   -v $E/code/rootfs/usr/bin/bridge.sh:/usr/bin/bridge.sh:ro -v $E/code/rootfs/usr/bin/bridge-lib:/usr/bin/bridge-lib:ro \
   -v $E/code/rootfs/usr/bin/bridge_ledger.py:/usr/bin/bridge_ledger.py:ro $IMG >/dev/null
-for i in $(seq 1 90); do docker logs wmbus-zero 2>&1 | grep -q 'Parallel LISTEN instance started' && break; sleep 1; done
+for _ in $(seq 1 90); do docker logs wmbus-zero 2>&1 | grep -q 'Parallel LISTEN instance started' && break; sleep 1; done
 sleep 10
 cid=$(docker inspect -f '{{.Id}}' wmbus-zero)
 t0=$(python3 -c 'import time; print(time.time() + 4)')
@@ -30,7 +30,7 @@ $SP/venv/bin/python $SP/io/feed.py $E/stream.txt $t0 > $E/feed.out 2>&1 &
 FEED=$!
 wait $SAMP
 pids=$(python3 -c "import ast,sys; d=ast.literal_eval(open('$E/sampler.out').readline()[5:]); print(' '.join(str(p) for k in ('decode_loop','delegation_loop') for p in d.get(k,[])))")
-args=(); for p in $pids; do args+=(-p $p); done
+args=(); for p in $pids; do args+=(-p "$p"); done
 f0=$(awk '/^processes/{print $2}' /proc/stat)
 timeout 60 strace -f -qq -ttt -y -s 0 -e trace=clone,clone3,fork,vfork,write,pwrite64,rename,renameat2 -e signal=none -o $E/strace.log "${args[@]}" 2>/dev/null
 f1=$(awk '/^processes/{print $2}' /proc/stat)

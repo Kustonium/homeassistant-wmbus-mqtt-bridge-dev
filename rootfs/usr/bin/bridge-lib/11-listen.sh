@@ -227,7 +227,7 @@ start_listen_instance() {
             }
           ' \
         | ${STDBUF_BIN} /usr/bin/wmbusmeters --useconfig="${LISTEN_BASE}" 2>&1 \
-        | _listen_parse_stage &
+        | _listen_parse_stage nonzero &
       pipeline_pid=$!
       log_debug "[DIAG] LISTEN supervisor: pure-listen pipeline started (pid=${pipeline_pid})"
       wait "${pipeline_pid}" 2>/dev/null || true

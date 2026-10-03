@@ -20,12 +20,12 @@ docker run -d --name wmbus-io --network host -v $E/config:/config \
   -v $E/code/rootfs/usr/bin/bridge.sh:/usr/bin/bridge.sh:ro -v $E/code/rootfs/usr/bin/bridge-lib:/usr/bin/bridge-lib:ro \
   -v $E/code/rootfs/usr/bin/bridge_ledger.py:/usr/bin/bridge_ledger.py:ro \
   --entrypoint /usr/bin/docker-entrypoint.sh $IMG >/dev/null
-for i in $(seq 1 90); do docker logs wmbus-io 2>&1 | grep -q 'Parallel LISTEN instance started' && break; sleep 1; done
+for _ in $(seq 1 90); do docker logs wmbus-io 2>&1 | grep -q 'Parallel LISTEN instance started' && break; sleep 1; done
 sleep 10
 cid=$(docker inspect -f '{{.Id}}' wmbus-io)
 t0=$(python3 -c 'import time; print(time.time() + 6)')
 if [[ $STRACE == 1 ]]; then
-  args=(); for p in $(cat /sys/fs/cgroup/pids/docker/$cid/cgroup.procs); do args+=(-p $p); done
+  args=(); for p in $(cat /sys/fs/cgroup/pids/docker/$cid/cgroup.procs); do args+=(-p "$p"); done
   strace -f -qq -ttt -y -s 0 -e trace=write,pwrite64,writev,rename,renameat,renameat2 -e signal=none -o $E/strace.log "${args[@]}" 2>/dev/null & ST=$!
   sleep 3
 fi
