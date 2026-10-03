@@ -12,6 +12,11 @@
 #
 # ZERO_RECORD=<bridge.sh> records the golden files with the inline parser of
 # that bridge.sh instead (as it was before the move).
+#
+# The globals below are read by the sourced bridge-lib code, which the linter
+# cannot follow (SC2034); each batch sets its clock in its own subshell
+# (SC2030/SC2031).
+# shellcheck disable=SC2034,SC2030,SC2031
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -80,7 +85,7 @@ if [[ -n "${ZERO_RECORD:-}" ]]; then
 ${_block}
     done; }"
 else
-  zero_parse() { _zero_parse_stage; }
+  zero_parse() { _listen_parse_stage zero; }
 fi
 
 T0=1790935200
@@ -155,3 +160,40 @@ if [[ -n "${ZERO_RECORD:-}" ]]; then
   echo "RECORDED: ${GOLDEN}"
   exit 0
 fi
+
+# ── equivalence ─────────────────────────────────────────────────────────────
+diff -u "${GOLDEN}/files.dump" "${TMP}/dump" >&2 \
+  || fail "files differ from what the inline parser wrote (tests/fixtures/ledger/zero/files.dump)"
+# One debug line more: the shared parser logs its manufacturer fill (the file
+# is the same - status_candidate_seen wrote that text inline too).
+FILL='[wmbus-bridge] [DIAG] candidate 52632878: updated manufacturer text from LISTEN block to (QDS) Qundis, Germany (0x4493)'
+[[ "$(grep -cxF "${FILL}" "${TMP}/log.sorted")" == 1 ]] || fail "the manufacturer fill was not logged once"
+diff -u "${GOLDEN}/log.sorted" <(grep -vxF "${FILL}" "${TMP}/log.sorted") >&2 \
+  || fail "log lines differ from what the inline parser logged (tests/fixtures/ledger/zero/log.sorted)"
+diff -u "${GOLDEN}/handovers.new" "${TMP}/handovers.new" >&2 \
+  || fail "new candidates must reach bash as with the inline parser"
+# The inline parser handed every block to bash; known ones no longer go there.
+[[ ! -s "${TMP}/handovers.known" ]] \
+  || { cat "${TMP}/handovers.known" >&2; fail "known candidates were handed to bash"; }
+[[ "$(cat "${TMP}/handovers.changed")" == $'snippet 67433753 qheatv2\nsnippet 53119425 kamwater\nsnippet 32131245 fhkvdataiii\nsnippet 21031894 evo868v2' ]] \
+  || { cat "${TMP}/handovers.changed" >&2; fail "only the preview change, the unannounced candidate and the type and driver changes may reach bash"; }
+
+# ── 0 -> 1 meter: every block booked once ───────────────────────────────────
+# The main instance's parser (zero) and the parallel LISTEN one (nonzero) see
+# the same telegrams; the count file decides per block which one books it.
+both() {  # both <offset>: the same corpus through both parsers
+  ( export LEDGER_TEST_EPOCH=$(( T0 + $1 )) PYTHONPATH="${TMP}/clock"
+    set +eu
+    _listen_parse_stage zero < "${CORPUS}"
+    _listen_parse_stage < "${CORPUS}" ) >/dev/null 2>&1 || true
+}
+seed
+both 0                                                   # 0 meters: main books
+printf '1\n' > "${STATUS_OFFICIAL_METERS_COUNT_FILE}"
+both 5                                                   # 1 meter: LISTEN books
+[[ "$(grep -c $'^24271170\tcandidate\t' "${STATUS_SEEN_FILE}")" == 2 ]] \
+  || fail "0 -> 1 meter: 24271170 booked $(grep -c $'^24271170\tcandidate\t' "${STATUS_SEEN_FILE}") times in two batches, expected 2"
+[[ "$(awk -F '\t' '$1 == "24271170" { print $5 }' "${STATUS_CANDIDATES_FILE}")" == 2 ]] \
+  || fail "0 -> 1 meter: the candidate count of 24271170 is not 2"
+
+echo "PASS: zero-meter listen output via bridge_ledger.py matches the inline parser (files, log, new candidates), known blocks stay in python3, 0 -> 1 meter books each block once"

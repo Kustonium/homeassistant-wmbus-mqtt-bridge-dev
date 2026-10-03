@@ -76,6 +76,11 @@ BUDGET_LEDGER_SAP=6            #  4: _raw_counter_stage, LEDGER_BATCH SAP telegr
 # The parser of the pure LISTEN instance: LEDGER_BATCH blocks of a known,
 # announced candidate; nothing may be handed to bash.
 BUDGET_LEDGER_LISTEN=6         #  4: _listen_parse_stage, LEDGER_BATCH blocks
+# The same blocks from the main DECODE instance while no meter is configured
+# (every new installation): run_once hands its listen output to the same
+# parser (_listen_parse_stage zero); nothing may be handed to bash. The
+# inline bash parser it replaced cost ~85-90 forks per block.
+BUDGET_LEDGER_ZERO=6           #  4: _listen_parse_stage zero, LEDGER_BATCH blocks
 # Boards hearing the same air: every telegram arrives once per board, so the
 # ledger paths see BOARDS times the messages. Per message they must stay at
 # zero forks: a batch from BOARDS boards may cost at most SCALE_TOLERANCE more
@@ -368,6 +373,12 @@ listen_block() {  # what the pure LISTEN wmbusmeters prints for the known candid
 }
 for (( n = 1; n <= LEDGER_BATCH; n++ )); do listen_block; done > "${TMP}/listen_batch"
 run_ledger_listen() { ( set +e; _listen_parse_stage < "${TMP}/listen_batch" >/dev/null 2>&1; exit 0 ); }
+# shellcheck disable=SC2329  # run by measure
+run_ledger_zero() {
+  printf '0\n' > "${STATUS_OFFICIAL_METERS_COUNT_FILE}"
+  ( set +e; _listen_parse_stage zero < "${TMP}/listen_batch" >/dev/null 2>&1; exit 0 )
+  printf '1\n' > "${STATUS_OFFICIAL_METERS_COUNT_FILE}"
+}
 eval "_perf_real_$(declare -f emit_snippet_if_new)"
 emit_snippet_if_new() { printf 'snippet\n' >> "${HANDOVERS}"; _perf_real_emit_snippet_if_new "$@"; }
 eval "_perf_real_$(declare -f search_cache_candidate)"
@@ -478,11 +489,18 @@ for m in "${METER_COUNTS[@]}"; do
     || fail "bridge_ledger.py listen handed $(wc -l < "${HANDOVERS}") blocks of a known candidate to bash"
   grep -q "^${CANDIDATE_ID}"$'\t' "${STATUS_CANDIDATE_ANALYSIS_FILE}" \
     || fail "bridge_ledger.py listen did not refresh the known candidate (fixture broken)"
+
+  measure restore_state_handovers run_ledger_zero
+  R[ledger_zero,${m}]="${MEASURED}"
+  [[ ! -s "${HANDOVERS}" ]] \
+    || fail "bridge_ledger.py listen --official zero handed $(wc -l < "${HANDOVERS}") blocks of a known candidate to bash"
+  grep -q "^${CANDIDATE_ID}"$'\t' "${STATUS_CANDIDATE_ANALYSIS_FILE}" \
+    || fail "bridge_ledger.py listen --official zero did not refresh the known candidate (fixture broken)"
 done
 
 # ── report and verdict ──────────────────────────────────────────────────────
 STEPS=(meter_seen inject_rssi discovery json_total
-       ledger_rssi ledger_rx ledger_tracker ledger_raw ledger_sap ledger_listen)
+       ledger_rssi ledger_rx ledger_tracker ledger_raw ledger_sap ledger_listen ledger_zero)
 declare -A LABEL=(
   [meter_seen]="status_meter_seen"
   [inject_rssi]="inject_rssi_into_json"
@@ -494,6 +512,7 @@ declare -A LABEL=(
   [ledger_raw]="ledger RAW stage, ${LEDGER_BATCH} telegrams"
   [ledger_sap]="ledger RAW stage, ${LEDGER_BATCH} known SAP"
   [ledger_listen]="ledger LISTEN, ${LEDGER_BATCH} known blocks"
+  [ledger_zero]="ledger 0 meters, ${LEDGER_BATCH} known blocks"
 )
 declare -A BUDGET=(
   [meter_seen]="${BUDGET_METER_SEEN}"
@@ -506,6 +525,7 @@ declare -A BUDGET=(
   [ledger_raw]="${BUDGET_LEDGER_RAW}"
   [ledger_sap]="${BUDGET_LEDGER_SAP}"
   [ledger_listen]="${BUDGET_LEDGER_LISTEN}"
+  [ledger_zero]="${BUDGET_LEDGER_ZERO}"
 )
 
 printf '%-38s' "forks per call, meters on air ->"

@@ -25,6 +25,7 @@ bash tests/test_ledger_rx.sh
 bash tests/test_ledger_tracker.sh
 bash tests/test_ledger_raw.sh
 bash tests/test_ledger_listen.sh
+bash tests/test_ledger_zero.sh
 python3 -m unittest tests/test_mbus_webui.py -v
 python3 -m unittest tests/test_meter_rename.py -v
 python3 -m unittest tests/test_bridge_ledger.py -v
