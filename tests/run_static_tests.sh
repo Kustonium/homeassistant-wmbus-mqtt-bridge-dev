@@ -18,6 +18,7 @@ bash tests/test_esp_diag_retained.sh
 bash tests/test_esp_coverage_sensor.sh
 bash tests/test_mbus_meter_files.sh
 bash tests/test_perf_fork_budget.sh
+bash tests/test_perf_write_budget.sh
 bash tests/test_ledger_lock_interop.sh
 bash tests/test_ledger_rssi.sh
 bash tests/test_ledger_rx.sh

@@ -13,6 +13,8 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -333,6 +335,7 @@ class RxBookTest(unittest.TestCase):
 
     def send(self, board: str, extra: str) -> None:
         self.book(f"wmbus/{board}/rx".encode(), ("{" + self.BASE + "," + extra + "}").encode())
+        self.book.deferred.flush()  # rows per message; DeferredTest covers the batching
 
     def read(self, name: str):
         return Path(self.files[name]).read_text().splitlines()
@@ -374,6 +377,7 @@ class TrackerBookTest(unittest.TestCase):
 
     def send(self, board: str) -> None:
         self.book(f"wmbus/{board}/telegram".encode(), self.QWATER.encode())
+        self.book.deferred.flush()  # rows per message; DeferredTest covers the batching
         self.clock[0] += 10
 
     def test_meter_board_row_is_written_only_when_the_board_changes(self):
@@ -654,6 +658,112 @@ class ListenBookTest(unittest.TestCase):
 
     def test_unterminated_last_line_is_not_read(self):
         self.assertEqual(self.feed("Received telegram from: 2156B4C2\n                driver: izarv2"), [])
+
+
+class DeferredTest(unittest.TestCase):
+    """Per-message tables written at most every FLUSH_EVERY_S, with the same bytes."""
+
+    BASE = RxBookTest.BASE
+    NAMES = ("reception", "mode", "history", "sequence", "boots", "clock")
+
+    def setUp(self) -> None:
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.d = Path(self.dir.name)
+        self.clock = [1_790_935_210.0]
+        self.addCleanup(setattr, bl, "now", bl.now)
+        bl.now = lambda: self.clock[0]
+
+    def rx(self, sub: str) -> "bl.RxBook":
+        (self.d / sub).mkdir()
+        return bl.RxBook(*(str(self.d / sub / n) for n in self.NAMES))
+
+    def message(self, n: int):
+        return (f"wmbus/b{n % 3}/rx".encode(),
+                ("{" + self.BASE + f',"seq":{n},"mode":"{"TC"[n % 2]}1"' + "}").encode())
+
+    def test_rows_wait_five_seconds_then_match_writing_per_message(self):
+        batched, each = self.rx("batched"), self.rx("each")
+        for n in range(1, 31):  # 3 messages per second, 10 s
+            batched(*self.message(n))
+            batched.deferred.flush_if_due()
+            each(*self.message(n))
+            each.deferred.flush()
+            if n == 14:  # 4.33 s after the first message: nothing written yet
+                self.assertFalse((self.d / "batched" / "reception").exists())
+            if n == 17:  # 5.33 s: written, and the same as per message
+                self.assertEqual((self.d / "batched" / "reception").read_bytes(),
+                                 (self.d / "each" / "reception").read_bytes())
+            self.clock[0] += 1 / 3
+        batched.deferred.flush()
+        for name in self.NAMES:
+            self.assertEqual((self.d / "batched" / name).read_bytes(),
+                             (self.d / "each" / name).read_bytes(), name)
+
+    def test_rows_are_written_when_no_further_message_arrives(self):
+        bl.now = time.time
+        self.addCleanup(setattr, bl, "FLUSH_EVERY_S", bl.FLUSH_EVERY_S)
+        bl.FLUSH_EVERY_S = 0.2
+        book = self.rx("idle")
+        r, w = os.pipe()
+        loop = threading.Thread(target=bl.run, args=(book, os.fdopen(r, "rb"), io.StringIO()))
+        loop.start()
+        try:
+            topic, payload = self.message(1)
+            os.write(w, topic + b"\t" + payload + b"\n")
+            reception = self.d / "idle" / "reception"
+            deadline = time.time() + 5
+            while not reception.exists() and time.time() < deadline:
+                time.sleep(0.05)
+            self.assertTrue(reception.exists(), "not written while the input stayed open")
+        finally:
+            os.close(w)
+            loop.join(5)
+
+    def test_sigterm_writes_what_is_collected_and_exits_143(self):
+        (self.d / "term").mkdir()
+        files = [f"--{n}-file={self.d / 'term' / n}" for n in self.NAMES]
+        proc = subprocess.Popen([sys.executable, str(ROOT / "rootfs/usr/bin/bridge_ledger.py"), "rx", *files],
+                                stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+        for n in (1, 2, 3):
+            topic, payload = self.message(n)
+            proc.stdin.write(topic + b"\t" + payload + b"\n")
+        proc.stdin.flush()
+        history = self.d / "term" / "history"
+        deadline = time.time() + 10
+        while (not history.exists() or len(history.read_text().splitlines()) < 3) and time.time() < deadline:
+            time.sleep(0.05)
+        self.assertFalse((self.d / "term" / "reception").exists())  # still collected
+        proc.terminate()
+        self.assertEqual(proc.wait(10), 143)
+        rows = (self.d / "term" / "reception").read_text().splitlines()
+        self.assertEqual([r.split("\t")[4] for r in rows], ["1", "1", "1"])
+        self.assertEqual(len((self.d / "term" / "sequence").read_text().splitlines()), 3)
+        proc.stdin.close()
+        proc.stderr.close()
+
+
+class RecentRawRingTest(RawBookRequestTest):
+    """status_recent_raw.tsv: appended to, cut back to 200 rows above 400."""
+
+    def test_ring_is_appended_and_cut_back(self):
+        ring = self.d / "recent-raw"
+        for n in range(401):
+            self.book.ring_append(f"ts\t4\t{n:04X}".encode())
+            if n == 399:
+                self.assertEqual(len(ring.read_text().splitlines()), 400)
+        rows = ring.read_text().splitlines()
+        self.assertEqual(len(rows), 200)
+        self.assertEqual(rows[0], "ts\t4\t00C9")
+        self.assertEqual(rows[-1], "ts\t4\t0190")
+
+    def test_readers_see_the_newest_200_rows(self):
+        ring = self.d / "recent-raw"
+        old = self.frame("44332211")  # id 11223344, only in the oldest row
+        ring.write_text(f"ts\t{len(old)}\t{old}\n" + "ts\t4\tABCD\n" * 250)
+        self.assertIsNone(bl.find_recent_raw(str(ring), "11223344"))
+        ring.write_text(f"ts\t{len(old)}\t{old}\n" + "ts\t4\tABCD\n" * 199)
+        self.assertIsNotNone(bl.find_recent_raw(str(ring), "11223344"))
 
 
 if __name__ == "__main__":
