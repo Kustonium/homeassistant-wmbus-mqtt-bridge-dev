@@ -1,3 +1,8 @@
+## 1.5.75-dev.354
+
+### Changed
+- write the per-message tables at most every 5 s (fd0df07)
+
 ## 1.5.75-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
