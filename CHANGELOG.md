@@ -1,3 +1,11 @@
+## 1.5.76-dev.356
+
+### Changed
+- book the zero-meter listen output in bridge_ledger.py (eb9a9a6)
+
+### Fixed
+- pass the stage's mode explicitly; clean the measuring scripts (68f9f2e)
+
 ## 1.5.76-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
