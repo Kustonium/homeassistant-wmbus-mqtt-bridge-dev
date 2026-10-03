@@ -13,7 +13,7 @@
 #   - the decisions handed to bash: status_candidate_seen for SAP frames and
 #     the preview one-shot reaching its slot (both stubbed to log the call, so
 #     no decoder runs and the comparison does not depend on timing).
-# Then python3 is killed in the middle of a stream: the stage must start it
+# Then python3 is stopped (SIGTERM) in the middle of a stream: the stage must start it
 # again and lose at most the telegram being handled.
 #
 # The file paths are the ones bridge.sh derives from ${BASE}.
@@ -134,7 +134,11 @@ snapshot() {  # snapshot <dir>
   for f in STATUS_RAW_COUNT_FILE STATUS_LAST_RAW_FILE STATUS_RECENT_RAW_FILE STATUS_CANDIDATES_FILE \
            STATUS_EVENTS_FILE STATUS_RATE_1M_FILE STATUS_RATE_HISTORY_FILE STATUS_BROKER_ERROR_FILE \
            STATUS_JSON DECISIONS; do
-    if [[ -e "${!f}" ]]; then
+    if [[ "${f}" == STATUS_RECENT_RAW_FILE && -e "${!f}" ]]; then
+      # Appended to and cut back to 200 rows only above 400: its readers see
+      # the newest 200, the ring bash kept.
+      tail -n 200 "${!f}" | sed -E -e 's/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}/ISO/g' > "${out}/${f}"
+    elif [[ -e "${!f}" ]]; then
       sed -E -e 's/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}/ISO/g' \
              -e 's/"epoch":[0-9]+/"epoch":NOW/' "${!f}" > "${out}/${f}"
     else
@@ -364,7 +368,9 @@ for (( i = 1; i <= MESSAGES; i++ )); do
   printf '%s\n' "${OTHER}" >&"${feed_fd}"
   sleep 0.05
   if (( i == 15 )); then
-    pkill -KILL -f "${BRIDGE_LEDGER} raw --raw-count-file=${STATUS_RAW_COUNT_FILE}" \
+    # SIGTERM, what stopping the add-on sends: the collected writes are
+    # made before python3 exits.
+    pkill -TERM -f "${BRIDGE_LEDGER} raw --raw-count-file=${STATUS_RAW_COUNT_FILE}" \
       || fail "restart: no bridge_ledger.py raw process to kill"
     sleep 1.2   # the stage waits 1 s before starting python3 again
   fi
@@ -378,4 +384,50 @@ final=$(( $(cat "${STATUS_RAW_COUNT_FILE}") - 22 ))
 jq -e ".pipeline.raw_count == $(( 22 + final ))" "${STATUS_JSON}" >/dev/null \
   || fail "restart: status.json does not show the final count"
 
-echo "PASS: RAW counter via bridge_ledger.py matches the recorded bash output and survives python3 dying (${final}/${MESSAGES} counted)"
+
+# ── python3 killed hard (SIGKILL) mid-stream ────────────────────────────────
+# What was collected since the last write is lost (up to 5 s of counters);
+# the files must stay whole and the restarted process must go on.
+# Integrity of the state files after python3 was killed hard: each file is
+# there, not empty, ends with a newline and every row has its fields (TSV) or
+# is one JSON value (JSONL). Counters may lag by up to 5 s; that is accepted.
+check_tsv() {  # check_tsv <file> <fields>
+  [[ -s "$1" ]] || fail "SIGKILL: ${1##*/} is empty or missing"
+  [[ "$(tail -c 1 "$1" | wc -l)" == 1 ]] || fail "SIGKILL: ${1##*/} is cut off (no final newline)"
+  awk -F '\t' -v n="$2" 'NF != n { bad = 1 } END { exit bad }' "$1" \
+    || fail "SIGKILL: ${1##*/} has a row without its ${2} fields"
+}
+check_jsonl() {  # check_jsonl <file>
+  [[ -s "$1" ]] || fail "SIGKILL: ${1##*/} is empty or missing"
+  [[ "$(tail -c 1 "$1" | wc -l)" == 1 ]] || fail "SIGKILL: ${1##*/} is cut off (no final newline)"
+  while IFS= read -r line; do
+    jq -e . <<< "${line}" >/dev/null 2>&1 || fail "SIGKILL: ${1##*/} has a line that is not JSON"
+  done < "$1"
+}
+before="$(cat "${STATUS_RAW_COUNT_FILE}")"
+FEED2="${TMP}/feed2"
+mkfifo "${FEED2}"
+( trap '' PIPE; stage < "${FEED2}" ) 2>>"${TMP}/stage.err" &
+STAGE_PID=$!
+exec {feed_fd}>"${FEED2}"
+for (( i = 1; i <= MESSAGES; i++ )); do
+  printf '%s\n' "${OTHER}" >&"${feed_fd}"
+  sleep 0.05
+  if (( i == 15 )); then
+    pkill -KILL -f "${BRIDGE_LEDGER} raw --raw-count-file=${STATUS_RAW_COUNT_FILE}" \
+      || fail "SIGKILL: no bridge_ledger.py raw process to kill"
+    sleep 1.2   # the stage waits 1 s before starting python3 again
+  fi
+done
+exec {feed_fd}>&-
+wait "${STAGE_PID}" || true
+STAGE_PID=""
+grep -qxE '[0-9]+' "${STATUS_RAW_COUNT_FILE}" || fail "SIGKILL: status_raw_count.txt is not a number"
+(( $(cat "${STATUS_RAW_COUNT_FILE}") > before )) || fail "SIGKILL: the restarted process counted nothing"
+jq -e '.pipeline.raw_count | numbers' "${STATUS_JSON}" >/dev/null || fail "SIGKILL: status.json is not whole"
+jq -e '.current_min | numbers' "${STATUS_RATE_1M_FILE}" >/dev/null || fail "SIGKILL: status_rate_1m.json is not whole"
+check_tsv "${STATUS_RECENT_RAW_FILE}" 3
+grep -qxE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}[+-][0-9]{2}:[0-9]{2}' "${STATUS_LAST_RAW_FILE}" \
+  || fail "SIGKILL: status_last_raw_seen.txt is not one timestamp"
+
+echo "PASS: RAW counter via bridge_ledger.py matches the recorded bash output and survives python3 stopped (${final}/${MESSAGES} counted) and killed (files whole)"

@@ -13,7 +13,7 @@
 # the bash handler wrote for the same corpus - recorded before it was removed,
 # in tests/fixtures/ledger/tracker/<corpus>/;
 #   3. the real subscriber loop against a stub broker, with SIGPIPE ignored,
-# python3 killed mid-stream: the loop must start it again and only the message
+# python3 stopped (SIGTERM) mid-stream: the loop must start it again and only the message
 # being handled may be lost.
 set -euo pipefail
 
@@ -217,10 +217,15 @@ wait_for() {  # wait_for <seconds> <predicate...>
 ( trap '' PIPE; _esp_tracker_subscriber ) 2>"${TMP}/subscriber.err" &
 SUB_PID=$!
 
-wait_for 15 boards_at_least 10 || fail "restart: python3 never booked the first messages"
-pkill -KILL -f "${BRIDGE_LEDGER} tracker --dev-pos 1 --devices-file ${LIVE}/devices" \
+sent_at_least() { local n; n="$(cat "${QUEUE}/next")"; [[ "${n}" =~ ^[0-9]+$ ]] && (( n >= $1 )); }
+# The rows are written every few seconds, so the kill is timed by what the
+# stub has sent; the stopped process writes what it collected.
+wait_for 15 sent_at_least 10 || fail "restart: python3 never received the first messages"
+# SIGTERM, what stopping the add-on sends: the collected writes are made
+# before python3 exits.
+pkill -TERM -f "${BRIDGE_LEDGER} tracker --dev-pos 1 --devices-file ${LIVE}/devices" \
   || fail "restart: no bridge_ledger.py tracker process to kill"
-killed_after="$(boards_seen)"
+killed_after="$(cat "${QUEUE}/next")"
 wait_for 30 queue_sent \
   || fail "restart: the loop did not reconnect after python3 died (stopped at message $(cat "${QUEUE}/next"))"
 wait_for 10 boards_at_least $(( MESSAGES - 1 )) || true
@@ -234,4 +239,46 @@ grep -q "^board${MESSAGES}"$'\t' "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" \
 leftovers="$(find "${LIVE}" -name '*.tmp*')"
 [[ -z "${leftovers}" ]] || fail "restart: temporary files left behind: ${leftovers}"
 
-echo "PASS: tracker via bridge_ledger.py matches the recorded bash output (corpus + 200 generated, ${booked} with a meter id) and survives python3 dying (${final}/${MESSAGES} booked)"
+# ── python3 killed hard (SIGKILL) mid-stream ────────────────────────────────
+# What was collected since the last write is lost (up to 5 s of counters);
+# the files must stay whole and the restarted process must go on.
+# Integrity of the state files after python3 was killed hard: each file is
+# there, not empty, ends with a newline and every row has its fields (TSV) or
+# is one JSON value (JSONL). Counters may lag by up to 5 s; that is accepted.
+check_tsv() {  # check_tsv <file> <fields>
+  [[ -s "$1" ]] || fail "SIGKILL: ${1##*/} is empty or missing"
+  [[ "$(tail -c 1 "$1" | wc -l)" == 1 ]] || fail "SIGKILL: ${1##*/} is cut off (no final newline)"
+  awk -F '\t' -v n="$2" 'NF != n { bad = 1 } END { exit bad }' "$1" \
+    || fail "SIGKILL: ${1##*/} has a row without its ${2} fields"
+}
+check_jsonl() {  # check_jsonl <file>
+  [[ -s "$1" ]] || fail "SIGKILL: ${1##*/} is empty or missing"
+  [[ "$(tail -c 1 "$1" | wc -l)" == 1 ]] || fail "SIGKILL: ${1##*/} is cut off (no final newline)"
+  while IFS= read -r line; do
+    jq -e . <<< "${line}" >/dev/null 2>&1 || fail "SIGKILL: ${1##*/} has a line that is not JSON"
+  done < "$1"
+}
+pkill -KILL -P "${SUB_PID}" 2>/dev/null || true
+kill -KILL "${SUB_PID}" 2>/dev/null || true
+wait "${SUB_PID}" 2>/dev/null || true
+pkill -KILL -f "${BRIDGE_LEDGER} tracker --dev-pos 1 --devices-file ${LIVE}/devices" 2>/dev/null || true
+for (( i = MESSAGES + 1; i <= 2 * MESSAGES; i++ )); do
+  printf 'wmbus/board%02d/telegram\t%s\n' "${i}" "${QWATER}"
+done >> "${QUEUE}/messages"
+MESSAGES=$(( 2 * MESSAGES ))
+( trap '' PIPE; _esp_tracker_subscriber ) 2>>"${TMP}/subscriber.err" &
+SUB_PID=$!
+wait_for 15 sent_at_least $(( MESSAGES - 20 )) || fail "SIGKILL: the subscriber did not start again"
+pkill -KILL -f "${BRIDGE_LEDGER} tracker --dev-pos 1 --devices-file ${LIVE}/devices" \
+  || fail "SIGKILL: no bridge_ledger.py tracker process to kill"
+wait_for 30 queue_sent || fail "SIGKILL: the loop did not reconnect after python3 was killed"
+last_booked() { grep -q "^board${MESSAGES}"$'\t' "${STATUS_ESP_TELEGRAM_DEVICES_FILE}"; }
+wait_for 10 last_booked || fail "SIGKILL: the restarted process did not book the last message"
+check_tsv "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" 4
+check_tsv "${STATUS_ESP_METER_DEVICE_FILE}" 3
+check_tsv "${STATUS_ESP_METER_RECEPTION_FILE}" 6
+check_jsonl "${ESP_RX_HISTORY_FILE}"
+leftovers="$(find "${LIVE}" -name '*.tmp*')"
+[[ -z "${leftovers}" ]] || fail "SIGKILL: temporary files left behind: ${leftovers}"
+
+echo "PASS: tracker via bridge_ledger.py matches the recorded bash output (corpus + 200 generated, ${booked} with a meter id) and survives python3 stopped (${final}/40 booked) and killed (files whole)"
