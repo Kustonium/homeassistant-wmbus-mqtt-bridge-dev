@@ -1022,17 +1022,25 @@ def _seen_epoch(fields: List[bytes]) -> Optional[int]:
     return int(fields[2])
 
 
+# status_seen.tsv is appended to and cut back to the newest SEEN_KEEP rows once
+# it holds more than SEEN_MAX; its readers look at the newest SEEN_KEEP rows
+# only, which is the window they always saw. Cutting it back on every row
+# rewrote all of it (~150 KB) per reception.
+SEEN_KEEP = 5000
+SEEN_MAX = 6000
+
+
 def record_seen(path: str, meter: str, kind: str) -> None:
     """status_record_seen: one row per reception, none within 2 s of the last.
 
-    bash appends and trims this file without a lock; here the lock is taken
-    so that python writers serialise among themselves.
+    The lock is the one bash takes when it cuts the file back.
     """
     ts = int(now())
     k, kind_b = _b(meter), _b(kind)
     with locked(path):
+        lines = _read_lines(path)
         last = 0
-        for line in _read_lines(path):
+        for line in lines:
             f = line.split(b"\t")
             if f[0] == k and len(f) > 1 and f[1] == kind_b:
                 epoch = _seen_epoch(f)
@@ -1040,9 +1048,12 @@ def record_seen(path: str, meter: str, kind: str) -> None:
                     last = epoch
         if last and ts - last < 2:
             return
+        row = _b(f"{meter}\t{kind}\t{ts}")
+        if len(lines) + 1 > SEEN_MAX:
+            _replace_with(path, (lines + [row])[-SEEN_KEEP:])
+            return
         with open(path, "ab") as fh:
-            fh.write(_b(f"{meter}\t{kind}\t{ts}") + b"\n")
-        _replace_with(path, _read_lines(path)[-5000:])
+            fh.write(row + b"\n")
 
 
 def seen_stats(path: str, meter: str) -> Tuple[int, int, int, int]:
@@ -1052,7 +1063,7 @@ def seen_stats(path: str, meter: str) -> Tuple[int, int, int, int]:
     count = seen15 = seen60 = intervals = 0
     total = 0
     prev = 0
-    for line in _read_lines(path):
+    for line in _read_lines(path)[-SEEN_KEEP:]:
         f = line.split(b"\t")
         if f[0] != k:
             continue

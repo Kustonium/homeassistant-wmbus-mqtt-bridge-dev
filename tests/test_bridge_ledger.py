@@ -559,12 +559,53 @@ class CandidateRefreshTest(unittest.TestCase):
                          ["11223344\tmeter\t1790935199", "11223344\tcandidate\t1790935200",
                           "11223344\tcandidate\t1790935202", "11223344\tcandidate\t1790935207"])
 
-    def test_seen_file_keeps_the_last_5000_rows(self):
-        (self.d / "seen").write_text("".join(f"AAAAAAAA\tmeter\t{n}\n" for n in range(5000)))
+    def test_seen_file_is_appended_to_until_6000_rows(self):
+        (self.d / "seen").write_text("".join(f"AAAAAAAA\tmeter\t{n}\n" for n in range(5999)))
+        before = os.stat(self.d / "seen").st_ino
+        bl.record_seen(self.files.seen, "11223344", "candidate")
+        rows = (self.d / "seen").read_text().splitlines()
+        self.assertEqual((len(rows), rows[0], rows[-1], os.stat(self.d / "seen").st_ino),
+                         (6000, "AAAAAAAA\tmeter\t0", "11223344\tcandidate\t1790935200", before))
+
+    def test_seen_file_is_cut_back_to_the_last_5000_rows_past_6000(self):
+        (self.d / "seen").write_text("".join(f"AAAAAAAA\tmeter\t{n}\n" for n in range(6000)))
         bl.record_seen(self.files.seen, "11223344", "candidate")
         rows = (self.d / "seen").read_text().splitlines()
         self.assertEqual((len(rows), rows[0], rows[-1]),
-                         (5000, "AAAAAAAA\tmeter\t1", "11223344\tcandidate\t1790935200"))
+                         (5000, "AAAAAAAA\tmeter\t1001", "11223344\tcandidate\t1790935200"))
+
+    def test_bash_record_seen_appends_and_cuts_back_as_python_does(self):
+        lib = ROOT / "rootfs" / "usr" / "bin" / "bridge-lib"
+        t = int(self.clock[0])
+        for start, expected_rows in ((5999, 6000), (6000, 5000)):
+            for name, record in (("py", None), ("sh", "bash")):
+                path = self.d / f"seen-{name}-{start}"
+                path.write_text("".join(f"AAAAAAAA\tmeter\t{n}\n" for n in range(start)))
+                if record is None:
+                    bl.record_seen(str(path), "11223344", "candidate")
+                else:
+                    subprocess.run(
+                        ["bash", "-c", f'source "{lib}/01-utils.sh"; source "{lib}/04-status.sh"; '
+                         f'source "{lib}/05-raw.sh"; epoch_now() {{ echo {t}; }}; '
+                         f'STATUS_SEEN_FILE="$1"; status_record_seen 11223344 candidate', "bash", str(path)],
+                        check=True)
+            py = (self.d / f"seen-py-{start}").read_text()
+            self.assertEqual((self.d / f"seen-sh-{start}").read_text(), py)
+            self.assertEqual(len(py.splitlines()), expected_rows)
+
+    def test_stats_look_at_the_last_5000_rows_as_status_seen_stats(self):
+        t = int(self.clock[0])
+        # 1000 old rows of the meter, then 5000 newer ones: only those count.
+        (self.d / "seen").write_text("".join(f"11223344\tcandidate\t{t - 90000 + 10 * n}\n" for n in range(1000))
+                                     + "".join(f"11223344\tcandidate\t{t - 50000 + 10 * n}\n" for n in range(5000)))
+        lib = ROOT / "rootfs" / "usr" / "bin" / "bridge-lib"
+        expected = subprocess.run(
+            ["bash", "-c", f'source "{lib}/01-utils.sh"; source "{lib}/04-status.sh"; '
+             f'source "{lib}/05-raw.sh"; epoch_now() {{ echo {t}; }}; '
+             f'STATUS_SEEN_FILE="$1"; status_seen_stats 11223344 candidate', "bash", str(self.d / "seen")],
+            capture_output=True, text=True, check=True).stdout
+        self.assertEqual("\t".join(map(str, bl.seen_stats(self.files.seen, "11223344"))) + "\n", expected)
+        self.assertEqual(bl.seen_stats(self.files.seen, "11223344")[0], 5000)
 
     def test_stats_match_status_seen_stats(self):
         t = int(self.clock[0])
