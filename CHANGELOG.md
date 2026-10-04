@@ -1,3 +1,8 @@
+## 1.5.77-dev.360
+
+### Changed
+- write the refreshed candidate rows at most every 5 s (e0dd115)
+
 ## 1.5.77-dev.359
 
 ### Changed
