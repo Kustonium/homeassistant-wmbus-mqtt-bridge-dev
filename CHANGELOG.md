@@ -13,6 +13,19 @@
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
+### Notes
+- The add-on writes about two thirds less to the disk. Every telegram of a
+  candidate (a meter on air that is not configured) rewrote four whole status
+  files; now one small row is appended per telegram and the other files are
+  written at most every 5 s. Measured with the same radio traffic: 280-300 KB/s
+  before, 85-105 KB/s after, on a site without configured meters. On an HDD
+  the disk was busy about half the time in daytime and is now busy about a
+  tenth; on eMMC and SD cards (Home Assistant Green, Raspberry Pi) this means
+  much less wear. On an SSD or NVMe disk there is no visible difference.
+- In the WebUI, "last seen" and the reception counters of a candidate can lag
+  up to 5 s behind. Nothing else changes: new candidates, the preview decoding
+  and the configured meters work as before.
+
 ## 1.5.76-dev.356
 
 ### Changed
