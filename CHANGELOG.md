@@ -1,3 +1,9 @@
+## 1.5.77-dev.359
+
+### Changed
+- write the refreshed candidate rows at most every 5 s (e0dd115)
+- append to status_seen.tsv and cut it back only past 6000 rows (1828ade)
+
 ## 1.5.77-dev.358
 
 ### Changed
