@@ -1,3 +1,8 @@
+## 1.5.77-dev.358
+
+### Changed
+- append to status_seen.tsv and cut it back only past 6000 rows (1828ade)
+
 ## 1.5.77-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
