@@ -40,11 +40,15 @@ command -v python3 >/dev/null 2>&1 || fail "missing python3"
 
 # ── budgets: bytes per message at 200 meters on air, 5 boards ───────────────
 # (written per message, before the deferred writes, it was 53790 for /rx,
-# 57330 for the tracker and 36573 for the RAW counter)
+# 57330 for the tracker and 36573 for the RAW counter; a LISTEN block was
+# 233230, and 83230 with status_seen.tsv appended to)
 BUDGET_RSSI=90         #  72: status_rssi.tsv, 10 configured meters
 BUDGET_RX=1200         # 954: six /rx tables and the JSONL history
 BUDGET_TRACKER=1070    # 852: three tracker tables and the JSONL history
 BUDGET_RAW=670         # 536: counter, ring, rate, status.json, events
+BUDGET_LISTEN=7000     # 5576: per LISTEN block of a known candidate: status_seen.tsv,
+                       #       the candidate row, its RAW and analysis (status_seen.tsv
+                       #       full: 5000 rows)
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
@@ -142,21 +146,71 @@ measure("rssi", make_rssi, lambda m, b, i: f"wmbus/b{b}/rssi/{m}\t-{55 + b}\n".e
 measure("rx", make_rx, rx_message, run_msg)
 measure("tracker", make_tracker, lambda m, b, i: f"wmbus/b{b}/telegram\t{frame(m)}\n".encode(), run_msg)
 measure("raw", make_raw, lambda m, b, i: f"{frame(m)}\n".encode(), run_raw)
+
+# LISTEN (the parallel instance, meters configured): one block of 5 lines per
+# telegram of a candidate that is registered, announced and keeps its preview
+# config, so it is refreshed in python3. The budget is per block.
+LISTEN_LINES = ("Received telegram from: {m}", "          manufacturer: (BMT) Bmeters",
+                "                  type: Water meter (0x07)", "                   ver: 0x13",
+                "                driver: hydrodigit")
+
+def measure_listen():
+    for m in (10, 50, 200):
+        d = f"{tmp}/listen-{m}"
+        os.makedirs(f"{d}/meters")
+        os.makedirs(f"{d}/preview")
+        meters = [f"{10000000 + 7919 * i:08d}" for i in range(m)]
+        with open(f"{d}/candidates", "w") as fh:
+            for meter in meters:
+                fh.write(f"{meter}\thydrodigit\tWater meter (0x07)\tT\t100\t30\t20\t60\t(BMT) Bmeters\n")
+                open(f"{d}/preview/meter-preview-{meter}", "w").write(
+                    f"name=preview_{meter}\nid={meter.lower()}\ndriver=hydrodigit\n")
+        with open(f"{d}/snippets", "w") as fh:
+            fh.write("".join(f"{meter}\n" for meter in meters))
+        with open(f"{d}/seen", "w") as fh:  # a running site: the file is full
+            fh.write("".join(f"{meters[i % m]}\tcandidate\t{int(clock[0]) - 9000 + i}\n"
+                             for i in range(5000)))
+        with open(f"{d}/recent-raw", "w") as fh:
+            fh.write("".join(f"2026-10-03T10:00:00+00:00\t{len(QWATER) // 2}\t{frame(meters[i % m])}\n"
+                             for i in range(200)))
+        open(f"{d}/official-count", "w").write(f"{CONFIGURED}\n")
+        args = bl._parser().parse_args([
+            "listen", *(f"--{n}-file={d}/{f}" for n, f in (
+                ("candidates", "candidates"), ("seen", "seen"), ("recent-raw", "recent-raw"),
+                ("candidate-raw", "candidate-raw"), ("candidate-analysis", "candidate-analysis"),
+                ("snippet", "snippets"), ("official-count", "official-count"))),
+            f"--meter-dir={d}/meters", f"--preview-meter-dir={d}/preview"])
+        null = open(os.devnull, "w")
+        # Warm-up: every candidate's RAW and analysis rows exist, as on a running site.
+        lines = [(t.format(m=meter) + "\n").encode() for meter in meters for t in LISTEN_LINES]
+        feed(bl.run_listen, bl.ListenBook(args, null, null), lines)
+        blocks = BATCH // len(LISTEN_LINES)
+        lines = [(t.format(m=meters[(i * 7) % m]) + "\n").encode()
+                 for i in range(blocks) for t in LISTEN_LINES]
+        book = bl.ListenBook(args, null, null)
+        before = wchar()
+        feed(bl.run_listen, book, lines)
+        after = wchar()
+        print(f"listen\t{m}\t{(after - before) // blocks}")
+
+measure_listen()
 PY
 
 declare -A R
 while IFS=$'\t' read -r path m bytes; do R[${path},${m}]="${bytes}"; done < "${TMP}/measured"
 
-declare -A BUDGET=([rssi]="${BUDGET_RSSI}" [rx]="${BUDGET_RX}" [tracker]="${BUDGET_TRACKER}" [raw]="${BUDGET_RAW}")
+declare -A BUDGET=([rssi]="${BUDGET_RSSI}" [rx]="${BUDGET_RX}" [tracker]="${BUDGET_TRACKER}" [raw]="${BUDGET_RAW}"
+                  [listen]="${BUDGET_LISTEN}")
 declare -A LABEL=(
   [rssi]="ledger rssi/<id> (10 configured)"
   [rx]="ledger /rx"
   [tracker]="ledger /telegram tracker"
   [raw]="ledger RAW counter"
+  [listen]="ledger LISTEN block (candidate)"
 )
 printf '%-36s%9s%9s%9s%9s\n' "bytes written per message ->" "10" "50" "200" "budget"
 failures=()
-for s in rssi rx tracker raw; do
+for s in rssi rx tracker raw listen; do
   printf '%-36s%9s%9s%9s%9s\n' "${LABEL[${s}]}" "${R[${s},10]}" "${R[${s},50]}" "${R[${s},200]}" "${BUDGET[${s}]}"
   (( R[${s},200] <= BUDGET[${s}] )) \
     || failures+=("${LABEL[${s}]}: ${R[${s},200]} bytes per message at 200 meters on air, budget ${BUDGET[${s}]}")

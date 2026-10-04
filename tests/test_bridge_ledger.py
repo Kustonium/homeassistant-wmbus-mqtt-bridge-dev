@@ -488,7 +488,11 @@ class RawBookRequestTest(unittest.TestCase):
                                    "99999999\tauto\tGas meter (0x03)\tT\t1\t0\t1\t1\t\n")
         (self.preview / "meter-preview-11223344").write_text("name=preview_11223344\nid=11223344\n")
         (self.last / "11223344").write_text(f"{int(bl.now()) + 3600}\n")  # no one-shot in this test
+        before = self.candidates.read_text()
         self.assertEqual(self.requests(sap01), [])
+        # The candidate row waits for the deferred write; the reception row does not.
+        self.assertEqual(self.candidates.read_text(), before)
+        self.book.deferred.flush()
         rows = self.candidates.read_text().splitlines()
         self.assertEqual(rows[0].split("\t")[0], "99999999")  # the refreshed row moves to the end
         f = rows[1].split("\t")
@@ -558,6 +562,70 @@ class CandidateRefreshTest(unittest.TestCase):
         self.assertEqual((self.d / "seen").read_text().splitlines(),
                          ["11223344\tmeter\t1790935199", "11223344\tcandidate\t1790935200",
                           "11223344\tcandidate\t1790935202", "11223344\tcandidate\t1790935207"])
+
+    def _deferred_site(self, name: str):
+        """A directory with three registered candidates, two of them in the RAW ring."""
+        d = self.d / name
+        d.mkdir()
+        (d / "candidates").write_text("".join(
+            f"{m}\tdrv\tWater meter (0x07)\tT\t1\t0\t1\t1\t{mf}\n"
+            for m, mf in (("11223344", "(BMT) Bmeters"), ("22334455", ""), ("33445566", "QDS"))))
+        (d / "ring").write_text("".join(
+            f"2026-10-02T10:00:0{i}+00:00\t26\t2E44B4094{le}0107A\n"
+            for i, le in enumerate(("44332211", "55443322"))))
+        deferred = bl.Deferred()
+        files = bl.CandidateFiles(*(str(d / n) for n in ("candidates", "seen", "ring", "craw",
+                                                        "analysis", "preview", "meters")),
+                                  deferred=deferred if name == "deferred" else None)
+        return d, files, deferred
+
+    def test_deferred_refreshes_leave_what_immediate_ones_leave(self):
+        sequence = [("11223344", ""), ("22334455", "(QDS) Qundis"), ("11223344", ""),
+                    ("33445566", ""), ("11223344", "(BMT) Bmeters"), ("22334455", "")]
+        results = {}
+        for name in ("immediate", "deferred"):
+            d, files, deferred = self._deferred_site(name)
+            registered = (d / "candidates").read_text()
+            self.clock[0] = 1790935200.0
+            for meter, mf in sequence:
+                self.clock[0] += 3
+                self.assertTrue(bl.candidate_seen_refresh(files, meter, "drv", "Water meter (0x07)", mf))
+            if name == "deferred":
+                self.assertEqual((d / "candidates").read_text(), registered)  # until written
+                self.assertFalse((d / "analysis").exists())
+                deferred.flush()
+            results[name] = {n: (d / n).read_text() for n in ("candidates", "seen", "craw", "analysis")}
+        self.assertEqual(results["deferred"], results["immediate"])
+
+    def test_deferred_refresh_keeps_a_row_another_writer_changed_or_removed(self):
+        d, files, deferred = self._deferred_site("deferred")
+        for meter in ("11223344", "22334455"):
+            self.assertTrue(bl.candidate_seen_refresh(files, meter, "drv", "Water meter (0x07)"))
+        # Before the write: bash reclassifies one candidate and another one is removed.
+        (d / "candidates").write_text("33445566\tdrv\tWater meter (0x07)\tT\t1\t0\t1\t1\tQDS\n"
+                                      "11223344\tizarv2\tWater meter (0x07)\tB\t1\t0\t1\t1\t\n")
+        deferred.flush()
+        self.assertEqual((d / "candidates").read_text(),
+                         "33445566\tdrv\tWater meter (0x07)\tT\t1\t0\t1\t1\tQDS\n"
+                         "11223344\tizarv2\tWater meter (0x07)\tB\t1\t0\t1\t1\t\n")
+        self.assertFalse((d / "analysis").exists())
+        self.assertFalse((d / "craw").exists())
+        self.assertEqual(len((d / "seen").read_text().splitlines()), 2)  # the receptions stay
+
+    def test_deferred_refreshes_rewrite_each_file_once_per_write(self):
+        d, files, deferred = self._deferred_site("deferred")
+        for step in range(30):
+            self.clock[0] += 1
+            meter = ("11223344", "22334455", "33445566")[step % 3]
+            bl.candidate_seen_refresh(files, meter, "drv", "Water meter (0x07)")
+        rewrites = []
+        real = bl._replace_with
+        bl._replace_with = lambda path, lines: (rewrites.append(os.path.basename(path)), real(path, lines))
+        try:
+            deferred.flush()
+        finally:
+            bl._replace_with = real
+        self.assertEqual(sorted(rewrites), ["analysis", "candidates", "craw"])
 
     def test_seen_file_is_appended_to_until_6000_rows(self):
         (self.d / "seen").write_text("".join(f"AAAAAAAA\tmeter\t{n}\n" for n in range(5999)))
