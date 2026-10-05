@@ -171,6 +171,8 @@ STATUS_HA_VERIFICATION_FILE = BASE / "status_ha_verification.txt"
 # wmbusmeters version triplet written once at bridge start by bridge.sh.
 # Format: runtime_version<TAB>build_version<TAB>build_commit.
 STATUS_WMBUSMETERS_VERSION_FILE = BASE / "status_wmbusmeters_version.txt"
+# Storage medium of the data directory, written once at bridge start.
+STATUS_STORAGE_FILE = BASE / "status_storage.json"
 # Liveness heartbeat stamped by bridge.sh every few seconds, independent of
 # telegram flow. A stale heartbeat means the bridge is down or run.sh is still
 # waiting for the broker — the rest of the snapshot is then stale, not live.
@@ -3349,6 +3351,16 @@ def status_model(data: dict) -> dict:
     except OSError:
         pass
 
+    # Storage medium of /data (bridge_ledger.py storage, written at bridge start).
+    storage: dict = {}
+    try:
+        _st = json.loads(STATUS_STORAGE_FILE.read_text(encoding="utf-8"))
+        if isinstance(_st, dict):
+            storage = {k: str(_st.get(k) or "") for k in
+                       ("kind", "partition", "disk", "rotational", "model", "vm", "error")}
+    except (OSError, ValueError):
+        pass
+
     # Bridge liveness: bridge.sh stamps status_heartbeat.txt every few seconds
     # regardless of telegram flow. A stale heartbeat (or none) means the bridge is
     # down or run.sh is still waiting for the broker, so the whole snapshot is
@@ -3437,6 +3449,7 @@ def status_model(data: dict) -> dict:
         "wmbusmeters_runtime": wmbusmeters_runtime,
         "wmbusmeters_build_version": wmbusmeters_build_version,
         "wmbusmeters_build_commit": wmbusmeters_build_commit,
+        "storage": storage,
     }
 
 

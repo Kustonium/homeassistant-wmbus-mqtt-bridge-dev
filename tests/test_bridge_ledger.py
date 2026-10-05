@@ -6,6 +6,7 @@ files must be byte-identical.
 """
 from __future__ import annotations
 
+import contextlib
 import io
 import json
 import os
@@ -949,6 +950,23 @@ class StorageMediumTest(unittest.TestCase):
                              capture_output=True, text=True, check=True).stdout
         self.assertEqual(len(out.splitlines()), 1)
         self.assertTrue(out.startswith(f"storage: {self.dir.name} on "))
+
+    def test_storage_mode_writes_the_json_the_webui_reads(self):
+        target = self.disk("sda", "1", "WDC WD5000", parts=["sda8"]) / "sda8"
+        dev = self.link(8, 8, target)
+        out = Path(self.dir.name) / "status_storage.json"
+        real_stat = bl.os.stat
+        bl.os.stat = lambda p, *a, **k: os.stat_result((0,) * 2 + (dev,) + (0,) * 7) if p == "/data" else real_stat(p, *a, **k)
+        printed = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(printed):
+                self.assertEqual(bl.main(["storage", "--path", "/data", "--sys-root", str(self.sys),
+                                          "--json-file", str(out)]), 0)
+        finally:
+            bl.os.stat = real_stat
+        self.assertTrue(printed.getvalue().startswith("storage: /data on hdd"))
+        info = json.loads(out.read_text())
+        self.assertEqual((info["kind"], info["disk"], info["model"]), ("hdd", "sda", "WDC WD5000"))
 
 
 if __name__ == "__main__":

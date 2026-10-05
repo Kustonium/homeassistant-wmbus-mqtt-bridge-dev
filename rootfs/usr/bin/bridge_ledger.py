@@ -1879,6 +1879,8 @@ def _parser() -> argparse.ArgumentParser:
     storage = modes.add_parser("storage", help="print the storage medium of a directory")
     storage.add_argument("--path", required=True)
     storage.add_argument("--sys-root", default="/sys")
+    storage.add_argument("--json-file", default="",
+                         help="also write the result as JSON (for the WebUI)")
     return parser
 
 
@@ -1903,7 +1905,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         run(RxBook(args.reception_file, args.mode_file, args.history_file,
                    args.sequence_file, args.boots_file, args.clock_file))
     elif args.mode == "storage":
-        print(storage_line(storage_medium(args.path, args.sys_root)))
+        info = storage_medium(args.path, args.sys_root)
+        if args.json_file:
+            _write_replace(args.json_file, _b(json.dumps(info, sort_keys=True)) + b"\n")
+        print(storage_line(info))
     return 0
 
 
