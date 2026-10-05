@@ -1,3 +1,8 @@
+## 1.5.78-dev.361
+
+### Added
+- log the storage medium of the data directory at start (3a35e71)
+
 ## 1.5.78-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
