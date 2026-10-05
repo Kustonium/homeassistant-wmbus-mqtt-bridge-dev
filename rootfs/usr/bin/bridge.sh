@@ -828,8 +828,17 @@ fi
 # (docker stop / s6 SIGTERM).
 # The RAM directory is saved last, a moment after the ledger processes got the
 # same SIGTERM and wrote what they had collected.
-_stop_extra_instances() { stop_listen_instance; stop_mbus_instance; sleep 1; runtime_snapshot || true; }
-trap _stop_extra_instances EXIT TERM INT
+_STOPPED=0
+_stop_extra_instances() {
+  (( _STOPPED )) && return 0
+  _STOPPED=1
+  stop_listen_instance; stop_mbus_instance; sleep 1; runtime_snapshot || true
+}
+# SIGTERM/SIGINT end the script: a handler that only returned let the restart
+# loop below start the pipeline again, until s6 gave up waiting and killed it.
+_on_stop_signal() { _stop_extra_instances; exit 143; }
+trap _stop_extra_instances EXIT
+trap _on_stop_signal TERM INT
 
 # ------------------------------------------------------------
 # wait_for_mqtt
