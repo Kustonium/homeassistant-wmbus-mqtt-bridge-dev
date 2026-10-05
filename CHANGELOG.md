@@ -1,3 +1,11 @@
+## 1.5.78-dev.365
+
+### Changed
+- keep the preview one-shot working directories in RAM (6f159be)
+
+### Fixed
+- end bridge.sh on SIGTERM instead of restarting the pipeline (fa831a3)
+
 ## 1.5.78-dev.364
 
 ### Added
