@@ -124,6 +124,9 @@ trap cleanup EXIT
 # ── environment of the bridge ───────────────────────────────────────────────
 BASE="${TMP}/data"
 mkdir -p "${BASE}"
+# The status files are defined from ${RUNTIME}, the RAM directory in the
+# add-on; without a tmpfs it is ${BASE}, as here.
+RUNTIME="${BASE}"
 # The file paths are the ones bridge.sh defines from ${BASE} (and from paths
 # derived from it). Only plain "VAR=\"${X}/literal\"" assignments are taken,
 # so evaluating them cannot run anything.

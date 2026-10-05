@@ -9,6 +9,10 @@ arch:
   - aarch64
 
 init: false
+# /tmp in RAM: the status files, rewritten every few seconds, live there
+# (/tmp/wmbus-runtime) and are saved to /data/runtime_state.tar every few
+# minutes and at stop, instead of being written to the disk every second.
+tmpfs: true
 
 ingress: true
 ingress_port: 8099

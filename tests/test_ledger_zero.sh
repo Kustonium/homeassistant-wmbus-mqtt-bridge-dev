@@ -36,6 +36,9 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
 
 BASE="${TMP}/data"
+# The status files are defined from ${RUNTIME} (the RAM directory in the
+# add-on); without a tmpfs it is ${BASE}, as here.
+RUNTIME="${BASE}"
 while IFS= read -r _assign; do
   _src="${_assign#*=\"\$\{}"
   _src="${_src%%\}*}"

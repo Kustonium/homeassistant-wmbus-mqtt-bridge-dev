@@ -12,6 +12,7 @@ import json
 import os
 import stat
 import subprocess
+import tarfile
 import sys
 import tempfile
 import threading
@@ -874,6 +875,88 @@ class RecentRawRingTest(RawBookRequestTest):
         self.assertIsNone(bl.find_recent_raw(str(ring), "11223344"))
         ring.write_text(f"ts\t{len(old)}\t{old}\n" + "ts\t4\tABCD\n" * 199)
         self.assertIsNotNone(bl.find_recent_raw(str(ring), "11223344"))
+
+
+class RuntimeDirTest(unittest.TestCase):
+    """The status files in a RAM directory: choice, first start, snapshot, restore."""
+
+    def setUp(self) -> None:
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        d = Path(self.dir.name)
+        self.base, self.ram = d / "data", d / "ram"
+        self.base.mkdir()
+        self.mounts = d / "mounts"
+
+    def test_directory_choice(self):
+        self.mounts.write_text("overlay / overlay rw 0 0\ntmpfs /tmp tmpfs rw 0 0\n")
+        m = str(self.mounts)
+        self.assertEqual(bl.runtime_dir("/data", {}, m), bl.RUNTIME_DIR)
+        self.assertEqual(bl.runtime_dir("/config", {}, m), "/config")  # Docker: only on request
+        self.assertEqual(bl.runtime_dir("/config", {"WMBUS_RUNTIME": "/tmp/x"}, m), "/tmp/x")
+        self.mounts.write_text("overlay / overlay rw 0 0\n/dev/sda8 /tmp ext4 rw 0 0\n")
+        self.assertEqual(bl.runtime_dir("/data", {}, m), "/data")
+
+    def test_first_start_copies_the_status_files_and_leaves_the_rest(self):
+        for name in ("status.json", "status_candidates.tsv", "status_seen.tsv",
+                     "status_ignored_candidates.tsv", "status_run_error.txt", "options.json",
+                     "esp_rf_rx_history.jsonl", "status_seen.tsv.lock", "status_rssi.tsv.tmp.abc"):
+            (self.base / name).write_text(name + "\n")
+        message = bl.runtime_restore(str(self.base), str(self.ram))
+        self.assertIn("3 file(s) moved", message)
+        self.assertEqual(sorted(p.name for p in self.ram.iterdir()),
+                         [".restored", "status.json", "status_candidates.tsv", "status_seen.tsv"])
+        # Saved at once; the moved files left the data directory, the rest stayed.
+        self.assertEqual(sorted(p.name for p in self.base.iterdir()),
+                         ["esp_rf_rx_history.jsonl", "options.json", bl.RUNTIME_SNAPSHOT,
+                          "status_ignored_candidates.tsv", "status_rssi.tsv.tmp.abc",
+                          "status_run_error.txt", "status_seen.tsv.lock"])
+        with tarfile.open(self.base / bl.RUNTIME_SNAPSHOT) as tar:
+            self.assertEqual(sorted(tar.getnames()), ["status.json", "status_candidates.tsv", "status_seen.tsv"])
+
+    def test_snapshot_and_restore_byte_for_byte(self):
+        self.ram.mkdir()
+        files = {"status_candidates.tsv": b"11223344\thydrodigit\n", "status.json": b'{"a": 1}\n',
+                 "status_seen.tsv": bytes(range(256)) * 40}
+        for name, data in files.items():
+            (self.ram / name).write_bytes(data)
+        (self.ram / "status_seen.tsv.lock").write_bytes(b"")
+        self.assertGreater(bl.runtime_snapshot(str(self.base), str(self.ram)), 0)
+        self.assertEqual([p.name for p in self.base.iterdir()], [bl.RUNTIME_SNAPSHOT])
+        fresh = Path(self.dir.name) / "fresh"
+        self.assertIn("3 file(s) restored", bl.runtime_restore(str(self.base), str(fresh)))
+        self.assertEqual({n: (fresh / n).read_bytes() for n in files}, files)
+
+    def test_a_restart_in_the_running_container_keeps_the_ram_state(self):
+        self.ram.mkdir()
+        (self.ram / "status_seen.tsv").write_text("live\n")
+        bl.runtime_snapshot(str(self.base), str(self.ram))
+        bl.runtime_restore(str(self.base), str(self.ram))
+        (self.ram / "status_seen.tsv").write_text("newer\n")
+        self.assertIn("kept from the running container", bl.runtime_restore(str(self.base), str(self.ram)))
+        self.assertEqual((self.ram / "status_seen.tsv").read_text(), "newer\n")
+
+    def test_without_tmpfs_the_last_snapshot_goes_back_to_the_data_directory(self):
+        self.ram.mkdir()
+        (self.ram / "status_seen.tsv").write_text("from ram\n")
+        bl.runtime_snapshot(str(self.base), str(self.ram))
+        (self.base / "status_seen.tsv").write_text("stale\n")
+        self.assertIn("1 file(s) restored", bl.runtime_restore(str(self.base), str(self.base)))
+        self.assertEqual((self.base / "status_seen.tsv").read_text(), "from ram\n")
+        self.assertFalse((self.base / bl.RUNTIME_SNAPSHOT).exists())
+        self.assertEqual(bl.runtime_snapshot(str(self.base), str(self.base)), 0)  # nothing to save
+
+    def test_a_snapshot_cannot_write_outside_the_directory(self):
+        evil = self.base / bl.RUNTIME_SNAPSHOT
+        with tarfile.open(evil, "w") as tar:
+            for name in ("../escape", "sub/dir", "status_ok.tsv"):
+                data = name.encode()
+                info = tarfile.TarInfo(name)
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+        bl.runtime_restore(str(self.base), str(self.ram))
+        self.assertEqual(sorted(p.name for p in self.ram.iterdir()), [".restored", "status_ok.tsv"])
+        self.assertFalse((Path(self.dir.name) / "escape").exists())
 
 
 class StorageMediumTest(unittest.TestCase):
