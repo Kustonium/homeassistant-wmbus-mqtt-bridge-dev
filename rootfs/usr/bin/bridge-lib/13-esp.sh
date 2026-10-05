@@ -550,6 +550,12 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 # $SYS/brokers/<node>/version (number) plus $SYS/brokers/<node>/sysdescr = "EMQX".
 # Subscribing to all three covers both brokers; the WebUI labels the MQTT tile
 # with brand + version. NB: no SUB_EXTRA (-R) — $SYS broadcasts must be delivered.
+# A broker may refuse $SYS: EMQX's default ACL allows it to localhost clients
+# only. mosquitto_sub then says "All subscription requests were denied" and
+# exits at once, and the reconnect pause retried it every 2 min - a broker
+# connection and an authorization warning in the broker log each time, for an
+# answer that does not change. A refusal is recorded (fourth column "denied",
+# shown by the WebUI) and asked again after BROKER_SYS_DENIED_RETRY_S.
 (
   _bk_brand=""
   _bk_version=""
@@ -589,8 +595,17 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
         -t '$SYS/brokers/+/sysdescr' \
         -t '$SYS/broker/clients/connected' \
         -t '$SYS/brokers/+/clients/count' \
-        -F '%t\t%p' 2>/dev/null
+        -F '%t\t%p' 2>"${STATUS_BROKER_INFO_FILE}.err"
     )
+    if grep -qi 'denied' "${STATUS_BROKER_INFO_FILE}.err" 2>/dev/null; then
+      if [[ -z "${_bk_brand}${_bk_version}${_bk_clients}" ]]; then
+        printf '\t\t\tdenied\n' > "${STATUS_BROKER_INFO_FILE}.tmp" 2>/dev/null \
+          && mv "${STATUS_BROKER_INFO_FILE}.tmp" "${STATUS_BROKER_INFO_FILE}" 2>/dev/null \
+          || true
+      fi
+      sleep "${BROKER_SYS_DENIED_RETRY_S:-3600}"
+      continue
+    fi
     _sub_reconnect_sleep "${_sub_t0}"
   done
 ) &
