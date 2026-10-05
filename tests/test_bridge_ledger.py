@@ -875,5 +875,81 @@ class RecentRawRingTest(RawBookRequestTest):
         self.assertIsNotNone(bl.find_recent_raw(str(ring), "11223344"))
 
 
+class StorageMediumTest(unittest.TestCase):
+    """storage_medium: the medium of the data directory, from a sysfs tree."""
+
+    def setUp(self) -> None:
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.sys = Path(self.dir.name)
+        (self.sys / "dev" / "block").mkdir(parents=True)
+
+    def disk(self, name: str, rotational: str, model: str = "", parts=(), card: str = "",
+             slaves=()) -> Path:
+        d = self.sys / "devices" / "virtual" / "block" / name
+        (d / "queue").mkdir(parents=True)
+        (d / "queue" / "rotational").write_text(rotational + "\n")
+        (d / "device").mkdir()
+        if model:
+            (d / "device" / "model").write_text(model + "   \n")
+        if card:
+            (d / "device" / "type").write_text(card + "\n")
+        for p in parts:
+            (d / p).mkdir()
+        if slaves:
+            (d / "slaves").mkdir()
+            for s in slaves:
+                (d / "slaves" / s.name).symlink_to(s)
+        return d
+
+    def link(self, major: int, minor: int, target: Path) -> int:
+        (self.sys / "dev" / "block" / f"{major}:{minor}").symlink_to(target)
+        return os.makedev(major, minor)
+
+    def medium(self, dev: int) -> dict:
+        return bl.storage_medium("/data", str(self.sys), dev)
+
+    def test_kinds(self):
+        cases = {
+            "hdd partition": (self.disk("sda", "1", "WDC WD5000", parts=["sda8"]) / "sda8", "hdd", "sda"),
+            "ssd": (self.disk("sdb", "0", "Samsung SSD"), "ssd", "sdb"),
+            "nvme partition": (self.disk("nvme0n1", "0", parts=["nvme0n1p8"]) / "nvme0n1p8", "nvme", "nvme0n1"),
+            "sd card": (self.disk("mmcblk0", "0", card="SD", parts=["mmcblk0p8"]) / "mmcblk0p8", "sd", "mmcblk0"),
+            "emmc": (self.disk("mmcblk1", "0", card="MMC"), "emmc", "mmcblk1"),
+        }
+        for minor, (name, (target, kind, disk)) in enumerate(cases.items()):
+            with self.subTest(name):
+                info = self.medium(self.link(8, minor, target))
+                self.assertEqual((info["kind"], info["disk"]), (kind, disk))
+        info = self.medium(os.makedev(8, 0))
+        self.assertEqual((info["partition"], info["model"]), ("sda8", "WDC WD5000"))
+        self.assertIn("storage: /data on hdd (partition sda8, disk sda, rotational=1, model WDC WD5000)",
+                      bl.storage_line(info))
+
+    def test_raid_takes_the_slowest_member(self):
+        hdd = self.disk("sdc", "1", parts=["sdc3"])
+        ssd = self.disk("sdd", "0", parts=["sdd3"])
+        md = self.disk("md1", "0", slaves=[hdd / "sdc3", ssd / "sdd3"])
+        self.assertEqual(self.medium(self.link(9, 1, md))["kind"], "hdd")
+
+    def test_virtual_machine_is_named_and_a_missing_device_is_unknown(self):
+        (self.sys / "class" / "dmi" / "id").mkdir(parents=True)
+        (self.sys / "class" / "dmi" / "id" / "sys_vendor").write_text("QEMU\n")
+        (self.sys / "class" / "dmi" / "id" / "product_name").write_text("Standard PC (Q35 + ICH9, 2009)\n")
+        info = self.medium(self.link(252, 0, self.disk("vda", "1", parts=["vda8"]) / "vda8"))
+        self.assertEqual((info["kind"], info["vm"]), ("hdd", "QEMU Standard PC (Q35 + ICH9, 2009)"))
+        self.assertIn("virtual machine: QEMU", bl.storage_line(info))
+        info = self.medium(os.makedev(0, 77))  # overlay, tmpfs: no block device
+        self.assertEqual(info["kind"], "unknown")
+        self.assertIn("without a block device", bl.storage_line(info))
+
+    def test_storage_mode_prints_one_line(self):
+        out = subprocess.run([sys.executable, str(ROOT / "rootfs" / "usr" / "bin" / "bridge_ledger.py"),
+                              "storage", "--path", self.dir.name, "--sys-root", str(self.sys)],
+                             capture_output=True, text=True, check=True).stdout
+        self.assertEqual(len(out.splitlines()), 1)
+        self.assertTrue(out.startswith(f"storage: {self.dir.name} on "))
+
+
 if __name__ == "__main__":
     unittest.main()

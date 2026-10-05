@@ -274,6 +274,11 @@ mkdir -p "${BASE}/.preview_attempts" 2>/dev/null || true
 # Record bridge start time for the WebGUI rate denominator fix.
 printf '%s\n' "$(epoch_now)" > "${STATUS_BRIDGE_START_FILE}" 2>/dev/null || true
 
+# What the data directory is stored on (NVMe, SSD, HDD, eMMC, SD), logged once.
+# Nothing depends on it yet; the line shows whether it is told apart correctly.
+log "$(python3 "${BRIDGE_SCRIPT_DIR:-/usr/bin}/bridge_ledger.py" storage --path "${BASE}" 2>/dev/null \
+  || echo "storage: ${BASE} on unknown (detection failed)")"
+
 
 # ------------------------------------------------------------
 # Config (ENV overrides JSON)

@@ -1746,6 +1746,92 @@ def run(handler: Handler, stream=None, err=None) -> None:
         deferred.flush(err)
 
 
+# ── storage medium of the data directory ────────────────────────────────────
+# Logged once at start, nothing depends on it yet: the per-message tables are
+# written every FLUSH_EVERY_S, which a spinning disk feels as ~20 random writes
+# a second and an SSD does not. Before anything is tuned by the medium, the log
+# has to show that it is told apart correctly on real installs.
+
+_VM_VENDORS = ("QEMU", "KVM", "VMWARE", "VIRTUALBOX", "INNOTEK", "MICROSOFT", "XEN",
+               "PARALLELS", "BOCHS", "PROXMOX")
+
+
+def _sys_read(path: str) -> str:
+    try:
+        with open(path, "rb") as fh:
+            return _s(fh.read()).strip()
+    except OSError:
+        return ""
+
+
+def _disk_kind(disk_dir: str, sys_root: str, depth: int = 0) -> Tuple[str, str]:
+    """(kind, rotational) of a block device directory in sysfs."""
+    disk = os.path.basename(disk_dir)
+    rotational = _sys_read(os.path.join(disk_dir, "queue", "rotational"))
+    if disk.startswith("mmcblk"):
+        card = _sys_read(os.path.join(disk_dir, "device", "type")).upper()
+        return ("emmc" if card == "MMC" else "sd"), rotational
+    if disk.startswith("nvme"):
+        return "nvme", rotational
+    slaves_dir = os.path.join(disk_dir, "slaves")
+    if depth < 4 and os.path.isdir(slaves_dir):  # md RAID, LVM, dm-crypt
+        kinds = []
+        for slave in sorted(os.listdir(slaves_dir)):
+            real = os.path.realpath(os.path.join(slaves_dir, slave))
+            if not os.path.isdir(os.path.join(real, "queue")):
+                real = os.path.dirname(real)  # a partition: its disk
+            kinds.append(_disk_kind(real, sys_root, depth + 1)[0])
+        if kinds:
+            for kind in ("hdd", "sd", "emmc", "ssd", "nvme"):
+                if kind in kinds:  # the slowest member decides
+                    return kind, rotational
+    if rotational == "1":
+        return "hdd", rotational
+    if rotational == "0":
+        return "ssd", rotational
+    return "unknown", rotational
+
+
+def storage_medium(path: str, sys_root: str = "/sys", dev: Optional[int] = None) -> Dict[str, str]:
+    """What the directory is stored on: kind (nvme, ssd, hdd, emmc, sd, unknown),
+    the partition and disk, its rotational flag and model, and the hypervisor
+    vendor when the machine is virtual (a virtual disk can claim anything)."""
+    out = {"path": path, "kind": "unknown", "partition": "", "disk": "", "rotational": "",
+           "model": "", "vm": ""}
+    vendor = " ".join(filter(None, (_sys_read(os.path.join(sys_root, "class", "dmi", "id", n))
+                                    for n in ("sys_vendor", "product_name"))))
+    if any(v in vendor.upper() for v in _VM_VENDORS):
+        out["vm"] = vendor
+    try:
+        st_dev = os.stat(path).st_dev if dev is None else dev
+    except OSError as exc:
+        out["error"] = f"stat failed: {exc.strerror}"
+        return out
+    link = os.path.join(sys_root, "dev", "block", f"{os.major(st_dev)}:{os.minor(st_dev)}")
+    if not os.path.exists(link):
+        out["error"] = f"no {link} (filesystem without a block device)"
+        return out
+    real = os.path.realpath(link)
+    disk_dir = real if os.path.isdir(os.path.join(real, "queue")) else os.path.dirname(real)
+    out["partition"], out["disk"] = os.path.basename(real), os.path.basename(disk_dir)
+    out["kind"], out["rotational"] = _disk_kind(disk_dir, sys_root)
+    out["model"] = _sys_read(os.path.join(disk_dir, "device", "model"))
+    return out
+
+
+def storage_line(info: Dict[str, str]) -> str:
+    """The one log line of storage_medium."""
+    detail = [f"partition {info['partition'] or '?'}", f"disk {info['disk'] or '?'}",
+              f"rotational={info['rotational'] or '?'}"]
+    if info.get("model"):
+        detail.append(f"model {info['model']}")
+    if info.get("vm"):
+        detail.append(f"virtual machine: {info['vm']}")
+    if info.get("error"):
+        detail.append(info["error"])
+    return f"storage: {info['path']} on {info['kind']} ({', '.join(detail)})"
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="bridge_ledger.py")
     modes = parser.add_subparsers(dest="mode", required=True)
@@ -1790,6 +1876,9 @@ def _parser() -> argparse.ArgumentParser:
     rx = modes.add_parser("rx", help="wmbus/<board>/rx messages")
     for name in ("reception", "mode", "history", "sequence", "boots", "clock"):
         rx.add_argument(f"--{name}-file", required=True)
+    storage = modes.add_parser("storage", help="print the storage medium of a directory")
+    storage.add_argument("--path", required=True)
+    storage.add_argument("--sys-root", default="/sys")
     return parser
 
 
@@ -1813,6 +1902,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     elif args.mode == "rx":
         run(RxBook(args.reception_file, args.mode_file, args.history_file,
                    args.sequence_file, args.boots_file, args.clock_file))
+    elif args.mode == "storage":
+        print(storage_line(storage_medium(args.path, args.sys_root)))
     return 0
 
 
