@@ -1,3 +1,9 @@
+## 1.5.78-dev.362
+
+### Added
+- show the storage medium of the data directory in the wmbusmeters panel (9852c87)
+- log the storage medium of the data directory at start (3a35e71)
+
 ## 1.5.78-dev.361
 
 ### Added
