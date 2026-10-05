@@ -1,3 +1,11 @@
+## 1.5.78-dev.366
+
+### Changed
+- keep the preview one-shot working directories in RAM (6f159be)
+
+### Fixed
+- send SIGTERM to bridge.sh's whole process group and wait for it (276f951)
+
 ## 1.5.78-dev.365
 
 ### Changed
