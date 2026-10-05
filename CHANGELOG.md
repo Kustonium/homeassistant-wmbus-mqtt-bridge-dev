@@ -1,3 +1,11 @@
+## 1.5.78-dev.367
+
+### Changed
+- publish the board coverage sensor only when it changes (c2ab4e3)
+
+### Fixed
+- send SIGTERM to bridge.sh's whole process group and wait for it (276f951)
+
 ## 1.5.78-dev.366
 
 ### Changed
