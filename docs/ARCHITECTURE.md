@@ -753,7 +753,11 @@ set, or a custom `WMBUS_BASE`) the runtime directory is the data directory, as
 before. `status_ignored_candidates.tsv` (a user's decision) and
 `status_run_error.txt` (written by `run.sh` before the bridge) stay on the data
 disk, as do the configuration, the preview configs and the bounded JSONL
-histories, which are only appended to.
+histories, which are only appended to. The working directories of the preview
+one-shot decodes (`.preview_decode.*`, its locks, slots, last-attempt times and
+attempt counters) are created and removed per decode - directory writes, which a
+spinning disk feels as much as file replacements - so they live in the runtime
+directory too; they are not part of the snapshot.
 
 The split has two effects:
 

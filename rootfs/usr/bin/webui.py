@@ -1313,7 +1313,7 @@ def _cleanup_preview_cache(meter_id: str, remove_preview_file: bool = True) -> N
     _remove_id_from_tsv(STATUS_CANDIDATE_PREVIEW_STATE_FILE, meter_id)
 
     try:
-        attempt_file = BASE / ".preview_attempts" / meter_id
+        attempt_file = RUNTIME / ".preview_attempts" / meter_id
         if attempt_file.exists():
             attempt_file.unlink()
     except OSError:

@@ -250,8 +250,8 @@ printf '0\n' > "${STATUS_OFFICIAL_METERS_COUNT_FILE}" 2>/dev/null || true
 rm -rf "${BASE}/.reload_listen_pending" 2>/dev/null || true
 # Session-scoped attempt counter dir — counts text-only telegrams per preview candidate
 # without JSON. Cleared on every bridge start so stale counts never carry over.
-rm -rf "${BASE}/.preview_attempts" 2>/dev/null || true
-mkdir -p "${BASE}/.preview_attempts" 2>/dev/null || true
+rm -rf "${RUNTIME}/.preview_attempts" 2>/dev/null || true
+mkdir -p "${RUNTIME}/.preview_attempts" 2>/dev/null || true
 : > "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" 2>/dev/null || true
 : > "${STATUS_ESP_METER_DEVICE_FILE}" 2>/dev/null || true
 : > "${STATUS_ESP_METER_RECEPTION_FILE}" 2>/dev/null || true
@@ -578,8 +578,15 @@ EOFPREVIEW
 rm -f "${LISTEN_METER_DIR}/meter-preview-"* 2>/dev/null || true
 rm -f "${BASE}/.reload_listen" "${BASE}/.reload_listen_req" 2>/dev/null || true
 rm -rf "${BASE}/.reload_listen_pending" 2>/dev/null || true
-rm -rf "${BASE}/.preview_decode_locks" "${BASE}/.preview_decode_slots" 2>/dev/null || true
-mkdir -p "${BASE}/.preview_decode_locks" "${BASE}/.preview_decode_last" "${BASE}/.preview_decode_slots" 2>/dev/null || true
+# The one-shot decodes create and remove a lock, a slot and a config
+# directory each - directory writes, which a spinning disk feels - so they
+# live in RUNTIME with the status files. Their old place in BASE is cleared.
+rm -rf "${RUNTIME}/.preview_decode_locks" "${RUNTIME}/.preview_decode_slots" 2>/dev/null || true
+mkdir -p "${RUNTIME}/.preview_decode_locks" "${RUNTIME}/.preview_decode_last" "${RUNTIME}/.preview_decode_slots" 2>/dev/null || true
+if [[ "${RUNTIME}" != "${BASE}" ]]; then
+  rm -rf "${BASE}/.preview_decode_locks" "${BASE}/.preview_decode_slots" "${BASE}/.preview_decode_last" \
+         "${BASE}/.preview_attempts" "${BASE}/.preview_decode."* 2>/dev/null || true
+fi
 
 # ------------------------------------------------------------
 # Search mode helpers
