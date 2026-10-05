@@ -1,3 +1,11 @@
+## 1.5.78-dev.364
+
+### Added
+- keep the status files in RAM and save them every few minutes (f9c37ad)
+
+### Fixed
+- end bridge.sh on SIGTERM instead of restarting the pipeline (fa831a3)
+
 ## 1.5.78-dev.363
 
 ### Added
