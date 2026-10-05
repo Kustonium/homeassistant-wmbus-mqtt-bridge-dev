@@ -111,22 +111,43 @@ publish_esp_coverage || fail "second call returned non-zero"
 [[ "$(wc -l < "${PUBLISHED}")" -eq "${before}" ]] \
   || fail "second call within the interval published anyway"
 
-# After the interval it publishes again - but the discovery config is cached,
-# so only state and attributes should be resent.
+# After the interval with nothing changed it publishes nothing either: every
+# publish is a broker connection of its own (mosquitto_pub), and two per board
+# a minute were half of all the add-on's connections.
 FAKE_NOW=$((1000000 + 61))
 publish_esp_coverage || fail "third call returned non-zero"
+[[ "$(wc -l < "${PUBLISHED}")" -eq "${before}" ]] \
+  || fail "an unchanged count was published again after a minute"
+
+# A new meter heard by heltec changes heltec's count and the total, so the
+# coverage of lilygo changes too: state and attributes of both are resent, the
+# discovery config stays cached.
+printf '41551838\theltec\t100\t200\t4\twmbus/heltec/rx\n' >> "${STATUS_ESP_RX_RECEPTION_FILE}"
+printf '90830781\theltec\t100\t200\t4\twmbus/heltec/rx\n' >> "${STATUS_ESP_RX_RECEPTION_FILE}"
+FAKE_NOW=$((1000000 + 122))
+publish_esp_coverage || fail "fourth call returned non-zero"
 added=$(( $(wc -l < "${PUBLISHED}") - before ))
 [[ "${added}" -eq 4 ]] \
-  || fail "expected 4 new publishes (state+attrs for 2 boards), got ${added}"
+  || fail "expected 4 new publishes after a change (state+attrs for 2 boards), got ${added}"
+[[ "$(state_of heltec)" == "4" ]] || fail "heltec should now report 4, got '$(state_of heltec)'"
+[[ "$(attrs_of lilygo | jq -r '.coverage_pct')" == "75" ]] \
+  || fail "lilygo covers 3 of 4 now, expected 75, got '$(attrs_of lilygo | jq -r '.coverage_pct')'"
 grep -c 'homeassistant/sensor/wmbus_lilygo_meters_heard/config' "${PUBLISHED}" | grep -qx 1 \
   || fail "discovery config was republished instead of being cached"
+
+# Unchanged for ESP_COVERAGE_REFRESH_S: refreshed once.
+before="$(wc -l < "${PUBLISHED}")"
+FAKE_NOW=$((1000000 + 122 + ESP_COVERAGE_REFRESH_S))
+publish_esp_coverage || fail "refresh call returned non-zero"
+added=$(( $(wc -l < "${PUBLISHED}") - before ))
+[[ "${added}" -eq 4 ]] || fail "expected the refresh to resend 4 publishes, got ${added}"
 
 # ── hostile source name ─────────────────────────────────────────────────────
 # The board name arrives from an MQTT topic segment, so a malicious publisher
 # must not be able to steer our config topic somewhere else.
 printf '03528107\t../evil\t100\t200\t1\twmbus/x/rx\n' >> "${STATUS_ESP_RX_RECEPTION_FILE}"
-FAKE_NOW=$((1000000 + 200))
+FAKE_NOW=$((1000000 + 2000))
 publish_esp_coverage || fail "call with hostile source returned non-zero"
 grep -q 'evil' "${PUBLISHED}" && fail "a source name with path characters reached a topic"
 
-echo "PASS: per-board coverage sensor counts distinct meters, throttles, and validates source names"
+echo "PASS: per-board coverage sensor counts distinct meters, publishes on change or every ${ESP_COVERAGE_REFRESH_S} s, and validates source names"
