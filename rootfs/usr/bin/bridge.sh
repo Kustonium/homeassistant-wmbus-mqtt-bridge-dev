@@ -843,7 +843,7 @@ _stop_extra_instances() {
 }
 # SIGTERM/SIGINT end the script: a handler that only returned let the restart
 # loop below start the pipeline again, until s6 gave up waiting and killed it.
-_on_stop_signal() { _stop_extra_instances; exit 143; }
+_on_stop_signal() { log "stop: SIGTERM received, stopping"; _stop_extra_instances; exit 143; }
 trap _stop_extra_instances EXIT
 trap _on_stop_signal TERM INT
 
