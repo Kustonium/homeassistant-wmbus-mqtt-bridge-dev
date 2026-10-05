@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Retained diag topics replayed on resubscribe must not reach the event log.
-# The diag subscriber reconnects every 180 s (mosquitto_sub -W is a hard
-# limit), so every retained topic came back that often, stamped as new. Stale
+# The broker replays every retained topic on each subscribe - at start, after a
+# reconnect, and every 180 s while the subscriber used -W 180 (a hard limit),
+# each time stamped as new. Stale
 # LR1121 debug samples (lr_fifo/lr_drop) refilled the log, and a board removed
 # weeks earlier kept "pulse stopped" raised through its retained topics.
 # The grep patterns below match literal "${...}" text in the library.
@@ -20,7 +21,7 @@ if _esp_diag_replay_ignored 0; then
 fi
 
 # The guard needs the retained flag from mosquitto_sub.
-grep -qF -- "-F '%r\t%t\t%p' -W 180" "${LIB}" \
+grep -qF -- "-F '%r\t%t\t%p' 2>/dev/null" "${LIB}" \
   || { echo "FAIL: diag subscriber does not request the retained flag (%r)" >&2; exit 1; }
 
 # The config snapshot is retained on purpose (the bridge learns each board's
@@ -33,5 +34,12 @@ _log="$(grep -nF '>> "${STATUS_ESP_EVENTS_FILE}"' "${LIB}" | head -n1 | cut -d: 
   || { echo "FAIL: retained guard wiring not found in 13-esp.sh" >&2; exit 1; }
 (( _cfg < _guard && _guard < _log )) \
   || { echo "FAIL: config must be stored before, and the log written after, the retained guard" >&2; exit 1; }
+
+# The long-lived subscribers stay connected: a -W timeout is a hard limit, so
+# with it each one reconnected every 90 or 180 s - broker connections, logins
+# and retained replays for nothing. Short probes elsewhere keep theirs.
+if grep -nE 'mosquitto_sub .*-W [0-9]+' "${LIB}"; then
+  echo "FAIL: a long-lived ESP subscriber has a -W timeout again" >&2; exit 1
+fi
 
 echo "OK: ESP retained diag replay"

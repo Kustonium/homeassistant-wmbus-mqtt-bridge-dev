@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # A retained <diag>/boot redelivered on resubscribe must not be logged as a
-# restart. The diag subscriber reconnects every 180 s (mosquitto_sub -W is a
-# hard limit), so before the guard a board with 11 h of uptime showed a Boot
+# restart. The diag subscriber used to reconnect every 180 s (mosquitto_sub -W
+# is a hard limit), and it still resubscribes after a dropped connection, so
+# before the guard a board with 11 h of uptime showed a Boot
 # row every three minutes and lost its suggestion panel each time
 # (reported on a Heltec V4-R8, 2026-09-25).
 # The grep patterns below match literal "${...}" text in the library.
