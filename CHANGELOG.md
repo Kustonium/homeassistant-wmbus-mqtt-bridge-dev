@@ -1,3 +1,8 @@
+## 1.5.79-dev.369
+
+### Changed
+- keep the ESP subscribers connected instead of reconnecting every 90/180 s (259f3bd)
+
 ## 1.5.79-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
