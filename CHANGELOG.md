@@ -1,3 +1,9 @@
+## 1.5.78-dev.363
+
+### Added
+- keep the status files in RAM and save them every few minutes (f9c37ad)
+- show the storage medium of the data directory in the wmbusmeters panel (9852c87)
+
 ## 1.5.78-dev.362
 
 ### Added
