@@ -7,6 +7,16 @@
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
+### Notes
+- Correction to the 1.5.77 notes: the bytes the add-on writes did drop by
+  about two thirds, but an HDD is not busy only "about a tenth" of the time.
+  That figure came from one evening measurement; in daytime the same HDD is
+  still busy about 40-55% of the time. A spinning disk is slowed down by the
+  number of separate writes, not by the bytes, and the add-on still replaces
+  about 20 small status files every 5 s. Less wear on eMMC and SD cards holds.
+  Reducing the number of writes is the next step; the WebUI now shows which
+  storage medium the add-on detected (wmbusmeters panel, "Data storage").
+
 ## 1.5.77-dev.360
 
 ### Changed
