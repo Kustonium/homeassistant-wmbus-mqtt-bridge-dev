@@ -52,14 +52,34 @@
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
 ### Notes
-- Correction to the 1.5.77 notes: the bytes the add-on writes did drop by
-  about two thirds, but an HDD is not busy only "about a tenth" of the time.
-  That figure came from one evening measurement; in daytime the same HDD is
-  still busy about 40-55% of the time. A spinning disk is slowed down by the
-  number of separate writes, not by the bytes, and the add-on still replaces
-  about 20 small status files every 5 s. Less wear on eMMC and SD cards holds.
-  Reducing the number of writes is the next step; the WebUI now shows which
-  storage medium the add-on detected (wmbusmeters panel, "Data storage").
+- The status files now live in RAM. The add-on rewrote about 20 small status
+  files every few seconds (candidates, reception per board, counters); on a
+  spinning disk every one of them is a separate write. They are now kept in
+  `/tmp`, which is in RAM in the add-on, and saved to the data disk as one file
+  (`/data/runtime_state.tar`): every minute on an SSD or NVMe disk, every ten
+  minutes on an HDD, eMMC or SD card, and when the add-on stops; at start they
+  are restored from it. On the first start the existing files are moved there
+  once. Measured on a test install without configured meters: the add-on wrote
+  280-300 KB/s to the disk with 1.5.76, 85-105 KB/s with 1.5.77 and now under
+  1 KB/s. After a power cut the statistics of the last few minutes can be
+  missing; meters, keys and options are not affected.
+- The WebUI shows the storage medium the add-on detected: Panel →
+  **wmbusmeters** → **Data storage** (NVMe, SSD, HDD, eMMC or SD card; in a
+  virtual machine it also names the hypervisor, because a virtual disk reports
+  whatever the hypervisor says).
+- Stopping or updating the add-on no longer runs into "s6-svwait: fatal: timed
+  out": the stop signal now reaches the whole bridge at once, so it stops
+  within seconds and saves the status files first.
+- The "<board> meters heard" coverage sensor is published when its value
+  changes and at least every 15 minutes, instead of every minute; its frames
+  attribute can be up to 15 minutes old.
+- Docker: the RAM directory is optional, see the commented `tmpfs` and
+  `WMBUS_RUNTIME` lines in `docker/examples/docker-compose.yml`. Without them
+  the status files stay in `/config` as before.
+- Correction to the 1.5.77 notes: "an HDD is now busy about a tenth of the
+  time" came from a single evening measurement and is withdrawn. The two-thirds
+  drop of the bytes written was real; the number of separate writes stayed
+  until this release.
 
 ## 1.5.77-dev.360
 
