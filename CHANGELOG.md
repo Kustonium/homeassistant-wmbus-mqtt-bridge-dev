@@ -1,3 +1,11 @@
+## 1.5.79-dev.370
+
+### Changed
+- keep the ESP subscribers connected instead of reconnecting every 90/180 s (259f3bd)
+
+### Fixed
+- ask a broker that refuses $SYS again after an hour, and say so in the WebUI (ecf14fe)
+
 ## 1.5.79-dev.369
 
 ### Changed
