@@ -1,3 +1,11 @@
+## 1.5.80-dev.376
+
+### Added
+- build Discovery and state of decoded telegrams in the publisher (99f24cf)
+
+### Fixed
+- stop removing the total_m3 entity on every pipeline start (babfad5)
+
 ## 1.5.80-dev.375
 
 ### Added
