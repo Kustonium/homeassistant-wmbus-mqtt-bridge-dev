@@ -679,6 +679,9 @@ touch "${SNIPPET_STATE}"
 log "Starting wmbusmeters..."
 
 run_once() {
+  # Each pipeline starts with empty Discovery caches (they live in its
+  # subshell); the publisher's copy of them is emptied the same way.
+  mqtt_reset_discovery
 
   # ─── Soft-reload flag watcher ────────────────────────────────────────
   # Polls for ${RELOAD_FLAG} every 2 s. When present, removes it and kills

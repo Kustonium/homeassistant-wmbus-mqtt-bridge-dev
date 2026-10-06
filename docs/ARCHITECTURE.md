@@ -389,6 +389,16 @@ state was a connection of its own: a login and several lines of broker log,
 several times a minute. Subscribers keep their own `mosquitto_sub`
 connections.
 
+The publisher also builds the Discovery configs and the state of every decoded
+telegram of a configured meter (`wmbus_discovery.py`, a port of
+`publish_decoded_json`, `emit_discovery_from_json` and the RSSI join). Bash
+hands it the telegram and the meter's exclude patterns; each new decode
+pipeline sends a reset, so its Discovery caches start empty as they do in
+bash. When the publisher does not announce this ability, or with
+`MQTT_PYTHON_DISCOVERY=false`, bash builds them itself as before. The publish
+contract test runs every scenario through both paths and requires the same
+bytes.
+
 Bookkeeping that runs for every MQTT message is done by `bridge_ledger.py`,
 one long-lived Python process per path: in bash it started tens of processes
 per message, which on a busy multi-ESP site kept CPU cores busy. Bash keeps

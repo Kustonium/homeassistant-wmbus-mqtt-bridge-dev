@@ -118,6 +118,79 @@ def parse_frame(data):
     return (parts[3], data[nl + 1:end], parts[1] == b"1"), data[end + 1:]
 
 
+def parse_message(data):
+    """Split one message of any kind off the front of data.
+
+    PUB <retain> <bytes> <topic>\\n<payload>\\n -> ("PUB", topic, payload, retain)
+    DEC <bytes>\\n<exclude patterns>\\n<json>\\n  -> ("DEC", patterns, json)
+        a decoded telegram of a configured meter: Discovery and state are
+        built here (wmbus_discovery.py), as publish_decoded_json does in bash
+    RST\\n                                      -> ("RST",)
+        a new decode pipeline: the Discovery caches start empty, as in bash
+
+    Returns (None, data) while the message is incomplete.
+    """
+    if data.startswith(b"PUB "):
+        msg, rest = parse_frame(data)
+        return (None, data) if msg is None else (("PUB",) + msg, rest)
+    nl = data.find(b"\n")
+    if nl < 0:
+        if len(data) > 4096:
+            raise ValueError("header too long")
+        return None, data
+    head = data[:nl]
+    if head == b"RST":
+        return ("RST",), data[nl + 1:]
+    parts = head.split(b" ")
+    if len(parts) != 2 or parts[0] != b"DEC" or not parts[1].isdigit():
+        raise ValueError("bad header %r" % head[:80])
+    length = int(parts[1])
+    if length > FRAME_MAX:
+        raise ValueError("bad length %d" % length)
+    end = nl + 1 + length
+    if len(data) < end + 1:
+        return None, data
+    if data[end:end + 1] != b"\n":
+        raise ValueError("payload length does not match")
+    patterns, sep, line = data[nl + 1:end].partition(b"\n")
+    if not sep:
+        raise ValueError("DEC without patterns line")
+    return ("DEC", patterns, line), data[end + 1:]
+
+
+class _TestState:
+    """Clock, average telegram interval and options for test_publish_contract.sh.
+
+    MQTT_PUBLISHER_TEST_STATE names a file of KEY=VALUE lines (NOW, SEEN_AVG
+    and the options of wmbus_discovery.Config), read before every decoded
+    telegram: the test changes them between scenarios, the add-on sets them
+    once at start. Unset in the add-on.
+    """
+
+    def __init__(self, path):
+        self.path = path
+        self.values = {}
+
+    def refresh(self, discovery, wmbus_discovery):
+        values = {}
+        try:
+            with open(self.path, encoding="utf-8") as fh:
+                for line in fh:
+                    key, sep, value = line.rstrip("\n").partition("=")
+                    if sep:
+                        values[key] = value
+        except OSError:
+            pass
+        self.values = values
+        discovery.cfg = wmbus_discovery.Config({**os.environ, **values})
+
+    def epoch(self):
+        return int(self.values.get("NOW") or time.time())
+
+    def seen_avg(self, _mid):
+        return int(self.values.get("SEEN_AVG") or 0)
+
+
 class Broker:
     """The broker connection: connect, publish, keepalive, reconnect."""
 
@@ -245,14 +318,18 @@ class Broker:
             self.sock = None
 
 
-def listen(port_file):
-    """Listen on loopback; reuse the port of a previous run when possible."""
+def listen(port_file, caps=""):
+    """Listen on loopback; reuse the port of a previous run when possible.
+
+    The port file holds "<port>[ <capabilities>]"; "dec" tells bash it may
+    send decoded telegrams (DEC) instead of building their Discovery itself.
+    """
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     port = 0
     try:
         with open(port_file, encoding="ascii") as fh:
-            port = int(fh.read().strip() or 0)
+            port = int((fh.read().split() or ["0"])[0])
     except (OSError, ValueError):
         pass
     try:
@@ -262,12 +339,34 @@ def listen(port_file):
     srv.listen(128)
     tmp = f"{port_file}.tmp.{os.getpid()}"
     with open(tmp, "w", encoding="ascii") as fh:
-        fh.write(f"{srv.getsockname()[1]}\n")
+        fh.write(f"{srv.getsockname()[1]}{' ' + caps if caps else ''}\n")
     os.replace(tmp, port_file)
     return srv
 
 
-def serve(srv, broker, stop):
+def handle(msg, broker, discovery):
+    """Carry out one parsed message."""
+    if msg[0] == "PUB":
+        broker.publish(msg[1], msg[2], msg[3])
+    elif msg[0] == "RST":
+        if discovery is not None:
+            discovery.reset()
+    elif discovery is None:
+        log("dropping a decoded telegram: Discovery is not available")
+    else:
+        try:
+            hook = getattr(discovery, "before_decoded", None)
+            if hook is not None:
+                hook()
+            line = msg[2].decode("utf-8", "surrogateescape")
+            patterns = msg[1].decode("utf-8", "surrogateescape")
+            for topic, payload, retain in discovery.decoded(line, patterns):
+                broker.publish(topic.encode("utf-8", "surrogateescape"), payload, retain)
+        except Exception as exc:  # one odd telegram must not end the publisher
+            log(f"dropping a decoded telegram ({exc.__class__.__name__}: {exc})")
+
+
+def serve(srv, broker, stop, discovery=None):
     clients = []  # [socket, buffer] in accept order
     while not stop["now"]:
         broker.try_connect()
@@ -307,10 +406,10 @@ def serve(srv, broker, stop):
                     closed = True
             try:
                 while True:
-                    msg, buf = parse_frame(buf)
+                    msg, buf = parse_message(buf)
                     if msg is None:
                         break
-                    broker.publish(*msg)
+                    handle(msg, broker, discovery)
             except ValueError as exc:
                 log(f"dropping a malformed message ({exc})")
                 buf, closed = b"", True
@@ -347,12 +446,24 @@ def main(argv=None):
     signal.signal(signal.SIGTERM, on_signal)
     signal.signal(signal.SIGINT, on_signal)
 
-    srv = listen(args.port_file)
+    discovery = None
+    try:
+        import wmbus_discovery
+        if os.environ.get("MQTT_PUBLISHER_TEST_STATE"):
+            state = _TestState(os.environ["MQTT_PUBLISHER_TEST_STATE"])
+            discovery = wmbus_discovery.Discovery(wmbus_discovery.Config(os.environ),
+                                                  epoch=state.epoch, seen_avg=state.seen_avg)
+            discovery.before_decoded = lambda: state.refresh(discovery, wmbus_discovery)
+        else:
+            discovery = wmbus_discovery.Discovery(wmbus_discovery.Config(os.environ))
+    except Exception as exc:  # bash then builds Discovery itself ("dec" not announced)
+        log(f"Discovery not available ({exc.__class__.__name__}: {exc})")
+    srv = listen(args.port_file, "dec" if discovery is not None else "")
     broker = Broker(args.host, args.port, username, password,
                     "wmbus_bridge_pub_" + secrets.token_hex(4))
     log(f"listening on 127.0.0.1:{srv.getsockname()[1]}")
     try:
-        serve(srv, broker, stop)
+        serve(srv, broker, stop, discovery)
     finally:
         broker.flush()
         broker.close()

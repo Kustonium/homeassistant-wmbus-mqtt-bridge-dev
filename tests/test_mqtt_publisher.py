@@ -63,6 +63,41 @@ class FrameTests(unittest.TestCase):
                 mp.parse_frame(bad)
 
 
+class MessageTests(unittest.TestCase):
+    def test_dec_and_rst(self):
+        line = b'{"id":"12345678","total_m3":1.5}'
+        data = b"RST\n" + b"DEC %d\n%s\n" % (len(b"a_* b\n" + line), b"a_* b\n" + line)
+        msg, rest = mp.parse_message(data)
+        self.assertEqual(msg, ("RST",))
+        msg, rest = mp.parse_message(rest)
+        self.assertEqual(msg, ("DEC", b"a_* b", line))
+        self.assertEqual(rest, b"")
+
+    def test_pub_through_parse_message(self):
+        msg, _ = mp.parse_message(frame("a/b", "x", True))
+        self.assertEqual(msg, ("PUB", b"a/b", b"x", True))
+
+    def test_dec_partial_and_malformed(self):
+        self.assertEqual(mp.parse_message(b"DEC 10\nabc")[0], None)
+        for bad in (b"DEC x\n", b"DEC 3\nabc\n", b"FOO\n", b"DEC 2 3\nab\n"):
+            with self.assertRaises(ValueError, msg=bad):
+                mp.parse_message(bad)
+
+
+class NormalizeIdTests(unittest.TestCase):
+    """wmbus_discovery.normalize_meter_id against 05-raw.sh normalize_meter_id."""
+
+    def test_same_as_bash(self):
+        import wmbus_discovery as wd
+        cases = ["12345678", "0abcdbee", "12345", "0x1A2B", "0X0x12", " 1 2 3 ", "null", "",
+                 "meter-x", "abcdefgh", "2E44A511060321001B167A", "1E44A511060321001B167A"]
+        lib = ROOT / "rootfs" / "usr" / "bin" / "bridge-lib" / "05-raw.sh"
+        script = 'source "$1"; shift; for x in "$@"; do printf "%s\\n" "$(normalize_meter_id "$x")"; done'
+        out = subprocess.run(["bash", "-c", script, "_", str(lib)] + cases,
+                             capture_output=True, text=True, check=True).stdout.split("\n")[:-1]
+        self.assertEqual([wd.normalize_meter_id(c) for c in cases], out)
+
+
 class PacketTests(unittest.TestCase):
     def test_remaining_length_boundaries(self):
         # MQTT 3.1.1 section 2.2.3
@@ -107,7 +142,7 @@ class PublisherProcess:
         while time.monotonic() < deadline:
             try:
                 with open(self.port_file, encoding="ascii") as fh:
-                    self.port = int(fh.read())
+                    self.port = int(fh.read().split()[0])
                 return
             except (OSError, ValueError):
                 time.sleep(0.02)
@@ -218,6 +253,30 @@ class PublisherTests(unittest.TestCase):
         self.pub.stop()
         self.pub = PublisherProcess(self.broker.port, self.tmp)
         self.assertEqual(self.pub.port, first)
+
+    def test_decoded_telegram_becomes_discovery_and_state(self):
+        self.broker = FakeBroker()
+        self.pub = PublisherProcess(self.broker.port, self.tmp)
+        with open(self.pub.port_file, encoding="ascii") as fh:
+            self.assertIn("dec", fh.read().split()[1:], "the publisher must announce DEC")
+        line = b'{"_":"telegram","id":"12345678","name":"W","media":"water","total_m3":1.5,"status":"OK"}'
+        payload = b"\n" + line
+        self.pub.send(b"DEC %d\n%s\n" % (len(payload), payload))
+        self.assertTrue(self.broker.wait_for(lambda b: any(m[0] == "wmbusmeters/12345678/state"
+                                                            for m in b.messages)))
+        topics = [m[0] for m in self.broker.messages]
+        self.assertEqual(topics, [
+            "homeassistant/sensor/wmbus_12345678/rssi_dbm/config",
+            "homeassistant/sensor/wmbus_12345678/total_m3/config",
+            "homeassistant/sensor/wmbus_12345678/status/config",
+            "homeassistant/binary_sensor/wmbus_12345678/status_problem/config",
+            "wmbusmeters/12345678/state",
+        ])
+        self.assertEqual(self.broker.messages[-1][2], line)
+        # Cached: the same telegram again publishes only the state; after RST all again.
+        self.pub.send(b"DEC %d\n%s\n" % (len(payload), payload), b"RST\n",
+                      b"DEC %d\n%s\n" % (len(payload), payload))
+        self.assertTrue(self.broker.wait_for(lambda b: len(b.messages) == 5 + 1 + 5))
 
     def test_disconnects_cleanly_on_sigterm(self):
         self.broker = FakeBroker()

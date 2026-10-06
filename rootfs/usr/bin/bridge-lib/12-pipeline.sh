@@ -43,6 +43,7 @@ _mqtt_pub_persistent() {
 # writers keep working. MQTT_PERSISTENT_PUBLISHER=false falls back to
 # mosquitto_pub per message.
 MQTT_PUB_PORT=""
+MQTT_PUB_DEC="false"
 MQTT_PUBLISHER_PID=""
 start_mqtt_publisher() {
   if [[ "${MQTT_PERSISTENT_PUBLISHER:-true}" != "true" ]]; then
@@ -54,8 +55,15 @@ start_mqtt_publisher() {
   rm -f "${port_file}" 2>/dev/null || true
   (
     while true; do
-      # Credentials through the environment: argv is visible in ps.
+      # Credentials through the environment: argv is visible in ps. So is the
+      # configuration wmbus_discovery.py needs to build Discovery the way
+      # emit_discovery_from_json does.
       MQTT_USER="${MQTT_USER}" MQTT_PASS="${MQTT_PASS}" \
+      DISCOVERY_ENABLED="${DISCOVERY_ENABLED:-true}" DISCOVERY_PREFIX="${DISCOVERY_PREFIX:-homeassistant}" \
+      DISCOVERY_RETAIN="${DISCOVERY_RETAIN:-true}" STATE_PREFIX="${STATE_PREFIX:-wmbusmeters}" \
+      STATE_RETAIN="${STATE_RETAIN:-false}" REQUIRE_TIMESTAMP="${REQUIRE_TIMESTAMP:-false}" \
+      STATUS_RSSI_FILE="${STATUS_RSSI_FILE:-}" STATUS_SEEN_FILE="${STATUS_SEEN_FILE:-}" \
+      RSSI_MAX_AGE_S="${RSSI_MAX_AGE_S:-300}" WMBUSMETERS_BIN="${WMBUSMETERS_BIN:-/usr/bin/wmbusmeters}" \
         python3 "${script}" --host "${MQTT_HOST}" --port "${MQTT_PORT}" --port-file "${port_file}"
       warn "MQTT: persistent publisher exited (rc=$?), restarting in 2s"
       sleep 2
@@ -64,9 +72,9 @@ start_mqtt_publisher() {
   # shellcheck disable=SC2034  # for whoever has to stop it (the tests do)
   MQTT_PUBLISHER_PID=$!
 
-  local _i _port=""
+  local _i _port="" _caps=""
   for (( _i = 0; _i < 50; _i++ )); do
-    [[ -s "${port_file}" ]] && _port="$(< "${port_file}")"
+    [[ -s "${port_file}" ]] && read -r _port _caps < "${port_file}"
     [[ "${_port}" =~ ^[0-9]+$ ]] && break
     _port=""
     sleep 0.1
@@ -76,7 +84,30 @@ start_mqtt_publisher() {
     return 0
   fi
   MQTT_PUB_PORT="${_port}"
-  log "MQTT: persistent publisher ready (one broker connection for all publishes)"
+  # "dec": the publisher builds Discovery and state of decoded telegrams
+  # itself (wmbus_discovery.py). Without it publish_decoded_json does it here.
+  if [[ " ${_caps} " == *" dec "* && "${MQTT_PYTHON_DISCOVERY:-true}" == "true" ]]; then
+    MQTT_PUB_DEC="true"
+  fi
+  log "MQTT: persistent publisher ready (one broker connection for all publishes; Discovery in Python: ${MQTT_PUB_DEC})"
+}
+
+# Hand one decoded telegram to the publisher ($1 exclude patterns of its meter,
+# $2 the JSON line); same subshell and byte count as _mqtt_pub_persistent.
+_mqtt_dec_persistent() {
+  (
+    exec 3>"/dev/tcp/127.0.0.1/${MQTT_PUB_PORT}" || exit 1
+    LC_ALL=C
+    local _payload="$1"$'\n'"$2"
+    printf 'DEC %s\n%s\n' "${#_payload}" "${_payload}" >&3 || exit 1
+  ) 2>/dev/null
+}
+
+# A new decode pipeline starts with empty Discovery caches, in bash because
+# they live in the pipeline's subshell; this tells the publisher the same.
+mqtt_reset_discovery() {
+  [[ "${MQTT_PUB_DEC}" == "true" ]] || return 0
+  ( exec 3>"/dev/tcp/127.0.0.1/${MQTT_PUB_PORT}" && printf 'RST\n' >&3 ) 2>/dev/null || true
 }
 
 # Publish one decoded telegram of a configured meter: its Discovery configs
@@ -84,6 +115,25 @@ start_mqtt_publisher() {
 # this, and tests/test_publish_contract.sh records everything it publishes.
 publish_decoded_json() {
   local line="$1" id ts
+  # The publisher builds Discovery and state itself (wmbus_discovery.py): it
+  # needs only the meter's exclude patterns, looked up here because
+  # METER_EXCLUDE_FIELDS is filled by bash (options, M-Bus) and keyed by the
+  # lower-case normalized id. The id is read with a regex, not jq - this runs
+  # for every decoded telegram. If the hand-over fails, the bash path below
+  # publishes instead.
+  if [[ "${MQTT_PUB_DEC}" == "true" ]]; then
+    local _patterns="" _key=""
+    if (( ${#METER_EXCLUDE_FIELDS[@]} )) && [[ "${line}" =~ \"id\":\"?([^\",}]*) ]]; then
+      _key="$(normalize_meter_id "${BASH_REMATCH[1]}")"
+      _key="${_key,,}"
+      [[ -n "${_key}" ]] && _patterns="${METER_EXCLUDE_FIELDS[${_key}]:-}"
+    fi
+    if _mqtt_dec_persistent "${_patterns}" "${line}"; then
+      status_mark_discovery_published
+      write_status_json
+      return 0
+    fi
+  fi
   id="$(normalize_meter_id "$(echo "${line}" | jq -r '.id // empty' 2>/dev/null || true)")"
   ts="$(echo "${line}" | jq -r '.timestamp // .device_date_time // empty' 2>/dev/null || true)"
   [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]] || return 0

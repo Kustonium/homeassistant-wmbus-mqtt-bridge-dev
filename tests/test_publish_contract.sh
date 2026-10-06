@@ -90,6 +90,7 @@ SCENARIO=""
 FAKE_NOW=1790000000
 SEEN_AVG=0
 MARKER="__contract__/scenario"
+SYNC_MARKER="__contract__/sync"
 if [[ "${TRANSPORT}" == "recorder" ]]; then
   mqtt_pub() {
     local retain="false"
@@ -114,8 +115,6 @@ else
   # missing from what the broker received, and the compare below fails.
   PUB_ARGS=( -h 127.0.0.1 -p 1 )
   MQTT_PUBLISHER="${ROOT_DIR}/rootfs/usr/bin/mqtt_publisher.py"
-  start_mqtt_publisher
-  [[ -n "${MQTT_PUB_PORT}" ]] || fail "mqtt_publisher.py did not start"
   # The broker sees one stream; a marker message labels what follows.
   scenario() { SCENARIO="$1"; mqtt_pub "${MARKER}" "$1" "false"; }
 fi
@@ -133,6 +132,43 @@ warn() { :; }
 WMBUSMETERS_BIN="${WORK}/wmbusmeters"
 printf '#!/usr/bin/env bash\ncat "%s/listfields/${1#--listfields=}.txt" 2>/dev/null | tr -d "\\r"\n' "${FIX}" > "${WMBUSMETERS_BIN}"
 chmod +x "${WMBUSMETERS_BIN}"
+
+# The publisher builds Discovery of decoded telegrams in Python
+# (wmbus_discovery.py); it reads the fixed clock and average interval from a
+# file, written before every decoded telegram.
+export MQTT_PUBLISHER_TEST_STATE="${WORK}/publisher_test_state"
+sync_test_state() {
+  printf '%s\n' "NOW=${FAKE_NOW}" "SEEN_AVG=${SEEN_AVG}" \
+    "DISCOVERY_ENABLED=${DISCOVERY_ENABLED}" "DISCOVERY_RETAIN=${DISCOVERY_RETAIN}" \
+    "STATE_RETAIN=${STATE_RETAIN}" "REQUIRE_TIMESTAMP=${REQUIRE_TIMESTAMP}" \
+    > "${MQTT_PUBLISHER_TEST_STATE}"
+}
+sync_test_state
+eval "$(declare -f publish_decoded_json | sed '1s/^publish_decoded_json/_contract_publish_decoded_json/')"
+# The publisher reads the RSSI and test-state files when it handles a
+# telegram, which can be after bash has moved on to the next scenario. Wait
+# until the broker has everything of this telegram, so each one sees the
+# state its scenario set.
+SYNC_N=0
+publish_decoded_json() {
+  sync_test_state
+  _contract_publish_decoded_json "$@"
+  [[ "${TRANSPORT}" == "publisher" ]] || return 0
+  SYNC_N=$(( SYNC_N + 1 ))
+  mqtt_pub "${SYNC_MARKER}" "${SYNC_N}" "false"
+  local _i
+  for (( _i = 0; _i < 200; _i++ )); do
+    grep -q -F "${SYNC_MARKER}"$'\tfalse\t'"${SYNC_N}" "${BROKER_OUT}" && return 0
+    sleep 0.02
+  done
+  fail "the broker did not receive telegram ${SYNC_N} of scenario ${SCENARIO}"
+}
+if [[ "${TRANSPORT}" == "publisher" ]]; then
+  start_mqtt_publisher
+  [[ -n "${MQTT_PUB_PORT}" ]] || fail "mqtt_publisher.py did not start"
+  [[ "${MQTT_PUB_DEC}" == "true" || "${MQTT_PYTHON_DISCOVERY:-true}" != "true" ]] \
+    || fail "mqtt_publisher.py did not announce Discovery (dec)"
+fi
 
 # clear_meter_discovery asks the broker which configs are retained, through
 # `timeout 5 /usr/bin/mosquitto_sub`; answer from RETAINED_TOPICS instead.
@@ -157,6 +193,7 @@ reset_caches() {
   ESP_COVERAGE_PUBLISHED_S=()
   ESP_COVERAGE_LAST_S=0
   : > "${STATUS_RSSI_FILE}"
+  mqtt_reset_discovery
 }
 
 corpus() { cat "${FIX}/decoded.jsonl" "${FIX}/extra.jsonl" | tr -d '\r'; }
@@ -282,8 +319,9 @@ if [[ "${TRANSPORT}" == "publisher" ]]; then
   grep -q -F "${MARKER}"$'\tfalse\t__end__' "${BROKER_OUT}" \
     || fail "the broker did not receive everything (no end marker)"
   # Label every message with the scenario of the marker before it.
-  awk -F'\t' -v m="${MARKER}" 'BEGIN { OFS = "\t" }
+  awk -F'\t' -v m="${MARKER}" -v s="${SYNC_MARKER}" 'BEGIN { OFS = "\t" }
     $1 == m { sc = $3; next }
+    $1 == s { next }
     { print sc, $0 }' "${BROKER_OUT}" > "${CAPTURE}"
 fi
 normalize < "${CAPTURE}" > "${WORK}/actual.tsv"
