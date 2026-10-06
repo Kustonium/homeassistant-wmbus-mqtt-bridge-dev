@@ -1,3 +1,11 @@
+## 1.5.80-dev.373
+
+### Added
+- publish through one persistent MQTT connection (fbb0daf)
+
+### Changed
+- publish decoded telegrams through publish_decoded_json (9b9833c)
+
 ## 1.5.80-dev.372
 
 ### Changed
