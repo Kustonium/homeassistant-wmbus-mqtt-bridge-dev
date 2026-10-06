@@ -622,9 +622,11 @@ configuration directories remain intact.
 | Board coverage Discovery | `<discovery_prefix>/sensor/wmbus_<board>_meters_heard/config` |
 | Search results | `search_topic`, default `wmbus/search/candidates` |
 
-Per-board coverage is published once a minute as its own measurement sensor:
-the count of **distinct meters** that board has heard this session, with
-`meters_total_all_boards` and `coverage_pct` as attributes. It exists because
+Per-board coverage is its own measurement sensor: the count of **distinct
+meters** that board has heard this session, with `meters_total_all_boards` and
+`coverage_pct` as attributes. A board publishes when its own count changes and
+at least every 15 minutes; a change on another board does not resend it, so
+the two attributes may lag by up to 15 minutes. It exists because
 that number is the one worth reasoning about - it separates a sensitive board
 from a deaf one, whereas `drop_pct` improves when reception gets worse, since a
 frame that is never attempted is never counted as dropped. Before this it lived
