@@ -1,0 +1,11 @@
+{"_":"telegram","current_status":"OK","frame_status":"SUMMER_TIME","historic_age_h":304,"historic_datetime":"2026-07-31 22:08","historic_m3":1785.804,"historic_status":"MINIMUM_FLOW","id":"04913581","media":"water","meter":"apatorna1","meter_datetime":"2026-08-13 14:08","name":"Cold_Water_3581","status":"OK","timestamp":"2026-08-13T13:22:13Z","total_m3":1798.2}
+{"_":"telegram","backflow_m3":3724541.952,"contents":"BACKFLOW BATTERY_VOLTAGE FRAUD_DATE LEAK_DATE","fraud_date":null,"fraud_type":"NO_TYPE_INFO","id":"03534159","leak_date":null,"media":"water","meter":"hydrodigit","meter_datetime":"2026-08-13 15:03","name":"Cold_Water_4159","timestamp":"2026-08-13T13:54:52Z","total_m3":29.984,"voltage_v":3.7}
+{"_":"telegram","total_m3":412.5,"total_energy_consumption_gj":18.44,"flow_temperature_c":64.2,"max_flow_m3h":1.2,"records_counter":17,"id":"07331000","media":"heat","meter":"kamheat","name":"Heat_1000","timestamp":"2026-08-13T13:54:52Z"}
+{"_":"telegram","total_energy_consumption_kwh":3861.107,"total_reactive_energy_consumption_kvarh":42.5,"current_power_consumption_kw":0.35,"id":"88776655","media":"electricity","meter":"amiplus","name":"Power_6655","timestamp":"2026-08-13T14:30:19Z"}
+{"_":"telegram","total_kwh":4518,"current_kwh":312,"previous_kwh":1490,"id":"74114550","media":"heat","meter":"vario451","name":"Heat_4550","timestamp":"2026-08-13T14:30:19Z"}
+{"_":"telegram","total_m3":1234.567,"target_m3":1200.5,"current_m3":34.1,"id":"66554433","media":"gas","meter":"gasdriver","name":"Gas_4433","timestamp":"2026-08-13T14:30:19Z"}
+{"_":"telegram","total_m3":29.9,"target_m3":28.0,"status":"OK","id":"03314055","media":"water","meter":"mkradio4","name":"TESTOWY_4055","timestamp":"2026-08-13T14:30:19Z"}
+{"_":"telegram","media":"water","meter":"multical21","name":"Leak_0BEE","id":"0abcdbee","total_m3":6.408,"target_m3":6.1,"current_status":"LEAK","status":"LEAK DRY","timestamp":"2026-10-06T08:00:00Z"}
+{"_":"telegram","media":"water","meter":"multical21","name":"NoTime_1111","id":"11111111","total_m3":1.5,"status":"OK"}
+{"_":"telegram","media":"water","meter":"multical21","name":"ShortId","id":"12345","total_m3":1.0,"timestamp":"2026-10-06T08:00:00Z"}
+{"_":"telegram","media":"water","meter":"multical21","name":"NotHex","id":"meter-x","total_m3":2.0,"timestamp":"2026-10-06T08:00:00Z"}

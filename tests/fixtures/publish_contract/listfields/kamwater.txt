@@ -1,0 +1,28 @@
+                                   id  The meter id number.
+                                 name  Your name for the meter.
+                                media  What does the meter measure?
+                                meter  Meter driver.
+                            timestamp  Timestamp when wmbusmeters received the telegram. Local time for hr/fields UTC for json.
+                         timestamp_ut  Unix timestamp when wmbusmeters received the telegram.
+                         timestamp_lt  Local time when wmbusmeters received the telegram.
+                        timestamp_utc  UTC time when wmbusmeters received the telegram.
+                               device  The wmbus device that received the telegram.
+                             rssi_dbm  The rssi for the received telegram as reported by the device.
+                             total_m3  The total media volume consumption recorded by this meter.
+                            target_m3  The volume recorded by this meter at the target date.
+                          target_date  The target date. Usually the end of the previous billing period.
+                               status  Status and error flags.
+                       current_status  Status of meter. This field will go away use status instead.
+                             flow_m3h  The current flow of water through the meter.
+                   flow_temperature_c  The water temperature.
+min_external_temperature_last_month_c  The lowest external temperature outside of the meter during the last month.
+  min_external_temperature_last_day_c  The lowest external temperature outside of the meter during the last day.
+                         max_flow_m3h  The maximum flow recorded during previous period.
+               min_flow_temperature_c  The minimum water temperature.
+               max_flow_temperature_c  The maximum water temperature.
+           max_external_temperature_c  The maximum temperature recorded during previous period.
+                         min_flow_m3h  The minimum flow recorded during previous period.
+                             time_dry  Amount of time the meter has been dry.
+                        time_reversed  Amount of time the meter has been reversed.
+                         time_leaking  Amount of time the meter has been leaking.
+                        time_bursting  Amount of time the meter has been bursting.

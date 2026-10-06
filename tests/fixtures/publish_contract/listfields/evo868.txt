@@ -1,0 +1,23 @@
+                                                  id  The meter id number.
+                                                name  Your name for the meter.
+                                               media  What does the meter measure?
+                                               meter  Meter driver.
+                                           timestamp  Timestamp when wmbusmeters received the telegram. Local time for hr/fields UTC for json.
+                                        timestamp_ut  Unix timestamp when wmbusmeters received the telegram.
+                                        timestamp_lt  Local time when wmbusmeters received the telegram.
+                                       timestamp_utc  UTC time when wmbusmeters received the telegram.
+                                              device  The wmbus device that received the telegram.
+                                            rssi_dbm  The rssi for the received telegram as reported by the device.
+                                      fabrication_no  Fabrication number.
+                                            total_m3  The total media volume consumption recorded by this meter.
+                                      current_status  Status of meter.
+                          consumption_at_set_date_m3  The total water consumption at the most recent billing period date.
+                                            set_date  The most recent billing period date.
+                        consumption_at_set_date_2_m3  The total water consumption at the second most recent billing period date.
+                                          set_date_2  The second most recent billing period date.
+                         max_flow_since_datetime_m3h  Maximum water flow since date time.
+                                   max_flow_datetime  The datetime to which maximum flow is measured.
+consumption_at_history_{storage_counter-7counter}_m3  The total water consumption at the historic date.
+                              history_reference_date  Reference date for history.
+             history_{storage_counter-7counter}_date  The historic date #.
+                                     device_datetime  Date and time when the meter sent the telegram.

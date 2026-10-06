@@ -1,0 +1,28 @@
+                             id  The meter id number.
+                           name  Your name for the meter.
+                          media  What does the meter measure?
+                          meter  Meter driver.
+                      timestamp  Timestamp when wmbusmeters received the telegram. Local time for hr/fields UTC for json.
+                   timestamp_ut  Unix timestamp when wmbusmeters received the telegram.
+                   timestamp_lt  Local time when wmbusmeters received the telegram.
+                  timestamp_utc  UTC time when wmbusmeters received the telegram.
+                         device  The wmbus device that received the telegram.
+                       rssi_dbm  The rssi for the received telegram as reported by the device.
+                 fabrication_no  Fabrication number.
+                      on_time_h  How long the meter has been powered up.
+             on_time_at_error_h  How long the meter has been in an error state while powered up.
+                     meter_date  Meter date when telegram was sent.
+                 meter_datetime  Meter date when telegram was sent.
+               t2_temperature_c  Temperature of returned water.
+               t1_temperature_c  Temperature of incoming water.
+               current_power_kw  Instantaneous power consumed.
+        current_volume_flow_m3h  Instantaneous water flow.
+                total_volume_m3  Total volume of water used for heating.
+        total_volume_cooling_m3  Total volume of water used for cooling.
+               input1_volume_m3  Total volume of water used in input1.
+               input2_volume_m3  Total volume of water used in input2.
+               total_energy_kwh  The total heat energy consumption recorded by this meter.
+       total_energy_cooling_kwh  The total cooling energy consumption recorded by this meter.
+        total_energy_period_kwh  The total cooling energy consumption recorded by this meter.
+total_energy_cooling_period_kwh  The total cooling energy consumption recorded by this meter.
+                         status  Status and error flags.

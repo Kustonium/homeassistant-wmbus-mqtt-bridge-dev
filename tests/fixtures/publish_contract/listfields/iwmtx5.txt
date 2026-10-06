@@ -1,0 +1,13 @@
+            id  The meter id number.
+          name  Your name for the meter.
+         media  What does the meter measure?
+         meter  Meter driver.
+     timestamp  Timestamp when wmbusmeters received the telegram. Local time for hr/fields UTC for json.
+  timestamp_ut  Unix timestamp when wmbusmeters received the telegram.
+  timestamp_lt  Local time when wmbusmeters received the telegram.
+ timestamp_utc  UTC time when wmbusmeters received the telegram.
+        device  The wmbus device that received the telegram.
+      rssi_dbm  The rssi for the received telegram as reported by the device.
+meter_datetime  Date and time when the meter sent the telegram.
+      total_m3  The total media volume consumption recorded by this meter.
+        status  Status and error flags.

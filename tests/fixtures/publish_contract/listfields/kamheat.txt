@@ -1,0 +1,37 @@
+                                       id  The meter id number.
+                                     name  Your name for the meter.
+                                    media  What does the meter measure?
+                                    meter  Meter driver.
+                                timestamp  Timestamp when wmbusmeters received the telegram. Local time for hr/fields UTC for json.
+                             timestamp_ut  Unix timestamp when wmbusmeters received the telegram.
+                             timestamp_lt  Local time when wmbusmeters received the telegram.
+                            timestamp_utc  UTC time when wmbusmeters received the telegram.
+                                   device  The wmbus device that received the telegram.
+                                 rssi_dbm  The rssi for the received telegram as reported by the device.
+                           fabrication_no  Fabrication number.
+                               meter_date  Date when the meter sent the telegram. (10/348/Date and time)
+                           meter_datetime  Date and time when the meter sent the telegram. (10/348/Date and time)
+                                on_time_h  How long the meter has been powered up.
+                       on_time_at_error_h  How long the meter has been in an error state while powered up.
+     flow_return_temperature_difference_c  The difference between flow and return media temperatures.
+                              target_date  The target date. Usually the end of the previous billing period. (14/348/Date and Time logged)
+                                   status  Status and error flags
+             total_energy_consumption_kwh  The total energy consumption recorded by this meter.
+                total_energy_backward_kwh  The total backwards energy consumption recorded by this meter.
+                          total_volume_m3  The volume of water (3/68/Volume V1).
+ total_volume_subunit{subunit_counter}_m3  The volume of water for a subunit.
+                          volume_flow_m3h  The actual amount of water that pass through this meter (8/74/Flow V1 actual).
+                                 power_kw  The current power flowing.
+                             max_power_kw  The maximum power supplied.
+                         t1_temperature_c  The forward temperature of the water (6/86/t2 actual 2 decimals).
+                         t2_temperature_c  The return temperature of the water (7/87/t2 actual 2 decimals).
+                             max_flow_m3h  The maximum flow of water that passed through this meter.
+                       forward_energy_m3c  The forward energy of the water (4/97/Energy E8).
+                        return_energy_m3c  The return energy of the water (5/110/Energy E9).
+                        target_energy_kwh  The energy consumption recorded by this meter at the set date (11/60/Heat energy E1/026C).
+                         target_volume_m3  The amount of water that had passed through this meter at the set date (13/68/Volume V1).
+target_volume_subunit{subunit_counter}_m3  The amount of water that had passed through a subunit of the meter at the set date.
+                         operating_time_h  How long the meter has been collecting data.
+                              enhanced_id  
+                               va_counter  
+                               vb_counter  

@@ -1,0 +1,20 @@
+                      id  The meter id number.
+                    name  Your name for the meter.
+                   media  What does the meter measure?
+                   meter  Meter driver.
+               timestamp  Timestamp when wmbusmeters received the telegram. Local time for hr/fields UTC for json.
+            timestamp_ut  Unix timestamp when wmbusmeters received the telegram.
+            timestamp_lt  Local time when wmbusmeters received the telegram.
+           timestamp_utc  UTC time when wmbusmeters received the telegram.
+                  device  The wmbus device that received the telegram.
+                rssi_dbm  The rssi for the received telegram as reported by the device.
+                  prefix  The alphanumeric prefix printed before serial number on device.
+           serial_number  The meter serial number.
+                total_m3  The total water consumption recorded by this meter.
+     last_month_total_m3  The total water consumption recorded by this meter around end of last month.
+ last_month_measure_date  The date when the meter recorded the most recent billing value.
+remaining_battery_life_y  How many more years the battery is expected to last
+          current_alarms  Alarms currently reported by the meter.
+         previous_alarms  Alarms previously reported by the meter.
+       transmit_period_s  The period at which the meter transmits its data.
+        manufacture_year  The year during which the meter was manufactured.

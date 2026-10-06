@@ -21,3 +21,8 @@ tests/fixtures/qds_walkby/*.txt text eol=lf
 # compared byte for byte: LF regardless of platform, and `-whitespace` because
 # TSV rows end with an empty field - a trailing TAB - by design.
 tests/fixtures/ledger/** text eol=lf -whitespace
+
+# Inputs and recorded output of tests/test_publish_contract.sh, compared byte for
+# byte: LF regardless of platform; `-whitespace` because the decoder's
+# --listfields output pads names with spaces.
+tests/fixtures/publish_contract/** text eol=lf -whitespace

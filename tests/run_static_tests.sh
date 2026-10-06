@@ -28,6 +28,7 @@ bash tests/test_ledger_listen.sh
 bash tests/test_ledger_zero.sh
 bash tests/test_stop_signal.sh
 bash tests/test_broker_sys_denied.sh
+bash tests/test_publish_contract.sh
 python3 -m unittest tests/test_mbus_webui.py -v
 python3 -m unittest tests/test_meter_rename.py -v
 python3 -m unittest tests/test_bridge_ledger.py -v
