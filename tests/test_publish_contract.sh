@@ -9,11 +9,18 @@
 # byte of them changes or duplicates entities for every user. This file pins
 # today's output; each part of the rewrite has to reproduce it.
 #
-# The real bridge-lib code runs. Only its edges are replaced: mqtt_pub records
-# instead of publishing, the clock is fixed, the reception statistics behind
-# expire_after are fixed, and the decoder's field catalog comes from
-# fixtures/publish_contract/listfields/ (recorded from the pinned binary by
-# gen_corpus.sh).
+# The real bridge-lib code runs. Only its edges are replaced: the clock is
+# fixed, the reception statistics behind expire_after are fixed, and the
+# decoder's field catalog comes from fixtures/publish_contract/listfields/
+# (recorded from the pinned binary by gen_corpus.sh). What leaves mqtt_pub is
+# recorded in one of two ways:
+#
+#   default                     mqtt_pub is replaced by a recorder;
+#   CONTRACT_TRANSPORT=publisher the real mqtt_pub hands every message to the
+#                               real mqtt_publisher.py, which sends it to
+#                               tests/helpers/fake_mqtt_broker.py - so the bytes
+#                               a broker receives are checked against the same
+#                               file.
 #
 # Not covered yet: the wired M-Bus state path (14-mbus.sh) and the SEARCH
 # match payload (10-search.sh) - added with the parts that rewrite them.
@@ -38,7 +45,23 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || fail "missing jq"
 
 WORK="$(mktemp -d)"
-trap 'rm -rf "${WORK}"' EXIT
+BROKER_PID=""
+MQTT_PUBLISHER_PID=""
+cleanup() {
+  local kids=""
+  if [[ -n "${MQTT_PUBLISHER_PID}" ]]; then
+    kids="$(pgrep -P "${MQTT_PUBLISHER_PID}" 2>/dev/null || true)"
+    kill "${MQTT_PUBLISHER_PID}" 2>/dev/null || true
+    # shellcheck disable=SC2086  # a list of pids
+    [[ -z "${kids}" ]] || kill ${kids} 2>/dev/null || true
+  fi
+  [[ -z "${BROKER_PID}" ]] || kill "${BROKER_PID}" 2>/dev/null || true
+  rm -rf "${WORK}"
+}
+trap cleanup EXIT
+TRANSPORT="${CONTRACT_TRANSPORT:-recorder}"
+[[ "${TRANSPORT}" == "recorder" || "${TRANSPORT}" == "publisher" ]] \
+  || fail "CONTRACT_TRANSPORT must be recorder or publisher, not ${TRANSPORT}"
 CAPTURE="${WORK}/published.tsv"
 : > "${CAPTURE}"
 
@@ -66,12 +89,36 @@ done
 SCENARIO=""
 FAKE_NOW=1790000000
 SEEN_AVG=0
-mqtt_pub() {
-  local retain="false"
-  [[ "${3:-false}" == "true" ]] && retain="true"
-  printf '%s\t%s\t%s\t%s\n' "${SCENARIO}" "$1" "${retain}" "$2" >> "${CAPTURE}"
-  return 0
-}
+MARKER="__contract__/scenario"
+if [[ "${TRANSPORT}" == "recorder" ]]; then
+  mqtt_pub() {
+    local retain="false"
+    [[ "${3:-false}" == "true" ]] && retain="true"
+    printf '%s\t%s\t%s\t%s\n' "${SCENARIO}" "$1" "${retain}" "$2" >> "${CAPTURE}"
+    return 0
+  }
+  scenario() { SCENARIO="$1"; }
+else
+  command -v python3 >/dev/null 2>&1 || fail "missing python3"
+  BROKER_OUT="${WORK}/broker.tsv"
+  : > "${BROKER_OUT}"
+  python3 "${SCRIPT_DIR}/helpers/fake_mqtt_broker.py" "${WORK}/broker.port" "${BROKER_OUT}" &
+  BROKER_PID=$!
+  for _ in $(seq 50); do [[ -s "${WORK}/broker.port" ]] && break; sleep 0.1; done
+  [[ -s "${WORK}/broker.port" ]] || fail "fake broker did not start"
+  MQTT_HOST="127.0.0.1"
+  MQTT_PORT="$(< "${WORK}/broker.port")"
+  MQTT_USER=""
+  MQTT_PASS=""
+  # mosquitto_pub must never be needed: a message that falls back to it is
+  # missing from what the broker received, and the compare below fails.
+  PUB_ARGS=( -h 127.0.0.1 -p 1 )
+  MQTT_PUBLISHER="${ROOT_DIR}/rootfs/usr/bin/mqtt_publisher.py"
+  start_mqtt_publisher
+  [[ -n "${MQTT_PUB_PORT}" ]] || fail "mqtt_publisher.py did not start"
+  # The broker sees one stream; a marker message labels what follows.
+  scenario() { SCENARIO="$1"; mqtt_pub "${MARKER}" "$1" "false"; }
+fi
 epoch_now() { echo "${FAKE_NOW}"; }
 iso_now() { echo "2026-10-06T08:00:00Z"; }
 status_seen_stats() { printf '%s\t%s\t%s\t%s\n' 12 "${SEEN_AVG}" 3 10; }
@@ -123,36 +170,36 @@ publish_all() {
 
 # ── scenarios ───────────────────────────────────────────────────────────────
 # Every decoded telegram once, nothing cached: all Discovery configs + states.
-SCENARIO="first"; reset_caches
+scenario first; reset_caches
 publish_all
 
 # The same telegrams again: configs are cached, only states go out.
-SCENARIO="repeat"
+scenario repeat
 publish_all
 
 # The meter's average interval grows: expire_after changes, configs are resent.
-SCENARIO="expire_after"; SEEN_AVG=2400
+scenario expire_after; SEEN_AVG=2400
 publish_decoded_json "$(line_for 04913581)"
 SEEN_AVG=0
 
 # Disabled Discovery: states only.
-SCENARIO="discovery_off"; reset_caches; DISCOVERY_ENABLED="false"
+scenario discovery_off; reset_caches; DISCOVERY_ENABLED="false"
 publish_decoded_json "$(line_for 03314055)"
 DISCOVERY_ENABLED="true"
 
 # Retained states and non-retained configs (both options flipped).
-SCENARIO="retain_flipped"; reset_caches; STATE_RETAIN="true"; DISCOVERY_RETAIN="false"
+scenario retain_flipped; reset_caches; STATE_RETAIN="true"; DISCOVERY_RETAIN="false"
 publish_decoded_json "$(line_for 03314055)"
 STATE_RETAIN="false"; DISCOVERY_RETAIN="true"
 
 # A required timestamp: the telegram without one is not published at all.
-SCENARIO="require_timestamp"; reset_caches; REQUIRE_TIMESTAMP="true"
+scenario require_timestamp; reset_caches; REQUIRE_TIMESTAMP="true"
 publish_decoded_json "$(line_for 11111111)"
 publish_decoded_json "$(line_for 03314055)"
 REQUIRE_TIMESTAMP="false"
 
 # Per-board RSSI joined on: two fresh boards, one stale, one other meter.
-SCENARIO="rssi"; reset_caches
+scenario rssi; reset_caches
 {
   printf '%s\t%s\t%s\t%s\n' 21031894 -72 lilygo "$(( FAKE_NOW - 10 ))"
   printf '%s\t%s\t%s\t%s\n' 21031894 -65 xiao-seed "$(( FAKE_NOW - 20 ))"
@@ -163,7 +210,7 @@ publish_decoded_json "$(line_for 21031894)"
 publish_decoded_json "$(line_for 21031894)"
 
 # Fields excluded per meter (globs, case-insensitive, "status" takes the pair).
-SCENARIO="exclude"; reset_caches
+scenario exclude; reset_caches
 METER_EXCLUDE_FIELDS["21031894"]="consumption_at_history_* HISTORY_*_DATE"
 METER_EXCLUDE_FIELDS["0abcdbee"]="status target_*"
 publish_decoded_json "$(line_for 21031894)"
@@ -171,14 +218,14 @@ publish_decoded_json "$(line_for 0abcdbee)"
 publish_decoded_json "$(line_for 21031894)"
 
 # A SEARCH temporary meter: its entities are cleared, never created.
-SCENARIO="search_temp"; reset_caches; SEARCH_MODE="true"
+scenario search_temp; reset_caches; SEARCH_MODE="true"
 search_line="$(line_for 0abcdbee | jq -c '.name = "search_0abcdbee"')"
 is_search_temp_json "${search_line}" && clear_search_discovery_from_json "${search_line}"
 clear_search_discovery_from_json "${search_line}"   # cached: nothing more
 SEARCH_MODE="false"
 
 # Factory reset of one meter: every retained config the broker reports.
-SCENARIO="clear_meter"; reset_caches
+scenario clear_meter; reset_caches
 RETAINED_TOPICS="homeassistant/sensor/wmbus_03314055/total_m3/config {}
 homeassistant/sensor/wmbus_03314055/target_m3/config {}
 homeassistant/binary_sensor/wmbus_03314055/status_problem/config {}
@@ -198,7 +245,7 @@ reset_caches
 } > "${STATUS_ESP_RX_RECEPTION_FILE}"
 t0="${FAKE_NOW}"
 coverage_at() {  # $1 = seconds after the first call
-  FAKE_NOW=$(( t0 + $1 )); SCENARIO="coverage@$1"
+  FAKE_NOW=$(( t0 + $1 )); scenario "coverage@$1"
   publish_esp_coverage
 }
 coverage_at 0
@@ -210,7 +257,7 @@ coverage_at $(( 122 + ESP_COVERAGE_REFRESH_S ))
 FAKE_NOW="${t0}"
 
 # The canary entity of the opt-in HA verification.
-SCENARIO="canary"; reset_caches; VERIFY_HA_ENTITIES="true"
+scenario canary; reset_caches; VERIFY_HA_ENTITIES="true"
 publish_canary_entity
 VERIFY_HA_ENTITIES="false"
 
@@ -226,6 +273,19 @@ normalize() {
       print first[g], (unordered ? $2 : ""), NR, $0
     }' | sort -t $'\t' -k1,1n -k2,2 -k3,3n | cut -f4-
 }
+if [[ "${TRANSPORT}" == "publisher" ]]; then
+  scenario "__end__"
+  for _ in $(seq 100); do
+    grep -q -F "${MARKER}"$'\tfalse\t__end__' "${BROKER_OUT}" && break
+    sleep 0.1
+  done
+  grep -q -F "${MARKER}"$'\tfalse\t__end__' "${BROKER_OUT}" \
+    || fail "the broker did not receive everything (no end marker)"
+  # Label every message with the scenario of the marker before it.
+  awk -F'\t' -v m="${MARKER}" 'BEGIN { OFS = "\t" }
+    $1 == m { sc = $3; next }
+    { print sc, $0 }' "${BROKER_OUT}" > "${CAPTURE}"
+fi
 normalize < "${CAPTURE}" > "${WORK}/actual.tsv"
 
 if [[ "${CONTRACT_UPDATE:-0}" == "1" ]]; then
@@ -240,4 +300,4 @@ if ! cmp -s <(tr -d '\r' < "${EXPECTED}") "${WORK}/actual.tsv"; then
   fail "published topics/payloads differ from ${EXPECTED#"${ROOT_DIR}/"}"
 fi
 summary="$(cut -f1 "${CAPTURE}" | uniq -c | awk '{printf "%s%s=%s", (NR>1?" ":""), $2, $1}')"
-echo "PASS: publish contract holds - $(wc -l < "${CAPTURE}") publishes (${summary})"
+echo "PASS: publish contract holds via ${TRANSPORT} - $(wc -l < "${CAPTURE}") publishes (${summary})"

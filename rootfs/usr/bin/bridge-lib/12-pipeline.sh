@@ -6,10 +6,77 @@ mqtt_pub() {
   local payload="$2"
   local retain="${3:-false}"
 
+  if [[ -n "${MQTT_PUB_PORT:-}" ]]; then
+    local _r=0
+    [[ "${retain}" == "true" ]] && _r=1
+    _mqtt_pub_persistent "${topic}" "${payload}" "${_r}" && return 0
+  fi
+
+  # No persistent publisher (disabled, not started, or not answering): one
+  # mosquitto_pub per message, as before it existed.
   local retain_flag=()
   [[ "${retain}" == "true" ]] && retain_flag=( -r )
 
-  /usr/bin/mosquitto_pub "${PUB_ARGS[@]}" -t "${topic}" "${retain_flag[@]}" -m "${payload}" || true
+  "${MOSQUITTO_PUB_BIN:-/usr/bin/mosquitto_pub}" "${PUB_ARGS[@]}" -t "${topic}" "${retain_flag[@]}" -m "${payload}" || true
+}
+
+# Hand one message to mqtt_publisher.py over loopback TCP ($1 topic, $2
+# payload, $3 retain 0/1). /dev/tcp is bash's own, so this execs nothing. It
+# runs in a subshell for two reasons: a publisher dying between accept and
+# write raises SIGPIPE, which then ends this subshell (the message falls back
+# to mosquitto_pub) instead of the process that publishes - the decode loop,
+# the heartbeat ticker; and LC_ALL=C there makes ${#2} count bytes, which is
+# what the frame header carries.
+_mqtt_pub_persistent() {
+  (
+    exec 3>"/dev/tcp/127.0.0.1/${MQTT_PUB_PORT}" || exit 1
+    LC_ALL=C
+    printf 'PUB %s %s %s\n%s\n' "$3" "${#2}" "$1" "$2" >&3 || exit 1
+  ) 2>/dev/null
+}
+
+# Start mqtt_publisher.py: one broker connection kept open for every publish
+# of the add-on, instead of a mosquitto_pub (process + connection + login) per
+# message. Called once from the main shell, before any process that publishes
+# is forked, so MQTT_PUB_PORT is inherited by all of them. The loop restarts
+# the publisher if it exits; it binds the same port again (port file), so the
+# writers keep working. MQTT_PERSISTENT_PUBLISHER=false falls back to
+# mosquitto_pub per message.
+MQTT_PUB_PORT=""
+MQTT_PUBLISHER_PID=""
+start_mqtt_publisher() {
+  if [[ "${MQTT_PERSISTENT_PUBLISHER:-true}" != "true" ]]; then
+    log "MQTT: persistent publisher disabled, using mosquitto_pub per message"
+    return 0
+  fi
+  local port_file="${RUNTIME:-${BASE}}/mqtt_publisher.port"
+  local script="${MQTT_PUBLISHER:-${BRIDGE_SCRIPT_DIR:-/usr/bin}/mqtt_publisher.py}"
+  rm -f "${port_file}" 2>/dev/null || true
+  (
+    while true; do
+      # Credentials through the environment: argv is visible in ps.
+      MQTT_USER="${MQTT_USER}" MQTT_PASS="${MQTT_PASS}" \
+        python3 "${script}" --host "${MQTT_HOST}" --port "${MQTT_PORT}" --port-file "${port_file}"
+      warn "MQTT: persistent publisher exited (rc=$?), restarting in 2s"
+      sleep 2
+    done
+  ) &
+  # shellcheck disable=SC2034  # for whoever has to stop it (the tests do)
+  MQTT_PUBLISHER_PID=$!
+
+  local _i _port=""
+  for (( _i = 0; _i < 50; _i++ )); do
+    [[ -s "${port_file}" ]] && _port="$(< "${port_file}")"
+    [[ "${_port}" =~ ^[0-9]+$ ]] && break
+    _port=""
+    sleep 0.1
+  done
+  if [[ -z "${_port}" ]]; then
+    warn "MQTT: persistent publisher did not start, using mosquitto_pub per message"
+    return 0
+  fi
+  MQTT_PUB_PORT="${_port}"
+  log "MQTT: persistent publisher ready (one broker connection for all publishes)"
 }
 
 # Publish one decoded telegram of a configured meter: its Discovery configs

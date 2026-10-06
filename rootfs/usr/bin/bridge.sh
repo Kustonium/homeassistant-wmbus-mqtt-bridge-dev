@@ -439,6 +439,9 @@ if command -v stdbuf >/dev/null 2>&1; then
   STDBUF_BIN="stdbuf -oL -eL"
 fi
 
+# Before anything that publishes is forked: they inherit MQTT_PUB_PORT.
+start_mqtt_publisher
+
 start_esp_subscribers
 
 # Liveness heartbeat ticker: stamp the current epoch every few seconds,

@@ -378,6 +378,17 @@ The main script also owns a heartbeat ticker and the restart loop around the
 DECODE pipeline. Background subscribers and LISTEN are long-lived workers, not
 children that should be replaced on every meter change.
 
+Everything the bridge publishes leaves through `mqtt_publisher.py`: one MQTT
+connection kept open for the life of the bridge (MQTT 3.1.1, QoS 0, clean
+session, client id `wmbus_bridge_pub_<random>`), with a bounded queue while the
+broker is unreachable. `mqtt_pub` hands it each message over loopback TCP -
+bash's own `/dev/tcp`, so no process is started per message - and falls back
+to one `mosquitto_pub` per message when the publisher is not answering, or
+when `MQTT_PERSISTENT_PUBLISHER=false`. Before it, every Discovery config and
+state was a connection of its own: a login and several lines of broker log,
+several times a minute. Subscribers keep their own `mosquitto_sub`
+connections.
+
 Bookkeeping that runs for every MQTT message is done by `bridge_ledger.py`,
 one long-lived Python process per path: in bash it started tens of processes
 per message, which on a busy multi-ESP site kept CPU cores busy. Bash keeps

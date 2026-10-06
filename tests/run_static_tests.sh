@@ -29,6 +29,9 @@ bash tests/test_ledger_zero.sh
 bash tests/test_stop_signal.sh
 bash tests/test_broker_sys_denied.sh
 bash tests/test_publish_contract.sh
+CONTRACT_TRANSPORT=publisher bash tests/test_publish_contract.sh
+bash tests/test_mqtt_pub_fallback.sh
 python3 -m unittest tests/test_mbus_webui.py -v
 python3 -m unittest tests/test_meter_rename.py -v
 python3 -m unittest tests/test_bridge_ledger.py -v
+python3 -m unittest tests/test_mqtt_publisher.py -v
