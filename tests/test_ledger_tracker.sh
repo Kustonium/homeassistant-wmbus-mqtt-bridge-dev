@@ -228,10 +228,14 @@ pkill -TERM -f "${BRIDGE_LEDGER} tracker --dev-pos 1 --devices-file ${LIVE}/devi
 killed_after="$(cat "${QUEUE}/next")"
 wait_for 30 queue_sent \
   || fail "restart: the loop did not reconnect after python3 died (stopped at message $(cat "${QUEUE}/next"))"
-wait_for 10 boards_at_least $(( MESSAGES - 1 )) || true
+# Wait for the last message itself, not for MESSAGES-1 boards: when the kill
+# happens to lose nothing, MESSAGES-1 boards exist while the last one is still
+# on its way, and the check below would race it.
+last_booked() { grep -q "^board${MESSAGES}"$'\t' "${STATUS_ESP_TELEGRAM_DEVICES_FILE}"; }
+wait_for 10 last_booked || true
 
 final="$(boards_seen)"
-grep -q "^board${MESSAGES}"$'\t' "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" \
+last_booked \
   || fail "restart: the last message was not booked - python3 was not started again"
 (( final > killed_after )) || fail "restart: nothing booked after python3 was killed"
 (( final >= MESSAGES - 1 )) \
@@ -272,7 +276,6 @@ wait_for 15 sent_at_least $(( MESSAGES - 20 )) || fail "SIGKILL: the subscriber 
 pkill -KILL -f "${BRIDGE_LEDGER} tracker --dev-pos 1 --devices-file ${LIVE}/devices" \
   || fail "SIGKILL: no bridge_ledger.py tracker process to kill"
 wait_for 30 queue_sent || fail "SIGKILL: the loop did not reconnect after python3 was killed"
-last_booked() { grep -q "^board${MESSAGES}"$'\t' "${STATUS_ESP_TELEGRAM_DEVICES_FILE}"; }
 wait_for 10 last_booked || fail "SIGKILL: the restarted process did not book the last message"
 check_tsv "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" 4
 check_tsv "${STATUS_ESP_METER_DEVICE_FILE}" 3

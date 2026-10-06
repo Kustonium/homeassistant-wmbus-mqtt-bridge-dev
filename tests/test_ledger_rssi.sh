@@ -152,10 +152,14 @@ killed_after="$(rows)"
 
 wait_for 30 queue_sent \
   || fail "restart: the loop did not reconnect after python3 died (stopped at message $(cat "${QUEUE}/next"))"
-wait_for 10 rows_at_least $(( MESSAGES - 1 )) || true
+# Wait for the last message itself, not for MESSAGES-1 rows: when the kill
+# happens to lose nothing, MESSAGES-1 rows exist while the last one is still
+# on its way, and the check below would race it.
+last_booked() { grep -q $'^52632878\t-80\tboard40\t' "${STATUS_RSSI_FILE}"; }
+wait_for 10 last_booked || true
 
 final="$(rows)"
-grep -q $'^52632878\t-80\tboard40\t' "${STATUS_RSSI_FILE}" \
+last_booked \
   || fail "restart: the last message was not booked - python3 was not started again"
 (( final > killed_after )) || fail "restart: nothing booked after python3 was killed"
 (( final >= MESSAGES - 1 )) \
