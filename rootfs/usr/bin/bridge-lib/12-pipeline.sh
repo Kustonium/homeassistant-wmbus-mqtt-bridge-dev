@@ -12,6 +12,28 @@ mqtt_pub() {
   /usr/bin/mosquitto_pub "${PUB_ARGS[@]}" -t "${topic}" "${retain_flag[@]}" -m "${payload}" || true
 }
 
+# Publish one decoded telegram of a configured meter: its Discovery configs
+# and its state. Both decode branches of run_once (FILTER_HEX_ONLY on/off) call
+# this, and tests/test_publish_contract.sh records everything it publishes.
+publish_decoded_json() {
+  local line="$1" id ts
+  id="$(normalize_meter_id "$(echo "${line}" | jq -r '.id // empty' 2>/dev/null || true)")"
+  ts="$(echo "${line}" | jq -r '.timestamp // .device_date_time // empty' 2>/dev/null || true)"
+  [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]] || return 0
+  if [[ "${REQUIRE_TIMESTAMP}" == "true" && -z "${ts}" ]]; then
+    warn "Skip publish: missing timestamp for id=${id}"
+    return 0
+  fi
+  # Join the opt-in per-meter RSSI before both the Discovery config and the
+  # state payload, so the field is seen by the same machinery as every decoded
+  # field and needs no special case downstream.
+  line="$(inject_rssi_into_json "${id}" "${line}")"
+  emit_discovery_from_json "${line}"
+  mqtt_pub "${STATE_PREFIX}/${id}/state" "${line}" "${STATE_RETAIN}" || true
+  status_mark_discovery_published
+  write_status_json
+}
+
 wait_for_mqtt() {
   log "Waiting for MQTT broker ${MQTT_HOST}:${MQTT_PORT}..."
   local _wm_out _wm_code _wm_prev

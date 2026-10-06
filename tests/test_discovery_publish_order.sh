@@ -2,6 +2,11 @@
 # Regression test: discovery must be emitted before the matching state payload.
 # With state_retain=false, publishing state first can leave freshly discovered
 # HA entities unavailable until another telegram arrives.
+#
+# Both decode paths of bridge.sh hand a decoded telegram to
+# publish_decoded_json (12-pipeline.sh); this checks that both do, and that the
+# function emits Discovery before the state. tests/test_publish_contract.sh
+# checks the resulting publish order end to end.
 set -euo pipefail
 
 SCRIPT_PATH="${BASH_SOURCE[0]}"
@@ -10,25 +15,25 @@ SCRIPT_DIR="${SCRIPT_PATH%/*}"
 SCRIPT_DIR="$(cd "${SCRIPT_DIR}" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BRIDGE_SH="${ROOT_DIR}/rootfs/usr/bin/bridge.sh"
+PIPELINE_SH="${ROOT_DIR}/rootfs/usr/bin/bridge-lib/12-pipeline.sh"
 
 fail() {
   echo "FAIL: $*" >&2
   exit 1
 }
 
-mapfile -t discovery_lines < <(grep -n -F 'emit_discovery_from_json "${line}"' "${BRIDGE_SH}" | cut -d: -f1)
-mapfile -t state_lines < <(grep -n -F 'mqtt_pub "${STATE_PREFIX}/${id}/state"' "${BRIDGE_SH}" | cut -d: -f1)
+calls="$(grep -c -F 'publish_decoded_json "${line}"' "${BRIDGE_SH}" || true)"
+[[ "${calls}" -eq 2 ]] || fail "expected both decode paths to call publish_decoded_json, got ${calls}"
+grep -q -F 'mqtt_pub "${STATE_PREFIX}/${id}/state"' "${BRIDGE_SH}" \
+  && fail "bridge.sh publishes a meter state itself instead of through publish_decoded_json"
 
-[[ "${#discovery_lines[@]}" -eq 2 ]] || fail "expected two discovery emits, got ${#discovery_lines[@]}"
-[[ "${#state_lines[@]}" -eq 2 ]] || fail "expected two state publishes, got ${#state_lines[@]}"
+body="$(sed -n '/^publish_decoded_json() {/,/^}/p' "${PIPELINE_SH}")"
+[[ -n "${body}" ]] || fail "publish_decoded_json not found in 12-pipeline.sh"
+discovery_line="$(grep -n -F 'emit_discovery_from_json "${line}"' <<<"${body}" | cut -d: -f1)"
+state_line="$(grep -n -F 'mqtt_pub "${STATE_PREFIX}/${id}/state"' <<<"${body}" | cut -d: -f1)"
+[[ -n "${discovery_line}" && -n "${state_line}" ]] \
+  || fail "publish_decoded_json must emit Discovery and publish the state"
+(( discovery_line < state_line )) \
+  || fail "publish_decoded_json publishes the state before Discovery"
 
-for i in "${!state_lines[@]}"; do
-  discovery_line="${discovery_lines[${i}]}"
-  state_line="${state_lines[${i}]}"
-  (( discovery_line < state_line )) \
-    || fail "state publish at line ${state_line} occurs before discovery at line ${discovery_line}"
-  (( state_line - discovery_line <= 3 )) \
-    || fail "state publish at line ${state_line} is not paired with nearby discovery at line ${discovery_line}"
-done
-
-echo "PASS: bridge publishes discovery before state in both decode paths"
+echo "PASS: both decode paths publish Discovery before state (publish_decoded_json)"

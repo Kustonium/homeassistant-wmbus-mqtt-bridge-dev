@@ -744,22 +744,7 @@ run_once() {
           fi
           status_meter_seen "${line}"
           echo "${line}"
-          id="$(normalize_meter_id "$(echo "${line}" | jq -r '.id // empty' 2>/dev/null || true)")"
-          ts="$(echo "${line}" | jq -r '.timestamp // .device_date_time // empty' 2>/dev/null || true)"
-          if [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]]; then
-            if [[ "${REQUIRE_TIMESTAMP}" == "true" && -z "${ts}" ]]; then
-              warn "Skip publish: missing timestamp for id=${id}"
-            else
-              # Join the opt-in per-meter RSSI before both the Discovery config
-              # and the state payload, so the field is seen by the same machinery
-              # as every decoded field and needs no special case downstream.
-              line="$(inject_rssi_into_json "${id}" "${line}")"
-              emit_discovery_from_json "${line}"
-              mqtt_pub "${STATE_PREFIX}/${id}/state" "${line}" "${STATE_RETAIN}" || true
-              status_mark_discovery_published
-              write_status_json
-            fi
-          fi
+          publish_decoded_json "${line}"
           continue
         fi
 
@@ -798,22 +783,7 @@ else
           fi
           status_meter_seen "${line}"
           echo "${line}"
-          id="$(normalize_meter_id "$(echo "${line}" | jq -r '.id // empty' 2>/dev/null || true)")"
-          ts="$(echo "${line}" | jq -r '.timestamp // .device_date_time // empty' 2>/dev/null || true)"
-          if [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]]; then
-            if [[ "${REQUIRE_TIMESTAMP}" == "true" && -z "${ts}" ]]; then
-              warn "Skip publish: missing timestamp for id=${id}"
-            else
-              # Join the opt-in per-meter RSSI before both the Discovery config
-              # and the state payload, so the field is seen by the same machinery
-              # as every decoded field and needs no special case downstream.
-              line="$(inject_rssi_into_json "${id}" "${line}")"
-              emit_discovery_from_json "${line}"
-              mqtt_pub "${STATE_PREFIX}/${id}/state" "${line}" "${STATE_RETAIN}" || true
-              status_mark_discovery_published
-              write_status_json
-            fi
-          fi
+          publish_decoded_json "${line}"
         else
           echo "${line}"
           status_detect_key_problem "${line}" || true
