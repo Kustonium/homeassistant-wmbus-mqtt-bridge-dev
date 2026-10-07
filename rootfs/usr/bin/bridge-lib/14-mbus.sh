@@ -550,6 +550,42 @@ _mbus_consume_stage() {
   }
 }
 
+# write_mbus_conf and refresh_mbus_meter_files, in wmbus_mbus.py config (one
+# process instead of a jq per option and per meter field); the values bash
+# keeps come back on its stdout: the alias, the poll default, the meter
+# counts and the exclude patterns by name, then write_mbus_conf's return
+# code. MBUS_CONFIG_IN_PYTHON=false, no python3 or no answer from it runs the
+# bash functions.
+_mbus_configure() {
+  if [[ "${MBUS_CONFIG_IN_PYTHON:-true}" == "true" ]] && command -v python3 >/dev/null 2>&1; then
+    local _out _k _a _b _rc=""
+    # --name=value: a value starting with "-" must not read as an option.
+    _out="$(python3 "${MBUS_CONSUMER}" config --options="${OPTIONS_JSON}" --conf="${MBUS_CONF_FILE}" \
+      --meter-dir="${MBUS_METER_DIR}" --status-file="${MBUS_STATUS_FILE}" \
+      --events-file="${STATUS_EVENTS_FILE}" --alias="${MBUS_BUS_ALIAS}" \
+      --configured="${MBUS_METERS_OK:-0}" --skipped="${MBUS_METERS_SKIPPED:-0}" \
+      --loglevel="${LOGLEVEL:-}")"
+    while IFS=$'\x1f' read -r _k _a _b; do
+      case "${_k}" in
+        set)
+          case "${_a}" in
+            MBUS_BUS_ALIAS|MBUS_POLL_DEFAULT|MBUS_METERS_OK|MBUS_METERS_SKIPPED) printf -v "${_a}" '%s' "${_b}" ;;
+          esac ;;
+        exclude) MBUS_EXCLUDE_BY_NAME["${_a}"]="${_b}" ;;
+        unexclude) unset 'MBUS_EXCLUDE_BY_NAME[${_a}]' ;;
+        rc) _rc="${_a}" ;;
+      esac
+    done <<< "${_out}"
+    if [[ -n "${_rc}" ]]; then
+      [[ "${_rc}" == "0" ]]
+      return
+    fi
+    warn "M-Bus: wmbus_mbus.py config gave no result -> writing the config in bash"
+  fi
+  write_mbus_conf || return 1
+  refresh_mbus_meter_files
+}
+
 # ------------------------------------------------------------
 # Supervisor
 # ------------------------------------------------------------
@@ -560,8 +596,7 @@ start_mbus_instance() {
     mbus_write_status "disabled"
     return 0
   fi
-  write_mbus_conf || return 0
-  refresh_mbus_meter_files
+  _mbus_configure || return 0
 
   # Armed, port fine, nothing to poll. Distinct from "no_reply": the decoder is
   # not silent, it was never asked to say anything.

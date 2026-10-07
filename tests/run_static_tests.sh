@@ -41,3 +41,4 @@ python3 -m unittest tests/test_esp_books.py -v
 python3 -m unittest tests/test_listen_book.py -v
 python3 -m unittest tests/test_preview_oneshot.py -v
 python3 -m unittest tests/test_mbus_consumer.py -v
+python3 -m unittest tests/test_mbus_config.py -v

@@ -587,7 +587,13 @@ in one process. An accepted telegram (with `rssi_dbm` removed — it is 0 on a w
 goes back to the bash loop behind it, which publishes it as before: the meter's
 exclude patterns under its learned id, Discovery, state and the meter table.
 `MBUS_CONSUMER_IN_PYTHON=false` reads the output in bash again
-(`_mbus_consume_bash`).
+(`_mbus_consume_bash`). The instance's `wmbusmeters.conf` and meter files are
+written by `wmbus_mbus.py config` from `options.json` (the port, alias and
+identity checks, the address and key validation, `pollinterval` in every meter
+file, the `calculate_` and `field_` lines); the values the shell keeps — alias,
+poll default, meter counts and exclude patterns by name — come back on its
+output. `MBUS_CONFIG_IN_PYTHON=false` writes them with the bash functions
+(`write_mbus_conf`, `refresh_mbus_meter_files`).
 
 The two halves stay separate on purpose. Whether the port can be *opened* is
 answered in `webui.py` by actually opening it, which is the only thing that proves

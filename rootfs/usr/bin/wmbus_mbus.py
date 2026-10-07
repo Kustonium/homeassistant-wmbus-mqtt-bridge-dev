@@ -25,7 +25,9 @@ it (jq printing several values) travels as 0x1E.
 from __future__ import annotations
 
 import argparse
+import glob
 import os
+import re
 import sys
 import time
 from typing import Dict, List
@@ -205,6 +207,274 @@ class MbusBook:
             pass
 
 
+# ── configuration (write_mbus_conf + refresh_mbus_meter_files) ──────────────
+
+_SPACE = " \t\n\r\f\v"
+
+
+def field_spec_lines(spec: str, meter: str, prefix: str, option: str, warn) -> List[str]:
+    """07-meters.sh _build_field_spec_lines: "name=value" entries split on ';'
+    (IFS=';' word splitting: no empty field at the end), trimmed, validated."""
+    entries = spec.split(";")
+    if entries and entries[-1] == "":
+        entries.pop()
+    out = []
+    for entry in entries:
+        entry = entry.strip(_SPACE)
+        if not entry:
+            continue
+        name, _, value = entry.partition("=")
+        if "=" not in entry or "\n" in entry:
+            warn(f"{option} for {meter}: '{entry}' is not name=value -> skipped")
+            continue
+        name = "".join(ch for ch in name if ch not in _SPACE)
+        value = value.strip(_SPACE)
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", name):
+            warn(f"{option} for {meter}: field name '{name}' is not [a-z][a-z0-9_]* -> skipped")
+            continue
+        if not value:
+            warn(f"{option} for {meter}: '{name}' has an empty value -> skipped")
+            continue
+        out.append(f"{prefix}{name}={value}")
+    return out
+
+
+def _jq_r_default(obj: object, key: str, default: str) -> str:
+    """`echo "$json" | jq -r '.key // default'` for one object (`// empty`: default "")."""
+    if not isinstance(obj, dict):
+        return default
+    v = obj.get(key)
+    if v is None or v is False:
+        return default
+    return v if isinstance(v, str) else bl._jq_pretty(v)
+
+
+_PRIMARY = re.compile(r"p([1-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|250)")
+
+
+class MbusConfig:
+    """write_mbus_conf and refresh_mbus_meter_files, writing the same files.
+
+    What bash keeps in shell variables comes back on stdout, one per line,
+    fields separated by 0x1F (a meter name may be empty or hold spaces):
+    "set VAR VALUE", "exclude NAME PATTERNS" / "unexclude NAME", and last
+    "rc 0|1" (write_mbus_conf's return code; 1 stops the start)."""
+
+    def __init__(self, a: argparse.Namespace, out=None, err=None) -> None:
+        self.a = a
+        self.out = out if out is not None else sys.stdout
+        self.err = err if err is not None else sys.stderr
+        self.options = self._load_options()
+
+    def _load_options(self) -> object:
+        try:
+            with open(self.a.options, "rb") as fh:
+                values = bl.jq_values(bl._s(fh.read()))
+        except OSError:
+            return None
+        return values[0] if values else None
+
+    def opt(self, key: str, fallback: str) -> str:
+        """mbus_opt."""
+        if not os.path.isfile(self.a.options):
+            return fallback
+        return options_value(self.a.options, key, fallback)
+
+    def emit(self, *fields: str) -> None:
+        self.out.write(SEP.join(fields) + "\n")
+        self.out.flush()
+
+    def warn(self, msg: str) -> None:
+        print(f"[wmbus-bridge][WARN] {msg}", file=self.err, flush=True)
+
+    def log(self, msg: str, level: str = "info") -> None:
+        """log / log_verbose, on stderr: stdout carries the values for bash."""
+        if level == "info" or (level == "verbose" and self.a.loglevel in ("verbose", "debug")):
+            print(f"[wmbus-bridge] {msg}", file=self.err, flush=True)
+
+    def status(self, state: str, alias: str) -> None:
+        """mbus_write_status from the parent shell: no meter heard there, and
+        the meter counts of the previous start (this one failed before them)."""
+        doc = {"state": state, "device": self.opt("mbus_device", ""), "bus_alias": alias,
+               "meters_configured": int(self.a.configured or 0), "meters_skipped": int(self.a.skipped or 0),
+               "meters": {}, "updated": int(bl.now())}
+        try:
+            with open(self.a.status_file + ".tmp", "wb") as fh:
+                fh.write(bl._b(bl._jq_pretty(doc) + "\n"))
+            os.replace(self.a.status_file + ".tmp", self.a.status_file)
+        except OSError:
+            pass
+
+    @staticmethod
+    def device_serial(path: str) -> str:
+        """mbus_device_serial_now ("" when there is none)."""
+        if not os.path.exists(path):
+            return ""
+        node = os.path.basename(os.path.realpath(path))
+        sys_path = os.path.join(SYS_ROOT, "class", "tty", node, "device", "..", "serial")
+        try:
+            with open(sys_path, "rb") as fh:
+                return bl._s(fh.read()).replace("\n", "")
+        except OSError:
+            return ""
+
+    def identity(self, path: str, pinned: str) -> str:
+        """mbus_identity_check."""
+        if not os.path.exists(path):
+            return "device_missing"
+        now = self.device_serial(path)
+        if not now:
+            return "pin_impossible"
+        if not pinned:
+            return "unknown_identity"
+        return "ok" if now == pinned else "changed"
+
+    def write_conf(self) -> int:
+        dev = self.opt("mbus_device", "")
+        alias = self.opt("mbus_bus_alias", "MAIN")
+        bps = self.opt("mbus_baudrate", "2400")
+        loglevel = self.opt("mbus_loglevel", "normal")
+        donotprobe = self.opt("mbus_donotprobe_all", "true")
+        logtelegrams = self.opt("mbus_logtelegrams", "false")
+        ignoredup = self.opt("mbus_ignoreduplicates", "false")
+        pinned = self.opt("mbus_device_serial", "")
+        poll = self.opt("mbus_poll_interval", "15m")
+        self.emit("set", "MBUS_POLL_DEFAULT", poll)
+        if not dev or dev == "null":
+            self.warn("M-Bus: polling is enabled but no port is selected -> not starting. Pick a port in "
+                      "the M-Bus tab, or turn mbus_enabled off.")
+            self.status("not_configured", self.a.alias)
+            return 1
+        if not re.fullmatch(r"[A-Za-z0-9_]+", alias):
+            self.warn(f"M-Bus: invalid bus alias '{alias}' -> falling back to MAIN")
+            alias = "MAIN"
+        self.alias = alias
+        self.emit("set", "MBUS_BUS_ALIAS", alias)
+        if not re.fullmatch(r"[0-9]+[smh]", poll):
+            self.warn(f"M-Bus: invalid poll interval '{poll}' -> using 15m. Write it as a number followed "
+                      f"by s, m or h (for example 30s, 15m, 1h).")
+            poll = "15m"
+            self.emit("set", "MBUS_POLL_DEFAULT", poll)
+        self.poll_default = poll
+        identity = self.identity(dev, pinned)
+        if identity == "device_missing":
+            self.warn(f"M-Bus: the configured port {dev} is gone -> not starting. Re-pick it in the M-Bus "
+                      f"tab; serial port names change when USB devices are replugged.")
+            self.status("device_missing", alias)
+            return 1
+        if identity == "changed":
+            print(f"[wmbus-bridge][ERR] M-Bus: {dev} is now a different device than the one you selected "
+                  f"-> refusing to poll. Something else took that port; re-pick the converter in the M-Bus "
+                  f"tab to confirm.", file=self.err, flush=True)
+            bl.append_event(self.a.events_file, "error", f"M-Bus device identity changed on {dev}")
+            self.status("identity_changed", alias)
+            return 1
+        if identity == "pin_impossible":
+            self.log(f"[DIAG] M-Bus: {dev} reports no serial number -> identity cannot be verified", "verbose")
+        os.makedirs(self.a.meter_dir, exist_ok=True)
+        lines = [f"loglevel={loglevel}", f"device={alias}={dev}:mbus:{bps}"]
+        if donotprobe == "true":
+            lines.append("donotprobe=all")
+        lines += ["logfile=/dev/stdout", "format=json"]
+        if logtelegrams == "true":
+            lines.append("logtelegrams=true")
+        if ignoredup == "true":
+            lines.append("ignoreduplicates=true")
+        _write_atomic(self.a.conf, "".join(ln + "\n" for ln in lines))
+        self.log(f"M-Bus: config written for {alias}={dev}:mbus:{bps}")
+        return 0
+
+    def refresh_meters(self) -> None:
+        for path in glob.glob(os.path.join(self.a.meter_dir, "meter-*")):
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+        n = skipped = 0
+        opts = self.options
+        meters = opts.get("mbus_meters") if isinstance(opts, dict) else None
+        if not os.path.isfile(self.a.options) or not meters or not (
+                isinstance(meters, (list, dict, str)) and len(meters) > 0):
+            if os.path.isfile(self.a.options):
+                self.warn("M-Bus: no meters configured -> nothing will be polled. Add a meter with its bus "
+                          "address in the M-Bus tab.")
+            self.emit("set", "MBUS_METERS_OK", "0")
+            self.emit("set", "MBUS_METERS_SKIPPED", "0")
+            return
+        entries = meters if isinstance(meters, list) else list(meters.values()) if isinstance(meters, dict) else []
+        for m in entries:
+            name = _jq_r_default(m, "id", "mbus")
+            addr = _jq_r_default(m, "address", "")
+            driver = _jq_r_default(m, "type", "auto")
+            driver_other = _jq_r_default(m, "type_other", "")
+            key = _jq_r_default(m, "key", "")
+            poll = _jq_r_default(m, "poll_interval", "")
+            excl = _jq_r_default(m, "exclude_fields", "").replace(",", " ")
+            calc = _jq_r_default(m, "calculated_fields", "")
+            stat = _jq_r_default(m, "static_fields", "")
+            if excl and excl != "null":
+                self.emit("exclude", name, excl)
+            else:
+                self.emit("unexclude", name)
+            if not _PRIMARY.fullmatch(addr) and not re.fullmatch(r"[0-9A-Fa-f]{8}", addr):
+                self.warn(f"M-Bus: invalid address '{addr}' for '{name}' -> skipped (expected p1..p250 or 8 hex)")
+                skipped += 1
+                continue
+            if key and key != "null" and not re.fullmatch(r"[A-Fa-f0-9]{32}", key):
+                self.warn(f"M-Bus: invalid key for '{name}' -> skipped")
+                skipped += 1
+                continue
+            if not driver or driver == "null":
+                driver = "auto"
+            if driver == "other":
+                if not driver_other or driver_other == "null":
+                    self.warn(f"M-Bus: type=other but type_other empty for '{name}' -> skipped")
+                    skipped += 1
+                    continue
+                driver = driver_other
+            if not poll or poll == "null":
+                poll = self.poll_default
+            if not re.fullmatch(r"[0-9]+[smh]", poll):
+                self.warn(f"M-Bus: invalid poll interval '{poll}' for '{name}' -> using {self.poll_default}")
+                poll = self.poll_default
+            calc_lines = field_spec_lines(calc, name, "calculate_", "calculated_fields", self.warn) \
+                if calc and calc != "null" else []
+            stat_lines = field_spec_lines(stat, name, "field_", "static_fields", self.warn) \
+                if stat and stat != "null" else []
+            n += 1
+            body = [f"name={name}", f"driver={driver}:{self.alias}:mbus", f"id={addr}"]
+            if key and key != "null":
+                body.append(f"key={key}")
+            body.append(f"pollinterval={poll}")
+            body += stat_lines + calc_lines
+            _write_atomic(os.path.join(self.a.meter_dir, "meter-%04d" % n), "".join(ln + "\n" for ln in body))
+        self.emit("set", "MBUS_METERS_OK", str(n))
+        self.emit("set", "MBUS_METERS_SKIPPED", str(skipped))
+        if skipped > 0:
+            self.log(f"M-Bus: {n} meter file(s) written, {skipped} entr(ies) skipped")
+        else:
+            self.log(f"M-Bus: {n} meter file(s) written")
+
+    def run(self) -> int:
+        self.alias = self.a.alias
+        self.poll_default = "15m"
+        rc = self.write_conf()
+        if rc == 0:
+            self.refresh_meters()
+        self.emit("rc", str(rc))
+        return rc
+
+
+SYS_ROOT = "/sys"
+
+
+def _write_atomic(path: str, text: str) -> None:
+    """`{ ...; } > path.tmp && mv -f path.tmp path`."""
+    with open(path + ".tmp", "wb") as fh:
+        fh.write(bl._b(text))
+    os.replace(path + ".tmp", path)
+
+
 def run(book: MbusBook, stream=None) -> None:
     stream = stream if stream is not None else sys.stdin.buffer
     for raw in stream:
@@ -226,7 +496,17 @@ def main(argv=None) -> int:
     c.add_argument("--configured", default="0")
     c.add_argument("--skipped", default="0")
     c.add_argument("--state", default="starting", help="MBUS_TRAFFIC_STATE when the instance starts")
+    g = sub.add_parser("config", help="wmbusmeters.conf and the meter files of the M-Bus instance")
+    for name in ("options", "conf", "meter-dir", "status-file", "events-file"):
+        g.add_argument(f"--{name}", required=True)
+    g.add_argument("--alias", default="MAIN", help="MBUS_BUS_ALIAS before this start")
+    g.add_argument("--configured", default="0", help="MBUS_METERS_OK before this start")
+    g.add_argument("--skipped", default="0", help="MBUS_METERS_SKIPPED before this start")
+    g.add_argument("--loglevel", default="")
     a = ap.parse_args(argv)
+    if a.mode == "config":
+        MbusConfig(a).run()
+        return 0
     run(MbusBook(a))
     return 0
 
