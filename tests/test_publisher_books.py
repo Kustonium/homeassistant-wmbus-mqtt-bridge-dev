@@ -127,6 +127,13 @@ class EndToEndTests(unittest.TestCase):
         for mode in MESSAGES:
             _, cfg = make(mode, os.path.join(tmp, mode))
             spec[mode] = cfg
+        health_file = os.path.join(tmp, "status_esp_health.json")
+        presence_file = os.path.join(tmp, "status_ha_presence.txt")
+        spec["health"] = {"filter": "wmbus/+/health", "health_file": health_file}
+        spec["ha_presence"] = {"filter": "homeassistant/status", "format": "payload",
+                               "presence_file": presence_file}
+        # HA's birth message is retained: the subscription must replay it.
+        broker.publish_to_subscribers("homeassistant/status", b"online", retain=True)
         # Retained before the publisher subscribes: replayed on SUBSCRIBE with
         # the retain flag; rssi keeps it, /rx and RAW drop it (mosquitto_sub -R).
         broker.publish_to_subscribers("wmbus/old/rssi/52632878", b"-90", retain=True)
@@ -137,14 +144,22 @@ class EndToEndTests(unittest.TestCase):
                                  "--port", str(broker.port), "--port-file", port_file],
                                 env=env, stderr=subprocess.PIPE, text=True)
         try:
-            self.assertTrue(broker.wait_for(lambda b: len(b.subscribes) >= 3, timeout=10),
+            self.assertTrue(broker.wait_for(lambda b: len(b.subscribes) >= 5, timeout=10),
                             "the publisher did not subscribe")
             self.assertIn("books", Path(port_file).read_text().split()[1:])
             self.assertEqual(sorted(broker.subscribes),
-                             [b"wmbus/+/rssi/+", b"wmbus/+/rx", b"wmbus/+/telegram"])
+                             [b"homeassistant/status", b"wmbus/+/health", b"wmbus/+/rssi/+",
+                              b"wmbus/+/rx", b"wmbus/+/telegram"])
             for mode, messages in MESSAGES.items():
                 for t, p in messages:
                     broker.publish_to_subscribers(t, p)
+            broker.publish_to_subscribers("wmbus/lilygo/health", b'{"uptime_s":5}')
+            deadline = time.time() + 10
+            while time.time() < deadline and not (os.path.exists(health_file) and os.path.exists(presence_file)):
+                time.sleep(0.1)
+            self.assertIn('"lilygo": {', Path(health_file).read_text())
+            self.assertTrue(Path(presence_file).read_text().startswith("online\t"),
+                            "the retained HA birth message is booked")
             deadline = time.time() + 15  # /rx and the tracker write every 5 s
             want = [os.path.join(tmp, "rssi", "status_rssi.tsv"), os.path.join(tmp, "rx", "reception"),
                     os.path.join(tmp, "tracker", "devices")]

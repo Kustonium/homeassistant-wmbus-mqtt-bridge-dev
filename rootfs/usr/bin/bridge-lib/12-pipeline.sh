@@ -111,7 +111,7 @@ _mqtt_publisher_books() {
   for _v in METER_DIR STATUS_RSSI_FILE STATUS_ESP_RX_RECEPTION_FILE STATUS_ESP_RX_MODE_FILE \
             ESP_RF_RX_HISTORY_FILE STATUS_ESP_RX_SEQUENCE_FILE STATUS_ESP_RX_BOOTS_FILE \
             STATUS_ESP_RX_CLOCK_FILE STATUS_ESP_TELEGRAM_DEVICES_FILE STATUS_ESP_METER_DEVICE_FILE \
-            STATUS_ESP_METER_RECEPTION_FILE ESP_RX_HISTORY_FILE RAW_TOPIC; do
+            STATUS_ESP_METER_RECEPTION_FILE ESP_RX_HISTORY_FILE RAW_TOPIC STATUS_HA_PRESENCE_FILE; do
     [[ -n "${!_v:-}" ]] || return 0
   done
   [[ "${IGNORE_RETAINED:-false}" == "true" ]] && no_ret=true
@@ -128,9 +128,14 @@ _mqtt_publisher_books() {
     --arg raw_topic "${RAW_TOPIC}" --argjson dev_pos "${_dev_pos}" \
     --arg tg_dev "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" --arg tg_md "${STATUS_ESP_METER_DEVICE_FILE}" \
     --arg tg_rec "${STATUS_ESP_METER_RECEPTION_FILE}" --arg tg_hist "${ESP_RX_HISTORY_FILE}" \
-    --argjson no_ret "${no_ret}" '
+    --argjson no_ret "${no_ret}" \
+    --arg health_file "${RUNTIME:-${BASE}}/status_esp_health.json" \
+    --arg ha_topic "${DISCOVERY_PREFIX:-homeassistant}/status" --arg presence_file "${STATUS_HA_PRESENCE_FILE:-}" '
       {rssi: {filter: "wmbus/+/rssi/+", no_retained: false,
                meter_dir: $meter_dir, rssi_file: $rssi_file},
+       health: {filter: "wmbus/+/health", no_retained: false, health_file: $health_file},
+       ha_presence: {filter: $ha_topic, no_retained: false, format: "payload",
+                     presence_file: $presence_file},
        rx: {filter: "wmbus/+/rx", no_retained: $no_ret,
             reception_file: $rx_rec, mode_file: $rx_mode, history_file: $rx_hist,
             sequence_file: $rx_seq, boots_file: $rx_boots, clock_file: $rx_clock}}

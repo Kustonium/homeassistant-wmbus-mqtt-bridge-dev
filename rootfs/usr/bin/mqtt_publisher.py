@@ -210,26 +210,35 @@ def make_books(spec):
         elif mode == "tracker":
             book = bl.TrackerBook(int(cfg["dev_pos"]), cfg["devices_file"], cfg["meter_device_file"],
                                   cfg["reception_file"], cfg["history_file"])
+        elif mode == "health":
+            import esp_books
+            book = esp_books.HealthBook(cfg["health_file"])
+        elif mode == "ha_presence":
+            import esp_books
+            book = esp_books.HaPresenceBook(cfg["presence_file"])
         else:
             raise ValueError(f"unknown book {mode!r}")
-        out.append((cfg["filter"].encode(), bool(cfg.get("no_retained")), _deliver_lines(book, mode), book))
+        deliver = _deliver_lines(book, mode, payload_only=cfg.get("format") == "payload")
+        out.append((cfg["filter"].encode(), bool(cfg.get("no_retained")), deliver, book))
     return out
 
 
-def _deliver_lines(book, mode):
+def _deliver_lines(book, mode, payload_only=False):
     """Hand one message to a book as `mosquitto_sub -F '%t\\t%p'` would have
     printed it and bridge_ledger.run() read it: one line, or several when
-    the payload holds newlines (the later ones then carry no topic)."""
+    the payload holds newlines (the later ones then carry no topic). With
+    payload_only (`-F '%p'`, read whole with `IFS= read -r`), each payload
+    line is handed over as it is, with the topic for reference."""
     import bridge_ledger as bl
 
     def deliver(topic, payload):
-        data = topic + b"\t" + payload + b"\n"
+        data = (b"" if payload_only else topic + b"\t") + payload + b"\n"
         start = 0
         while start < len(data):
             nl = data.find(b"\n", start)
             line = data[start:nl + 1]
             start = nl + 1
-            t, p = bl.split_message(line)
+            t, p = (topic, line[:-1]) if payload_only else bl.split_message(line)
             try:
                 book(t, p)
             except Exception as exc:  # one bad message must not stop the bookkeeping

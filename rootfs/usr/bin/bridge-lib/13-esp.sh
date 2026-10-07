@@ -227,6 +227,9 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 # stopped ESP instead of hiding it. Enriches — does NOT replace — the per-device
 # telegram tracker, which stays the source of truth for ESP liveness.
 STATUS_ESP_HEALTH_FILE="${RUNTIME:-${BASE}}/status_esp_health.json"
+# Booked by the publisher on its own connection when it announced "books"
+# (esp_books.HealthBook); this loop is the fallback.
+if [[ "${MQTT_PUB_BOOKS:-false}" != "true" ]]; then
 (
   while true; do
     _sub_t0="$(epoch_now)"
@@ -258,6 +261,7 @@ STATUS_ESP_HEALTH_FILE="${RUNTIME:-${BASE}}/status_esp_health.json"
   done
 ) &
 ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
+fi
 
 # Background subscriber for the always-on ESP meter-flags topic (wmbus/+/meters).
 # The ESP publishes every 60 s (retain=false, independent of diagnostic_mode) the
@@ -536,6 +540,9 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 # broker) and HA entities will never appear — the core MQTT->HA healthcheck.
 # NB: this subscriber must NOT use SUB_EXTRA (-R). The retained birth message IS
 # the signal, so retained delivery must stay enabled.
+# Booked by the publisher on its own connection when it announced "books"
+# (esp_books.HaPresenceBook); this loop is the fallback.
+if [[ "${MQTT_PUB_BOOKS:-false}" != "true" ]]; then
 (
   _ha_birth_topic="${DISCOVERY_PREFIX:-homeassistant}/status"
   log "HA-presence: watching birth topic '${_ha_birth_topic}' for MQTT->HA healthcheck"
@@ -556,6 +563,7 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
   done
 ) &
 ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
+fi
 
 # Background subscriber for broker identity ($SYS). Mosquitto publishes
 # $SYS/broker/version = "mosquitto version X.Y.Z"; EMQX publishes
