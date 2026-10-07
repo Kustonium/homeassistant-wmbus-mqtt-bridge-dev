@@ -1,3 +1,9 @@
+## 1.5.80-dev.393
+
+### Added
+- write the radio path's meter and preview files in wmbus_meters.py (dc4db8f)
+- run SEARCH in bridge_ledger.py (004f88d)
+
 ## 1.5.80-dev.392
 
 ### Added
