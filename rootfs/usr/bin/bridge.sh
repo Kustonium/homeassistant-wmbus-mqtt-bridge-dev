@@ -805,12 +805,10 @@ while true; do
 
   # Existing candidates from previous LISTEN ticks should retain preview
   # configs after a soft reload. These files live under ${BASE}/preview, never
-  # inside the always-on LISTEN configuration directory.
-  sync_candidate_autodecode_files
-
-  # Remove preview configs for IDs promoted to official meters. PRIMARY DECODE
+  # inside the always-on LISTEN configuration directory. Then the preview
+  # configs of IDs promoted to official meters are removed: PRIMARY DECODE
   # handles those meters from now on.
-  prune_official_meter_previews
+  refresh_candidate_previews
 
   # Parallel LISTEN always starts unconditionally and remains a pure, empty-dir
   # discovery stream. Preview decoding is one-shot and never reloads LISTEN.

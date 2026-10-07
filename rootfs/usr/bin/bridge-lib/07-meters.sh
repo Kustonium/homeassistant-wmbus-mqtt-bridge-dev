@@ -229,8 +229,51 @@ _build_field_spec_lines() {
   done
 }
 
+# Next to bridge.sh, found from this file (the tests source it alone).
+METER_FILES_TOOL="${METER_FILES_TOOL:-${BRIDGE_SCRIPT_DIR:-${BASH_SOURCE[0]%/*}/..}/wmbus_meters.py}"
+
+# The decode pipeline's meter files, by wmbus_meters.py refresh (one process
+# instead of about ten jq runs per meter): the same files, warnings and log
+# lines. What this shell keeps comes back one line each, fields separated by
+# 0x1F (0x1E for a newline in a value): the variables, the exclude patterns
+# per id and the SEARCH phase, written here by write_search_status because it
+# reads this shell's SEARCH counters. METER_FILES_IN_PYTHON=false, or no
+# result from it, runs the bash function below.
 # shellcheck disable=SC2034
 refresh_meter_files() {
+  if [[ "${METER_FILES_IN_PYTHON:-true}" == "true" ]] && command -v python3 >/dev/null 2>&1; then
+    local _out _k _a _b _rc=""
+    # --name=value: a value starting with "-" must not read as an option.
+    _out="$(python3 "${METER_FILES_TOOL}" refresh --options="${OPTIONS_JSON}" --meter-dir="${METER_DIR}" \
+      --search-candidates-file="${SEARCH_CANDIDATES_FILE:-}" --search-mode="${SEARCH_MODE:-false}" \
+      --search-expected="${SEARCH_EXPECTED_VALUE_M3:-0}" --search-tolerance="${SEARCH_TOLERANCE_M3:-}" \
+      --loglevel="${LOGLEVEL:-}")"
+    METER_EXCLUDE_FIELDS=()
+    OFFICIAL_METERS_COUNT=0
+    SEARCH_USING_TEMP_METERS="false"
+    while IFS=$'\x1f' read -r _k _a _b; do
+      _b="${_b//$'\x1e'/$'\n'}"
+      case "${_k}" in
+        set)
+          case "${_a}" in
+            OFFICIAL_METERS_COUNT|SEARCH_USING_TEMP_METERS|SEARCH_TEMP_METERS_LOADED) printf -v "${_a}" '%s' "${_b}" ;;
+          esac ;;
+        exclude) METER_EXCLUDE_FIELDS["${_a}"]="${_b}" ;;
+        search) write_search_status "${_a}" "${_b}" ;;
+        rc) _rc="${_a}" ;;
+      esac
+    done <<< "${_out}"
+    if [[ -n "${_rc}" ]]; then
+      _write_official_meters_count
+      return 0
+    fi
+    warn "wmbus_meters.py refresh gave no result -> writing the meter files in bash"
+  fi
+  _refresh_meter_files_bash
+}
+
+# shellcheck disable=SC2034
+_refresh_meter_files_bash() {
   rm -f "${METER_DIR}/meter-"* 2>/dev/null || true
 
   METER_EXCLUDE_FIELDS=()

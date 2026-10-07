@@ -688,6 +688,17 @@ Adding, editing, or removing a meter does not require a full add-on restart:
 3. the restart loop rereads options and regenerates meter files;
 4. a new DECODE process starts after a short delay.
 
+Step 3 is `wmbus_meters.py`: `refresh` writes the DECODE instance's meter
+files from `options.json` `meters[]` (or, in SEARCH, the temporary
+`search_<id>` meters of the candidate cache) with the key, id and driver
+checks and the `calculate_` and `field_` lines, and hands back what the shell
+keeps — the configured meter count, the SEARCH mode and the exclude patterns
+per id; `previews` then keeps a preview config per registered candidate and
+removes those of ids that became configured meters, handing back the one-shot
+decodes to start. `METER_FILES_IN_PYTHON=false` runs the bash functions
+(`refresh_meter_files`, `sync_candidate_autodecode_files`,
+`prune_official_meter_previews`) instead.
+
 LISTEN, the heartbeat, and ESP/background subscribers survive this operation.
 The watcher explicitly excludes their PIDs. Any new long-lived worker must be
 added to the same exclusion model or it will silently disappear after a soft

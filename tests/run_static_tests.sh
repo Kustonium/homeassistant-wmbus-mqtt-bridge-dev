@@ -43,3 +43,4 @@ python3 -m unittest tests/test_preview_oneshot.py -v
 python3 -m unittest tests/test_mbus_consumer.py -v
 python3 -m unittest tests/test_mbus_config.py -v
 python3 -m unittest tests/test_decode_stage.py -v
+python3 -m unittest tests/test_meter_files.py -v
