@@ -1,3 +1,11 @@
+## 1.5.80-dev.378
+
+### Added
+- run the rssi, /rx and RAW tracker subscriptions in the publisher (9098ecb)
+
+### Fixed
+- keep candidate preview values across a restart (eda2108)
+
 ## 1.5.80-dev.377
 
 ### Added
