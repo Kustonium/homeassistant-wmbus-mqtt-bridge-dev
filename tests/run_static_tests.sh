@@ -35,3 +35,4 @@ python3 -m unittest tests/test_mbus_webui.py -v
 python3 -m unittest tests/test_meter_rename.py -v
 python3 -m unittest tests/test_bridge_ledger.py -v
 python3 -m unittest tests/test_mqtt_publisher.py -v
+python3 -m unittest tests/test_publisher_books.py -v

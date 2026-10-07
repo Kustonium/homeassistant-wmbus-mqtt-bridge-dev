@@ -42,6 +42,18 @@ def _string(body, pos):
     return body[pos + 2:pos + 2 + n], pos + 2 + n
 
 
+def topic_matches(flt, topic):
+    if topic.startswith(b"$") and flt[:1] in (b"+", b"#"):
+        return False
+    fp, tp = flt.split(b"/"), topic.split(b"/")
+    for i, part in enumerate(fp):
+        if part == b"#":
+            return True
+        if i >= len(tp) or (part != b"+" and part != tp[i]):
+            return False
+    return len(fp) == len(tp)
+
+
 def parse_connect(body):
     name, pos = _string(body, 0)
     level, flags = body[pos], body[pos + 1]
@@ -72,6 +84,10 @@ class FakeBroker:
         self.messages = []  # (topic, retain, payload)
         self.pings = 0
         self.clients = []
+        self.subs = {}       # conn -> [filter bytes], for routing
+        self.retained = {}   # topic bytes -> payload
+        self.subscribes = []  # [filter bytes] of every SUBSCRIBE received
+        self.refuse = set()   # filters answered with 0x80 (as EMQX's ACL does for $SYS)
         self.lock = threading.Lock()
         self.cond = threading.Condition(self.lock)
         self.closed = False
@@ -107,9 +123,34 @@ class FakeBroker:
                     msg = (topic.decode(), bool(ptype & 0x01), body[pos:])
                     with self.cond:
                         self.messages.append(msg)
+                        if msg[1]:
+                            if msg[2]:
+                                self.retained[topic] = msg[2]
+                            else:
+                                self.retained.pop(topic, None)
+                        targets = [c for c, flts in self.subs.items()
+                                   if any(topic_matches(f, topic) for f in flts)]
                         self.cond.notify_all()
+                    for c in targets:  # forwarded live: retain flag cleared
+                        self._send_publish(c, topic, msg[2], False)
                     if self.on_publish:
                         self.on_publish(*msg)
+                elif kind == 8:  # SUBSCRIBE
+                    pid, pos, flts, codes = body[:2], 2, [], b""
+                    while pos < len(body):
+                        flt, pos = _string(body, pos)
+                        pos += 1  # requested QoS
+                        flts.append(flt)
+                        codes += b"\x80" if flt in self.refuse else b"\x00"
+                    with self.cond:
+                        self.subscribes.extend(flts)
+                        self.subs.setdefault(conn, []).extend(f for f in flts if f not in self.refuse)
+                        replay = [(t, p) for t, p in self.retained.items()
+                                  if any(topic_matches(f, t) for f in flts if f not in self.refuse)]
+                        self.cond.notify_all()
+                    conn.sendall(bytes([0x90, 2 + len(codes)]) + pid + codes)
+                    for t, p in replay:
+                        self._send_publish(conn, t, p, True)
                 elif kind == 12:
                     with self.cond:
                         self.pings += 1
@@ -120,10 +161,35 @@ class FakeBroker:
         except (ConnectionError, OSError):
             pass
 
+    @staticmethod
+    def _send_publish(conn, topic, payload, retain):
+        body = struct.pack("!H", len(topic)) + topic + payload
+        n, rl = len(body), bytearray()
+        while True:
+            b, n = n % 128, n // 128
+            rl.append(b | (0x80 if n else 0))
+            if not n:
+                break
+        try:
+            conn.sendall(bytes([0x30 | (1 if retain else 0)]) + bytes(rl) + body)
+        except OSError:
+            pass
+
+    def publish_to_subscribers(self, topic, payload, retain=False):
+        """Act as another client publishing (an ESP board)."""
+        topic = topic.encode() if isinstance(topic, str) else topic
+        with self.cond:
+            if retain:
+                self.retained[topic] = payload
+            targets = [c for c, flts in self.subs.items() if any(topic_matches(f, topic) for f in flts)]
+        for c in targets:
+            self._send_publish(c, topic, payload, False)
+
     def drop_clients(self):
         """Cut every client connection, as a broker restart would."""
         with self.lock:
             clients, self.clients = self.clients, []
+            self.subs = {}
         for c in clients:
             try:
                 c.shutdown(socket.SHUT_RDWR)

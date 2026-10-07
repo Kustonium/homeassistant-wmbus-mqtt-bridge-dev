@@ -79,6 +79,39 @@ def publish_packet(topic, payload, retain):
     return bytes([0x30 | (0x01 if retain else 0)]) + _remaining_length(len(body)) + body
 
 
+def _take_packet(buf):
+    """(first byte, body, rest) of the first complete MQTT packet in buf, or None."""
+    if len(buf) < 2:
+        return None
+    mult, length, pos = 1, 0, 1
+    while True:
+        if pos >= len(buf) or pos > 4:
+            return None if pos < 5 else (buf[0], b"", b"")  # 5+ length bytes: malformed
+        byte = buf[pos]
+        length += (byte & 0x7F) * mult
+        pos += 1
+        if not byte & 0x80:
+            break
+        mult *= 128
+    if len(buf) < pos + length:
+        return None
+    return buf[0], buf[pos:pos + length], buf[pos + length:]
+
+
+def topic_matches(flt, topic):
+    """MQTT topic filter matching ('+' one level, '#' the rest); a '$' topic
+    matches no filter that starts with a wildcard."""
+    if topic.startswith(b"$") and flt[:1] in (b"+", b"#"):
+        return False
+    f_parts, t_parts = flt.split(b"/"), topic.split(b"/")
+    for i, part in enumerate(f_parts):
+        if part == b"#":
+            return True
+        if i >= len(t_parts) or (part != b"+" and part != t_parts[i]):
+            return False
+    return len(f_parts) == len(t_parts)
+
+
 PINGREQ = b"\xc0\x00"
 DISCONNECT = b"\xe0\x00"
 CONNACK_REASONS = {
@@ -158,6 +191,56 @@ def parse_message(data):
     return ("DEC", patterns, line), data[end + 1:]
 
 
+def make_books(spec):
+    """The bookkeeping of the ESP subscribers, run here instead of
+    `mosquitto_sub | bridge_ledger.py <mode>` per subscription.
+
+    spec (MQTT_PUBLISHER_BOOKS, JSON from start_mqtt_publisher) maps a mode to
+    its filter, whether retained messages are dropped (mosquitto_sub -R) and the
+    files the mode writes. Returns [(filter, no_retained, deliver, book)].
+    """
+    import bridge_ledger as bl
+    out = []
+    for mode, cfg in spec.items():
+        if mode == "rssi":
+            book = bl.RssiBook(cfg["meter_dir"], cfg["rssi_file"])
+        elif mode == "rx":
+            book = bl.RxBook(cfg["reception_file"], cfg["mode_file"], cfg["history_file"],
+                             cfg["sequence_file"], cfg["boots_file"], cfg["clock_file"])
+        elif mode == "tracker":
+            book = bl.TrackerBook(int(cfg["dev_pos"]), cfg["devices_file"], cfg["meter_device_file"],
+                                  cfg["reception_file"], cfg["history_file"])
+        else:
+            raise ValueError(f"unknown book {mode!r}")
+        out.append((cfg["filter"].encode(), bool(cfg.get("no_retained")), _deliver_lines(book, mode), book))
+    return out
+
+
+def _deliver_lines(book, mode):
+    """Hand one message to a book as `mosquitto_sub -F '%t\\t%p'` would have
+    printed it and bridge_ledger.run() read it: one line, or several when
+    the payload holds newlines (the later ones then carry no topic)."""
+    import bridge_ledger as bl
+
+    def deliver(topic, payload):
+        data = topic + b"\t" + payload + b"\n"
+        start = 0
+        while start < len(data):
+            nl = data.find(b"\n", start)
+            line = data[start:nl + 1]
+            start = nl + 1
+            t, p = bl.split_message(line)
+            try:
+                book(t, p)
+            except Exception as exc:  # one bad message must not stop the bookkeeping
+                print(f"[wmbus-bridge][WARN] ledger {mode}: message on {t!r} skipped: {exc!r}",
+                      file=sys.stderr, flush=True)
+            deferred = getattr(book, "deferred", None)
+            if deferred is not None:
+                deferred.flush_if_due()
+    return deliver
+
+
 class _TestState:
     """Clock, average telegram interval and options for test_publish_contract.sh.
 
@@ -208,6 +291,9 @@ class Broker:
         self.ping_sent = 0.0
         self.inbuf = b""
         self.last_error = ""
+        # (filter, drop retained messages, deliver(topic, payload)), in the
+        # order they are subscribed: SUBACK reports per position.
+        self.subscriptions = []
 
     def connected(self):
         return self.sock is not None
@@ -258,6 +344,7 @@ class Broker:
         if self.dropped:
             log(f"{self.dropped} message(s) dropped while the broker was unreachable")
             self.dropped = 0
+        self.subscribe_all()
         self.flush()
 
     def publish(self, topic, payload, retain):
@@ -278,19 +365,58 @@ class Broker:
 
     def on_readable(self):
         try:
-            data = self.sock.recv(4096)
+            data = self.sock.recv(65536)
         except OSError as exc:
             self._fail(str(exc) or "receive failed")
             return
         if not data:
             self._fail("closed by broker")
             return
-        # QoS 0 publishing expects nothing but PINGRESP; anything else is read
-        # and ignored.
         self.inbuf += data
-        if b"\xd0\x00" in self.inbuf:
-            self.ping_sent = 0.0
-        self.inbuf = self.inbuf[-2:]
+        while True:
+            packet = _take_packet(self.inbuf)
+            if packet is None:
+                return
+            first, body, self.inbuf = packet
+            kind = first >> 4
+            if kind == 13:  # PINGRESP
+                self.ping_sent = 0.0
+            elif kind == 3:  # PUBLISH
+                self._on_publish(first, body)
+            elif kind == 9:  # SUBACK
+                refused = [self.subscriptions[i][0].decode("utf-8", "replace")
+                           for i, code in enumerate(body[2:]) if code & 0x80 and i < len(self.subscriptions)]
+                if refused:
+                    log("subscription refused by the broker: " + ", ".join(refused))
+
+    def _on_publish(self, first, body):
+        qos, retain = (first >> 1) & 0x03, bool(first & 0x01)
+        tlen = struct.unpack("!H", body[:2])[0]
+        topic, pos = body[2:2 + tlen], 2 + tlen
+        if qos:
+            pid = body[pos:pos + 2]
+            pos += 2
+            if qos == 1:
+                try:
+                    self.sock.sendall(b"\x40\x02" + pid)  # PUBACK
+                except OSError as exc:
+                    self._fail(str(exc) or "send failed")
+                    return
+        payload = body[pos:]
+        for flt, no_retained, deliver in self.subscriptions:
+            if (no_retained and retain) or not topic_matches(flt, topic):
+                continue
+            deliver(topic, payload)
+
+    def subscribe_all(self):
+        """Subscribe to every filter (QoS 0), after each (re)connect: clean session."""
+        if not self.subscriptions or self.sock is None:
+            return
+        body = struct.pack("!H", 1) + b"".join(_string(flt) + b"\x00" for flt, _, _ in self.subscriptions)
+        try:
+            self.sock.sendall(bytes([0x82]) + _remaining_length(len(body)) + body)
+        except OSError as exc:
+            self._fail(str(exc) or "send failed")
 
     def tick(self):
         """Keepalive: ping when idle, give up when the ping is not answered."""
@@ -366,15 +492,25 @@ def handle(msg, broker, discovery):
             log(f"dropping a decoded telegram ({exc.__class__.__name__}: {exc})")
 
 
-def serve(srv, broker, stop, discovery=None):
+def _deferreds(books):
+    return [b[3].deferred for b in books if getattr(b[3], "deferred", None) is not None]
+
+
+def serve(srv, broker, stop, discovery=None, books=()):
     clients = []  # [socket, buffer] in accept order
+    deferreds = _deferreds(books)
     while not stop["now"]:
         broker.try_connect()
         broker.tick()
+        for d in deferreds:
+            d.flush_if_due()
         rlist = [srv] + [c[0] for c in clients]
         if broker.connected():
             rlist.append(broker.sock)
         timeout = 1.0 if broker.connected() else max(0.05, min(1.0, broker.next_attempt - time.monotonic()))
+        dues = [x for x in (d.due_in() for d in deferreds) if x is not None]
+        if dues:
+            timeout = max(0.0, min(timeout, min(dues)))
         try:
             readable, _, _ = select.select(rlist, [], [], timeout)
         except InterruptedError:
@@ -458,13 +594,29 @@ def main(argv=None):
             discovery = wmbus_discovery.Discovery(wmbus_discovery.Config(os.environ))
     except Exception as exc:  # bash then builds Discovery itself ("dec" not announced)
         log(f"Discovery not available ({exc.__class__.__name__}: {exc})")
-    srv = listen(args.port_file, "dec" if discovery is not None else "")
+    books = []
+    if os.environ.get("MQTT_PUBLISHER_BOOKS"):
+        try:
+            import json
+            books = make_books(json.loads(os.environ["MQTT_PUBLISHER_BOOKS"]))
+        except Exception as exc:  # bash then runs its own subscribers ("books" not announced)
+            log(f"ESP subscriptions not available ({exc.__class__.__name__}: {exc})")
+            books = []
+    caps = (["dec"] if discovery is not None else []) + (["books"] if books else [])
+    srv = listen(args.port_file, " ".join(caps))
     broker = Broker(args.host, args.port, username, password,
                     "wmbus_bridge_pub_" + secrets.token_hex(4))
-    log(f"listening on 127.0.0.1:{srv.getsockname()[1]}")
+    broker.subscriptions = [(flt, no_ret, deliver) for flt, no_ret, deliver, _ in books]
+    log(f"listening on 127.0.0.1:{srv.getsockname()[1]}"
+        + (f"; subscribed for {', '.join(sorted(b[0].decode() for b in books))}" if books else ""))
     try:
-        serve(srv, broker, stop, discovery)
+        serve(srv, broker, stop, discovery, books)
     finally:
+        for d in _deferreds(books):
+            try:
+                d.flush()
+            except Exception as exc:
+                log(f"could not write the collected bookkeeping ({exc})")
         broker.flush()
         broker.close()
         srv.close()

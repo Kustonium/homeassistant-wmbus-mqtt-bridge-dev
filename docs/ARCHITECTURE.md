@@ -412,7 +412,15 @@ the loops around it and everything that is not per message.
 | `raw` | `tee` before the DECODE `wmbusmeters` | RAW counter files, rate, `status.json`, candidate refresh |
 | `listen` | output of the pure LISTEN `wmbusmeters` | candidate refresh |
 
-The subscribers pipe `mosquitto_sub` into Python through a descriptor, so the
+The `rssi`, `rx` and `tracker` books normally run inside `mqtt_publisher.py`:
+it subscribes to their topics on its one broker connection (dropping retained
+messages for `rx` and `tracker` when `ignore_retained` is on, as
+`mosquitto_sub -R` did) and hands each message to the same book, split into
+lines exactly as `mosquitto_sub -F '%t\t%p'` printed it. The publisher
+announces this as `books`; without it, or with
+`MQTT_PUBLISHER_SUBSCRIBE=false`, the bash loops below start as before.
+
+Those loops pipe `mosquitto_sub` into Python through a descriptor, so the
 loop holds `mosquitto_sub`'s PID and stops it the moment Python ends - a plain
 pipe is not enough where SIGPIPE is ignored; both then start again like a
 dropped connection. The `raw` and `listen` stages run Python under

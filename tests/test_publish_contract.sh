@@ -164,7 +164,8 @@ publish_decoded_json() {
   fail "the broker did not receive telegram ${SYNC_N} of scenario ${SCENARIO}"
 }
 if [[ "${TRANSPORT}" == "publisher" ]]; then
-  start_mqtt_publisher
+  # Publishing only: the ESP subscriptions are tests/test_publisher_books.py's.
+  MQTT_PUBLISHER_SUBSCRIBE=false start_mqtt_publisher
   [[ -n "${MQTT_PUB_PORT}" ]] || fail "mqtt_publisher.py did not start"
   [[ "${MQTT_PUB_DEC}" == "true" || "${MQTT_PYTHON_DISCOVERY:-true}" != "true" ]] \
     || fail "mqtt_publisher.py did not announce Discovery (dec)"

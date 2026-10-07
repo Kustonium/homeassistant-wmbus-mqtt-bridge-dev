@@ -285,8 +285,13 @@ STATUS_ESP_METERS_FILE="${RUNTIME:-${BASE}}/status_esp_meters.json"
 # decoded was a quarter of a CPU core on a 5-ESP install. The set of configured
 # ids is re-read from METER_DIR every 30 s (bash only, no forks), so meters added
 # by a soft reload start getting RSSI without restarting this subscriber.
-_esp_rssi_subscriber &
-ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
+# With MQTT_PUB_BOOKS the publisher subscribes to rssi, /rx and RAW_TOPIC on
+# its own connection and runs the same bridge_ledger.py books in-process
+# (start_mqtt_publisher); these three loops are then not started.
+if [[ "${MQTT_PUB_BOOKS:-false}" != "true" ]]; then
+  _esp_rssi_subscriber &
+  ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
+fi
 
 (
   while true; do
@@ -405,15 +410,22 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 # "wmbus/xiaoseed/telegram" → device "xiaoseed"). If RAW_TOPIC has no
 # wildcard at all, this loop still runs but produces no device data
 # (and the WebGUI falls back to diag-based detection as before).
-_esp_tracker_subscriber &
-ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
-
-# Structured per-frame RF metadata. New firmware publishes this in addition to
-# the unchanged /telegram HEX stream. It is deliberately a separate subscriber:
-# a malformed or absent /rx topic can never interrupt the decoder pipeline or
-# the legacy tracker used by older firmware.
-_esp_rx_subscriber &
-ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
+#
+# Structured per-frame RF metadata (/rx): new firmware publishes this in
+# addition to the unchanged /telegram HEX stream. It is deliberately a separate
+# subscription: a malformed or absent /rx topic can never interrupt the decoder
+# pipeline or the legacy tracker used by older firmware.
+if [[ "${MQTT_PUB_BOOKS:-false}" == "true" ]]; then
+  # The publisher books both; the history files are trimmed here at start,
+  # as the loops do before their first connection.
+  _trim_esp_rx_history "${ESP_RX_HISTORY_FILE}" 100000 90000 || true
+  _trim_esp_rx_history "${ESP_RF_RX_HISTORY_FILE}" 100000 90000 || true
+else
+  _esp_tracker_subscriber &
+  ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
+  _esp_rx_subscriber &
+  ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
+fi
 
 # Background subscriber for all ESP diagnostic events.
 # Subscribes to bare diag topic (dropped/truncated/rx_path) and all subtopics.

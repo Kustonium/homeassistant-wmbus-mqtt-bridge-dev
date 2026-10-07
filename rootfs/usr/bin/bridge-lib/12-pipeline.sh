@@ -44,6 +44,7 @@ _mqtt_pub_persistent() {
 # mosquitto_pub per message.
 MQTT_PUB_PORT=""
 MQTT_PUB_DEC="false"
+MQTT_PUB_BOOKS="false"
 MQTT_PUBLISHER_PID=""
 start_mqtt_publisher() {
   if [[ "${MQTT_PERSISTENT_PUBLISHER:-true}" != "true" ]]; then
@@ -53,6 +54,8 @@ start_mqtt_publisher() {
   local port_file="${RUNTIME:-${BASE}}/mqtt_publisher.port"
   local script="${MQTT_PUBLISHER:-${BRIDGE_SCRIPT_DIR:-/usr/bin}/mqtt_publisher.py}"
   rm -f "${port_file}" 2>/dev/null || true
+  local books=""
+  [[ "${MQTT_PUBLISHER_SUBSCRIBE:-true}" == "true" ]] && books="$(_mqtt_publisher_books)"
   (
     while true; do
       # Credentials through the environment: argv is visible in ps. So is the
@@ -64,6 +67,7 @@ start_mqtt_publisher() {
       STATE_RETAIN="${STATE_RETAIN:-false}" REQUIRE_TIMESTAMP="${REQUIRE_TIMESTAMP:-false}" \
       STATUS_RSSI_FILE="${STATUS_RSSI_FILE:-}" STATUS_SEEN_FILE="${STATUS_SEEN_FILE:-}" \
       RSSI_MAX_AGE_S="${RSSI_MAX_AGE_S:-300}" WMBUSMETERS_BIN="${WMBUSMETERS_BIN:-/usr/bin/wmbusmeters}" \
+      MQTT_PUBLISHER_BOOKS="${books}" \
         python3 "${script}" --host "${MQTT_HOST}" --port "${MQTT_PORT}" --port-file "${port_file}"
       warn "MQTT: persistent publisher exited (rc=$?), restarting in 2s"
       sleep 2
@@ -89,7 +93,52 @@ start_mqtt_publisher() {
   if [[ " ${_caps} " == *" dec "* && "${MQTT_PYTHON_DISCOVERY:-true}" == "true" ]]; then
     MQTT_PUB_DEC="true"
   fi
-  log "MQTT: persistent publisher ready (one broker connection for all publishes; Discovery in Python: ${MQTT_PUB_DEC})"
+  # "books": the publisher also subscribes to the ESP rssi, /rx and RAW
+  # topics and keeps their bookkeeping itself; start_esp_subscribers then
+  # skips its own mosquitto_sub | bridge_ledger.py loops for them.
+  [[ " ${_caps} " == *" books "* ]] && MQTT_PUB_BOOKS="true"
+  log "MQTT: persistent publisher ready (one broker connection for all publishes; Discovery in Python: ${MQTT_PUB_DEC}; ESP rssi, /rx and RAW subscriptions in it: ${MQTT_PUB_BOOKS})"
+}
+
+# The ESP subscriptions the publisher takes over, as JSON for
+# MQTT_PUBLISHER_BOOKS: per bridge_ledger.py mode its topic filter, whether
+# retained messages are dropped (SUB_EXTRA's -R, as the bash loops pass it to
+# /rx and RAW but not to rssi) and the files it writes. The tracker needs the
+# '+' segment of RAW_TOPIC; without one it is left out, as in bash.
+_mqtt_publisher_books() {
+  local no_ret=false _i _dev_pos=-1 _v
+  # Every file the books write must be known, or bash keeps its own loops.
+  for _v in METER_DIR STATUS_RSSI_FILE STATUS_ESP_RX_RECEPTION_FILE STATUS_ESP_RX_MODE_FILE \
+            ESP_RF_RX_HISTORY_FILE STATUS_ESP_RX_SEQUENCE_FILE STATUS_ESP_RX_BOOTS_FILE \
+            STATUS_ESP_RX_CLOCK_FILE STATUS_ESP_TELEGRAM_DEVICES_FILE STATUS_ESP_METER_DEVICE_FILE \
+            STATUS_ESP_METER_RECEPTION_FILE ESP_RX_HISTORY_FILE RAW_TOPIC; do
+    [[ -n "${!_v:-}" ]] || return 0
+  done
+  [[ "${IGNORE_RETAINED:-false}" == "true" ]] && no_ret=true
+  local -a _parts=()
+  IFS='/' read -ra _parts <<< "${RAW_TOPIC}"
+  for _i in "${!_parts[@]}"; do
+    [[ "${_parts[$_i]}" == "+" ]] && { _dev_pos="${_i}"; break; }
+  done
+  jq -c -n \
+    --arg meter_dir "${METER_DIR}" --arg rssi_file "${STATUS_RSSI_FILE}" \
+    --arg rx_rec "${STATUS_ESP_RX_RECEPTION_FILE}" --arg rx_mode "${STATUS_ESP_RX_MODE_FILE}" \
+    --arg rx_hist "${ESP_RF_RX_HISTORY_FILE}" --arg rx_seq "${STATUS_ESP_RX_SEQUENCE_FILE}" \
+    --arg rx_boots "${STATUS_ESP_RX_BOOTS_FILE}" --arg rx_clock "${STATUS_ESP_RX_CLOCK_FILE}" \
+    --arg raw_topic "${RAW_TOPIC}" --argjson dev_pos "${_dev_pos}" \
+    --arg tg_dev "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" --arg tg_md "${STATUS_ESP_METER_DEVICE_FILE}" \
+    --arg tg_rec "${STATUS_ESP_METER_RECEPTION_FILE}" --arg tg_hist "${ESP_RX_HISTORY_FILE}" \
+    --argjson no_ret "${no_ret}" '
+      {rssi: {filter: "wmbus/+/rssi/+", no_retained: false,
+               meter_dir: $meter_dir, rssi_file: $rssi_file},
+       rx: {filter: "wmbus/+/rx", no_retained: $no_ret,
+            reception_file: $rx_rec, mode_file: $rx_mode, history_file: $rx_hist,
+            sequence_file: $rx_seq, boots_file: $rx_boots, clock_file: $rx_clock}}
+      + (if $dev_pos >= 0 then
+           {tracker: {filter: $raw_topic, no_retained: $no_ret, dev_pos: $dev_pos,
+                      devices_file: $tg_dev, meter_device_file: $tg_md,
+                      reception_file: $tg_rec, history_file: $tg_hist}}
+         else {} end)' 2>/dev/null || true
 }
 
 # Hand one decoded telegram to the publisher ($1 exclude patterns of its meter,
