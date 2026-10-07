@@ -1,3 +1,9 @@
+## 1.5.80-dev.389
+
+### Added
+- write the wired M-Bus config and meter files in wmbus_mbus.py (4024586)
+- read the wired M-Bus decoder output in wmbus_mbus.py (d259ffb)
+
 ## 1.5.80-dev.388
 
 ### Added
