@@ -1,3 +1,9 @@
+## 1.5.80-dev.387
+
+### Added
+- run the candidate preview one-shot decode in bridge_ledger.py (4c2949b)
+- register Diehl/SAP candidates from RAW frames in bridge_ledger.py (85fd575)
+
 ## 1.5.80-dev.385
 
 ### Added
