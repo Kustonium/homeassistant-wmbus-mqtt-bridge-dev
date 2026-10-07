@@ -1,3 +1,9 @@
+## 1.5.80-dev.388
+
+### Added
+- read the wired M-Bus decoder output in wmbus_mbus.py (d259ffb)
+- run the candidate preview one-shot decode in bridge_ledger.py (4c2949b)
+
 ## 1.5.80-dev.387
 
 ### Added
