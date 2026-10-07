@@ -3,10 +3,13 @@
 # With state_retain=false, publishing state first can leave freshly discovered
 # HA entities unavailable until another telegram arrives.
 #
-# Both decode paths of bridge.sh hand a decoded telegram to
-# publish_decoded_json (12-pipeline.sh); this checks that both do, and that the
-# function emits Discovery before the state. tests/test_publish_contract.sh
-# checks the resulting publish order end to end.
+# Both decode paths of bridge.sh read the decoder through _decode_stage
+# (12-pipeline.sh), whose bash loop (_decode_consume_bash) and fallback hand a
+# decoded telegram to publish_decoded_json; bridge_ledger.py decode hands it to
+# the publisher, whose Discovery is built the same way (wmbus_discovery.py).
+# This checks those calls, and that publish_decoded_json emits Discovery before
+# the state. tests/test_publish_contract.sh checks the resulting publish order
+# end to end, tests/test_decode_stage.py the two loops against each other.
 set -euo pipefail
 
 SCRIPT_PATH="${BASH_SOURCE[0]}"
@@ -22,8 +25,14 @@ fail() {
   exit 1
 }
 
-calls="$(grep -c -F 'publish_decoded_json "${line}"' "${BRIDGE_SH}" || true)"
-[[ "${calls}" -eq 2 ]] || fail "expected both decode paths to call publish_decoded_json, got ${calls}"
+calls="$(grep -c -E '\| _decode_stage (true|false)$' "${BRIDGE_SH}" || true)"
+[[ "${calls}" -eq 2 ]] || fail "expected both decode paths to read the decoder through _decode_stage, got ${calls}"
+loop="$(sed -n '/^_decode_consume_bash() {/,/^}/p' "${PIPELINE_SH}")"
+grep -q -F 'publish_decoded_json "${line}"' <<<"${loop}" \
+  || fail "_decode_consume_bash does not hand decoded telegrams to publish_decoded_json"
+stage="$(sed -n '/^_decode_stage() {/,/^}/p' "${PIPELINE_SH}")"
+grep -q -F 'publish_decoded_json "${_d}"' <<<"${stage}" \
+  || fail "_decode_stage's fallback does not hand telegrams to publish_decoded_json"
 grep -q -F 'mqtt_pub "${STATE_PREFIX}/${id}/state"' "${BRIDGE_SH}" \
   && fail "bridge.sh publishes a meter state itself instead of through publish_decoded_json"
 

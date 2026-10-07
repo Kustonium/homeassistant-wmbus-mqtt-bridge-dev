@@ -214,6 +214,7 @@ STATUS_MQTT_CONNECTED="false"
 STATUS_WMBUSMETERS_RUNNING="false"
 # shellcheck disable=SC2034
 STATUS_RAW_COUNT=0
+# shellcheck disable=SC2034  # read by _decode_stage / _decode_consume_bash (12-pipeline.sh)
 STATUS_DECODED_COUNT=0
 # shellcheck disable=SC2034
 STATUS_DISCOVERY_PUBLISHED="false"
@@ -221,6 +222,7 @@ STATUS_DISCOVERY_PUBLISHED="false"
 STATUS_DISCOVERY_PUBLISHED_AT=""
 # shellcheck disable=SC2034
 STATUS_LAST_RAW_SEEN=""
+# shellcheck disable=SC2034  # read by _decode_stage / _decode_consume_bash (12-pipeline.sh)
 STATUS_LAST_DECODED_SEEN=""
 STATUS_LAST_ERROR=""
 # shellcheck disable=SC2034
@@ -603,6 +605,7 @@ SEARCH_MIN_DELTA_M3="$(float_or_default "${SEARCH_MIN_DELTA_M3}" "0.001")"
 
 # shellcheck disable=SC2034
 SEARCH_CANDIDATES_FILE="${BASE}/search_candidates.tsv"
+# shellcheck disable=SC2034  # read by _decode_consume_bash (12-pipeline.sh)
 SEARCH_USING_TEMP_METERS="false"
 # Used by sourced bridge-lib/07-meters.sh
 # shellcheck disable=SC2034
@@ -737,67 +740,13 @@ run_once() {
     | tee >(_raw_counter_stage) \
     | "${QDS_STAGE[@]}" \
     | ${STDBUF_BIN} /usr/bin/wmbusmeters --useconfig="${BASE}" 2>&1 \
-    | while IFS= read -r line; do
-        if [[ "${line}" == \{*\"_\":\"telegram\"* ]]; then
-          STATUS_WMBUSMETERS_RUNNING="true"
-          STATUS_DECODED_COUNT=$((STATUS_DECODED_COUNT + 1))
-          # shellcheck disable=SC2034
-          STATUS_LAST_DECODED_SEEN="$(iso_now)"
-          status_add_event "ok" "Decoded telegram received"
-          write_status_json
-          status_mark_search_decoded_no_aes "${line}"
-          process_search_json "${line}"
-          if is_search_temp_json "${line}"; then
-            clear_search_discovery_from_json "${line}"
-            continue
-          fi
-          status_meter_seen "${line}"
-          echo "${line}"
-          publish_decoded_json "${line}"
-          continue
-        fi
-
-        echo "${line}"
-        status_detect_key_problem "${line}" || true
-
-        # While no meter is configured this instance prints a "Received
-        # telegram from:" block per telegram; bridge_ledger.py books them (the
-        # same parser as the parallel LISTEN instance, which books nothing
-        # then) and hands SEARCH and preview one-shots back to bash. It reads the
-        # official count file per block, so with meters it books nothing.
-        if [[ "${SEARCH_USING_TEMP_METERS}" != "true" ]]; then
-          [[ -n "${_zero_fd:-}" ]] || exec {_zero_fd}> >(_listen_parse_stage zero)
-          printf '%s\n' "${line}" >&"${_zero_fd}"
-        fi
-
-done
+    | _decode_stage true
 else
   _raw_source \
     | tee >(_raw_counter_stage) \
     | "${QDS_STAGE[@]}" \
     | ${STDBUF_BIN} /usr/bin/wmbusmeters --useconfig="${BASE}" 2>&1 \
-    | while IFS= read -r line; do
-        if [[ "${line}" == \{*\"_\":\"telegram\"* ]]; then
-          STATUS_WMBUSMETERS_RUNNING="true"
-          STATUS_DECODED_COUNT=$((STATUS_DECODED_COUNT + 1))
-          # shellcheck disable=SC2034
-          STATUS_LAST_DECODED_SEEN="$(iso_now)"
-          status_add_event "ok" "Decoded telegram received"
-          write_status_json
-          status_mark_search_decoded_no_aes "${line}"
-          process_search_json "${line}"
-          if is_search_temp_json "${line}"; then
-            clear_search_discovery_from_json "${line}"
-            continue
-          fi
-          status_meter_seen "${line}"
-          echo "${line}"
-          publish_decoded_json "${line}"
-        else
-          echo "${line}"
-          status_detect_key_problem "${line}" || true
-        fi
-done
+    | _decode_stage false
 fi
 
   # ─── Cleanup flag watcher ──────────────────────────────────────────────

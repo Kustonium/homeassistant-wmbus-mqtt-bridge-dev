@@ -47,6 +47,7 @@ import re
 import select
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tarfile
@@ -2333,6 +2334,301 @@ def run_listen(book: ListenBook, stream=None, err=None) -> None:
         book.deferred.flush(err)
 
 
+# ── the decode pipeline's output (run_once's loop) ──────────────────────────
+
+_TARIFF_CAPTURE = re.compile(r"^total_energy_consumption_tariff_([0-9]+)_kwh$", re.I)
+_ELECTRIC_KEY = re.compile(r"(energy|power|voltage|current).*(_kwh|_wh|_kw|_w|_v|_a)$", re.I)
+_INSTANT_METER = re.compile(r"(_kw$|_w$|_m3h$|_l_h$|_c$|_rh$|_bar$)", re.I)
+_INSTANT_NOT = re.compile(r"(average|last_|previous|history|historic|minimum|maximum|min_|max_)", re.I)
+_DEC_ID = re.compile(r'"id":"?([^",}]*)')
+
+
+def _first_line(text: str) -> str:
+    return text.split("\n", 1)[0]
+
+
+def meter_metadata(line: str) -> List[str]:
+    r"""`jq -r '"\(.id // "")\u001f\(.name // "")\u001f\(.meter // "")\u001f\(.media // "")"'`
+    read with `IFS=$'\x1f' read -r id name meter media`: the first value that
+    gives a line (an object, or null), its first line."""
+    for v in jq_values(line + "\n"):
+        if v is None:
+            text = "\x1f\x1f\x1f"
+        elif isinstance(v, dict):
+            parts = []
+            for k in ("id", "name", "meter", "media"):
+                x = v.get(k)
+                parts.append("" if x is None or x is False else _jq_tostring(x))
+            text = "\x1f".join(parts)
+        else:
+            continue
+        fields = _first_line(text).split("\x1f", 3)
+        return fields + [""] * (4 - len(fields))
+    return ["", "", "", ""]
+
+
+def tariff_parts(line: str) -> str:
+    """status_meter_seen's value_parts: the consumption tariff registers,
+    `jq -rc` of [{label, key, value}] sorted by tariff number, "" when none."""
+    for v in jq_values(line + "\n"):
+        if not isinstance(v, dict):
+            continue
+        rows = []
+        for k, x in v.items():
+            m = _TARIFF_CAPTURE.match(k)
+            if _is_number(x) and m:
+                rows.append((float(m.group(1)), {"label": "T" + m.group(1), "key": k, "value": x}))
+        if not rows:
+            return ""
+        rows.sort(key=lambda r: r[0])  # sort_by is stable
+        return jq_dumps([r[1] for r in rows])
+    return ""
+
+
+def meter_value(line: str, media: str, meter: str, prev: Optional[List[str]]) -> Tuple[str, str, str]:
+    """status_meter_seen's (value_key, value, value_parts)."""
+    parts = tariff_parts(line)
+    key, value = _bash_read_tabs(select_primary_meter_value(line), 2)
+    if not key:
+        def tariffs(v: dict) -> List[str]:
+            vals = [float(x) for k, x in v.items() if _is_number(x) and _TARIFF_KWH.search(k)]
+            return [f"total_energy_consumption_kwh\t{jq_number_text(sum(vals))}"] if vals else []
+        key, value = _bash_read_tabs(_first_object_lines(line, tariffs), 2)
+    if key:
+        return key, value, parts
+    # No cumulative total in this telegram: keep the last one of the meter
+    # rather than flicker to the live power; electricity shows no value.
+    if prev is not None and prev[0] and _PRIMARY_LIKE.search(prev[0]) and not _PRIMARY_NOT.search(prev[0]):
+        return prev[0], prev[1], prev[2]
+    electric = "electric" in media.lower() or "energy" in media.lower() or "electric" in meter.lower()
+    if not electric:
+        for v in jq_values(line + "\n"):
+            if isinstance(v, dict):
+                electric = any(_ELECTRIC_KEY.search(k) for k in v)
+                break
+    if electric:
+        return "", "", parts
+    key = _first_object_lines(line, lambda v: [k for k, x in v.items() if _is_number(x)
+                                               and _INSTANT_METER.search(k) and not _INSTANT_NOT.search(k)])
+    if key:
+        value = ""
+        for v in jq_values(line + "\n"):
+            if isinstance(v, dict) and v.get(key) not in (None, False):
+                value = _jq_raw_text(v[key])
+                break
+        return key, value, parts
+    key, value = _bash_read_tabs(_first_object_lines(
+        line, lambda v: [_tsv_cell(k) + "\t" + _jq_tostring(x) for k, x in v.items() if _is_number(x)]), 2)
+    return key, value, parts
+
+
+def _jq_raw_text(x: Any) -> str:
+    """One value as `jq -r` prints it."""
+    return x if isinstance(x, str) else _jq_pretty(x)
+
+
+class DecodeBook:
+    """run_once's loop over the decode pipeline's output, for one pipeline.
+
+    A decoded telegram: the counters and "Decoded telegram received"
+    (status_add_event), status.json, the meter table (status_meter_seen: the
+    reception row, the reading, the last JSON, the key problem cleared), the
+    line in the log, and its hand-over to the publisher (a DEC frame with the
+    meter's exclude patterns), then status.json with Discovery published.
+    Any other line: the log, a key problem ("Permanently ignoring telegrams
+    from id:"), and - while no meter is configured (--zero) - the LISTEN
+    parser of the main instance, in this process.
+
+    The STATUS_* values start as the pipeline's subshell inherited them
+    (--decoded-count etc.), as the bash loop's did. A DEC frame the publisher
+    does not take is asked of the bash loop behind ("publish": the
+    mosquitto_pub path of publish_decoded_json).
+    """
+
+    def __init__(self, a: argparse.Namespace, out=None, err=None) -> None:
+        self.a = a
+        self.out = out if out is not None else sys.stdout
+        self.err = err if err is not None else sys.stderr
+        self.decoded = int(a.decoded_count) if re.fullmatch(r"[0-9]+", a.decoded_count or "") else 0
+        self.running = a.wmbusmeters_running
+        self.last_decoded = a.last_decoded_seen
+        self.last_event = a.last_event
+        self.disc_pub, self.disc_at = a.discovery_published, a.discovery_published_at
+        self.excludes: Dict[str, str] = {}
+        for row in (os.environ.get("METER_EXCLUDE_LINES") or "").split("\n"):
+            k, sep, v = row.partition("\x1f")
+            if sep:
+                self.excludes[k] = v
+        self.listen: Optional["ListenBook"] = None
+        if a.zero == "true":
+            la = argparse.Namespace(**vars(a))
+            la.official = "zero"
+            self.listen = ListenBook(la, out=self.out, err=self.err)
+        self.deferred = self.listen.deferred if self.listen else Deferred()
+        self.decoder = self.listen.decoder if self.listen else None
+
+    def request(self, *fields: str) -> None:
+        try:
+            self.out.write("\x1f".join(fields) + "\n")
+            self.out.flush()
+        except OSError:
+            pass
+
+    def echo(self, line: str) -> None:
+        print(line, file=self.err, flush=True)
+
+    def line(self, line: str) -> None:
+        if line.startswith("{") and '"_":"telegram"' in line:
+            self.telegram(line)
+            return
+        self.echo(line)
+        self.key_problem(line)
+        if self.listen is not None:
+            self.listen.line(line)
+
+    def telegram(self, line: str) -> None:
+        self.running = "true"
+        self.decoded += 1
+        self.last_decoded = iso_now()
+        self.add_event("ok", "Decoded telegram received")
+        self.write_status()
+        self.meter_seen(line)
+        self.echo(line)
+        self.publish(line)
+
+    def add_event(self, level: str, message: str) -> None:
+        self.last_event = message
+        append_event(self.a.events_file, level, message)
+
+    def write_status(self) -> None:
+        """write_status_json from the decode loop's subshell."""
+        a = self.a
+        raw_count = _digits_or_zero(a.raw_count_file)
+        try:
+            with open(a.last_raw_file, "rb") as fh:
+                last_raw = _s(fh.read()).rstrip("\n")
+        except OSError:
+            last_raw = ""
+        pub, pub_at = self.disc_pub, self.disc_at
+        if os.path.isfile(a.discovery_flag_file) and os.path.getsize(a.discovery_flag_file) > 0:
+            lines = _read_lines(a.discovery_flag_file)
+            pub, pub_at = "true", _s(lines[0]) if lines else ""
+        doc = {
+            "updated_at": iso_now(),
+            "config": {"raw_topic": a.raw_topic, "state_prefix": a.state_prefix,
+                       "discovery_prefix": a.discovery_prefix,
+                       "search_mode": a.search_mode == "true", "loglevel": a.loglevel},
+            "mqtt": {"host": a.mqtt_host, "port": a.mqtt_port, "connected": a.mqtt_connected == "true"},
+            "pipeline": {"raw_count": _jq_tonumber(raw_count),
+                         "decoded_count": _jq_tonumber(str(self.decoded)),
+                         "wmbusmeters_running": self.running == "true",
+                         "discovery_published": pub == "true",
+                         "discovery_published_at": pub_at,
+                         "last_raw_seen": last_raw,
+                         "last_decoded_seen": self.last_decoded,
+                         "last_error": a.last_error,
+                         "last_event": self.last_event},
+        }
+        _write_replace_tmp(a.status_json_file, _b(_jq_pretty(doc)) + b"\n")
+
+    def meter_seen(self, line: str) -> None:
+        """07-meters.sh status_meter_seen."""
+        a = self.a
+        raw_id, name, meter, media = meter_metadata(line)
+        mid = normalize_id(raw_id)
+        if not _ID8.fullmatch(mid):
+            return
+        prev = next((_bash_read_tabs("\t".join(_field(_fields(ln), n) for n in (5, 6, 13)), 3)
+                     for ln in _read_lines(a.meters_file) if _first_field(ln) == _b(mid)), None)
+        key, value, parts = meter_value(line, media, meter, prev)
+        record_seen(a.seen_file, mid, "meter")
+        last_seen = iso_now()
+        stats = seen_stats(a.seen_file, mid)
+        tsv_upsert(a.meters_file, mid, "\t".join(
+            [mid, name, meter, media, key, value, last_seen, "published"] + [str(n) for n in stats] + [parts]))
+        tsv_upsert(a.meter_last_json_file, mid, f"{mid}\t{last_seen}\t{line}")
+        tsv_remove(a.key_problem_file, mid)
+
+    def key_problem(self, line: str) -> None:
+        """07-meters.sh status_detect_key_problem."""
+        marker = "Permanently ignoring telegrams from id:"
+        if marker not in line:
+            return
+        if "no key to decrypt" in line:
+            reason = "key_missing"
+        elif "correct decryption key" in line:
+            reason = "key_invalid"
+        else:
+            return
+        mid = line.rsplit(marker + " ", 1)[-1] if marker + " " in line else line
+        mid = normalize_id(mid.split(" ", 1)[0])
+        if not _ID8.fullmatch(mid):
+            return
+        tsv_upsert(self.a.key_problem_file, mid, f"{mid}\t{reason}\t{iso_now()}")
+        print(f"[wmbus-bridge][WARN] key problem for meter {mid}: {reason} (wmbusmeters ignores it until "
+              f"the next pipeline reload)", file=self.err, flush=True)
+
+    def publish(self, line: str) -> None:
+        """publish_decoded_json's DEC hand-over to the publisher."""
+        patterns = ""
+        if self.excludes:
+            m = _DEC_ID.search(line)
+            if m:
+                key = normalize_id(m.group(1)).lower()
+                if key:
+                    patterns = self.excludes.get(key, "")
+        payload = _b(patterns + "\n" + line)
+        try:
+            with socket.create_connection(("127.0.0.1", int(self.a.publisher_port)), timeout=5) as s:
+                s.sendall(b"DEC %d\n" % len(payload) + payload + b"\n")
+        except (OSError, ValueError):
+            # With this pipeline's counters: the bash path ends in
+            # write_status_json, whose subshell has only the inherited ones.
+            self.request("publish", str(self.decoded), self.last_decoded, self.last_event, line)
+            return
+        self.disc_pub, self.disc_at = "true", iso_now()
+        try:
+            _write_replace_tmp(self.a.discovery_flag_file, _b(self.disc_at) + b"\n")
+        except OSError:
+            pass
+        self.write_status()
+
+    def finish(self) -> None:
+        if self.listen is not None:
+            self.listen.flush()
+
+
+def _write_replace_tmp(path: str, data: bytes) -> None:
+    """`... > path.tmp && mv path.tmp path` (the temporary name bash uses)."""
+    with open(path + ".tmp", "wb") as fh:
+        fh.write(data)
+    os.replace(path + ".tmp", path)
+
+
+def run_decode(book: DecodeBook, stream=None, err=None) -> None:
+    """The decode loop (`while IFS= read -r line`)."""
+    stream = stream if stream is not None else sys.stdin.buffer
+    err = err if err is not None else sys.stderr
+    try:
+        for raw in read_lines_flushing(stream, book.deferred, book.decoder):
+            if not raw.endswith(b"\n"):  # `read` does not hand over an unterminated last line
+                continue
+            try:
+                book.line(_s(raw[:-1]))
+            except Exception as exc:  # one bad line must not stop the pipeline's bookkeeping
+                print(f"[wmbus-bridge][WARN] ledger: decoder line skipped: {exc!r}", file=err, flush=True)
+        try:
+            book.finish()
+        except Exception as exc:
+            print(f"[wmbus-bridge][WARN] ledger: LISTEN block skipped: {exc!r}", file=err, flush=True)
+    except _Terminated:
+        raise SystemExit(128 + signal.SIGTERM)
+    finally:
+        if book.decoder is not None:
+            book.decoder.close()
+        book.deferred.flush(err)
+
+
 def run(handler: Handler, stream=None, err=None) -> None:
     """Feed every line of stream to handler until EOF; a failing message is skipped."""
     stream = stream if stream is not None else sys.stdin.buffer
@@ -2624,6 +2920,25 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("events-file", "preview-state-file", "preview-attempts-dir", "candidate-values-file",
                  "preview-oneshot-runtime"):
         listen.add_argument(f"--{name}", default="")
+    dec = modes.add_parser("decode", help="output of the decode pipeline's wmbusmeters (run_once)")
+    for name in ("status-json", "raw-count", "last-raw", "discovery-flag", "events", "meters",
+                 "meter-last-json", "key-problem", "seen"):
+        dec.add_argument(f"--{name}-file", required=True)
+    dec.add_argument("--publisher-port", required=True)
+    dec.add_argument("--zero", choices=("true", "false"), default="false",
+                     help="hand the other lines to the main instance's LISTEN parser (no meter configured)")
+    # The STATUS_* values and settings the pipeline's subshell inherits.
+    for name in ("raw-topic", "state-prefix", "discovery-prefix", "search-mode", "loglevel", "mqtt-host",
+                 "mqtt-port", "mqtt-connected", "wmbusmeters-running", "decoded-count", "last-decoded-seen",
+                 "last-error", "last-event", "discovery-published", "discovery-published-at"):
+        dec.add_argument(f"--{name}", default="")
+    # The LISTEN parser's files (--zero true).
+    for name in ("candidates", "recent-raw", "candidate-raw", "candidate-analysis", "snippet",
+                 "official-count", "preview-state", "candidate-values"):
+        dec.add_argument(f"--{name}-file", default="")
+    for name in ("meter-dir", "preview-meter-dir", "official-count-default", "search-expected",
+                 "preview-attempts-dir", "preview-oneshot-runtime"):
+        dec.add_argument(f"--{name}", default="")
     rx = modes.add_parser("rx", help="wmbus/<board>/rx messages")
     for name in ("reception", "mode", "history", "sequence", "boots", "clock"):
         rx.add_argument(f"--{name}-file", required=True)
@@ -2647,7 +2962,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         args = _parser().parse_args(argv)
     except SystemExit as exc:  # usage errors: report, never raise out of main
         return int(exc.code or 0)
-    if args.mode in ("raw", "tracker", "rx", "listen"):
+    if args.mode in ("raw", "tracker", "rx", "listen", "decode"):
         # Stopping the add-on: write what is collected, then exit.
         signal.signal(signal.SIGTERM, _on_sigterm)
     if args.mode == "rssi":
@@ -2656,6 +2971,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         run_lines(RawBook(args))
     elif args.mode == "listen":
         run_listen(ListenBook(args))
+    elif args.mode == "decode":
+        run_decode(DecodeBook(args))
     elif args.mode == "tracker":
         run(TrackerBook(args.dev_pos, args.devices_file, args.meter_device_file,
                         args.reception_file, args.history_file))

@@ -190,6 +190,114 @@ _mqtt_publisher_books() {
          else {} end)' 2>/dev/null || true
 }
 
+# The decode pipeline's output in bash (the loop run_once ran inline): the
+# fallback of _decode_stage. $1 "true": the lines that are not JSON also go
+# to the main instance's LISTEN parser - while no meter is configured this
+# instance prints a "Received telegram from:" block per telegram;
+# bridge_ledger.py books them (the same parser as the parallel LISTEN
+# instance, which books nothing then). It reads the official count file per
+# block, so with meters it books nothing.
+_decode_consume_bash() {
+  local zero="$1" line _zero_fd=""
+  while IFS= read -r line; do
+    if [[ "${line}" == \{*\"_\":\"telegram\"* ]]; then
+      STATUS_WMBUSMETERS_RUNNING="true"
+      STATUS_DECODED_COUNT=$((STATUS_DECODED_COUNT + 1))
+      # shellcheck disable=SC2034
+      STATUS_LAST_DECODED_SEEN="$(iso_now)"
+      status_add_event "ok" "Decoded telegram received"
+      write_status_json
+      status_mark_search_decoded_no_aes "${line}"
+      process_search_json "${line}"
+      if is_search_temp_json "${line}"; then
+        clear_search_discovery_from_json "${line}"
+        continue
+      fi
+      status_meter_seen "${line}"
+      echo "${line}"
+      publish_decoded_json "${line}"
+      continue
+    fi
+    echo "${line}"
+    status_detect_key_problem "${line}" || true
+    if [[ "${zero}" == "true" && "${SEARCH_USING_TEMP_METERS}" != "true" ]]; then
+      [[ -n "${_zero_fd:-}" ]] || exec {_zero_fd}> >(_listen_parse_stage zero)
+      printf '%s\n' "${line}" >&"${_zero_fd}"
+    fi
+  done
+}
+
+# The decode pipeline's output, by bridge_ledger.py decode (DecodeBook): the
+# counters, the event, status.json, the meter table, the key problems, the
+# zero-meter LISTEN parser and the hand-over to the publisher in one process,
+# instead of a dozen jq and awk runs per decoded telegram. Needs the
+# publisher's Discovery (MQTT_PUB_DEC); SEARCH runs in bash (part 6b), as
+# does everything with LEDGER_DECODE_IN_PYTHON=false. The loop after it
+# runs what the ledger asks, fields separated by 0x1F: "publish" with the
+# pipeline's counters when the publisher did not take a telegram (the
+# mosquitto_pub path of publish_decoded_json), and what the in-process
+# LISTEN parser asks when it runs without its files (see _listen_parse_stage).
+_decode_stage() {
+  local zero="$1"
+  if [[ "${LEDGER_DECODE_IN_PYTHON:-true}" != "true" || "${SEARCH_MODE:-false}" == "true" \
+        || "${MQTT_PUB_DEC:-false}" != "true" || -z "${MQTT_PUB_PORT:-}" ]]; then
+    _decode_consume_bash "${zero}"
+    return
+  fi
+  # METER_EXCLUDE_FIELDS (filled by refresh_meter_files) as "id<0x1F>patterns" lines.
+  local _excl="" _k
+  if (( ${#METER_EXCLUDE_FIELDS[@]} > 0 )); then
+    for _k in "${!METER_EXCLUDE_FIELDS[@]}"; do
+      _excl+="${_k}"$'\x1f'"${METER_EXCLUDE_FIELDS[${_k}]}"$'\n'
+    done
+  fi
+  # --name=value: a value starting with "-" must not read as an option.
+  until METER_EXCLUDE_LINES="${_excl}" python3 -u "${BRIDGE_LEDGER}" decode \
+      --status-json-file="${STATUS_JSON}" --raw-count-file="${STATUS_RAW_COUNT_FILE}" \
+      --last-raw-file="${STATUS_LAST_RAW_FILE}" --discovery-flag-file="${STATUS_DISCOVERY_FLAG}" \
+      --events-file="${STATUS_EVENTS_FILE}" --meters-file="${STATUS_METERS_FILE}" \
+      --meter-last-json-file="${STATUS_METER_LAST_JSON_FILE}" \
+      --key-problem-file="${STATUS_METER_KEY_PROBLEM_FILE}" --seen-file="${STATUS_SEEN_FILE}" \
+      --publisher-port="${MQTT_PUB_PORT}" --zero="${zero}" \
+      --raw-topic="${RAW_TOPIC:-}" --state-prefix="${STATE_PREFIX:-}" \
+      --discovery-prefix="${DISCOVERY_PREFIX:-}" --search-mode="${SEARCH_MODE:-false}" \
+      --loglevel="${LOGLEVEL:-}" --mqtt-host="${MQTT_HOST:-}" --mqtt-port="${MQTT_PORT:-}" \
+      --mqtt-connected="${STATUS_MQTT_CONNECTED}" --wmbusmeters-running="${STATUS_WMBUSMETERS_RUNNING}" \
+      --decoded-count="${STATUS_DECODED_COUNT}" --last-decoded-seen="${STATUS_LAST_DECODED_SEEN}" \
+      --last-error="${STATUS_LAST_ERROR}" --last-event="${STATUS_LAST_EVENT}" \
+      --discovery-published="${STATUS_DISCOVERY_PUBLISHED}" \
+      --discovery-published-at="${STATUS_DISCOVERY_PUBLISHED_AT}" \
+      --candidates-file="${STATUS_CANDIDATES_FILE}" --recent-raw-file="${STATUS_RECENT_RAW_FILE}" \
+      --candidate-raw-file="${STATUS_CANDIDATE_RAW_FILE}" \
+      --candidate-analysis-file="${STATUS_CANDIDATE_ANALYSIS_FILE}" --snippet-file="${SNIPPET_STATE}" \
+      --official-count-file="${STATUS_OFFICIAL_METERS_COUNT_FILE}" \
+      --official-count-default="${OFFICIAL_METERS_COUNT:-0}" --meter-dir="${METER_DIR}" \
+      --preview-meter-dir="${PREVIEW_METER_DIR}" --search-expected="${SEARCH_EXPECTED_VALUE_M3:-0}" \
+      --preview-state-file="${STATUS_CANDIDATE_PREVIEW_STATE_FILE}" \
+      --preview-attempts-dir="${RUNTIME:-${BASE}}/.preview_attempts" \
+      --candidate-values-file="${STATUS_CANDIDATE_VALUES_FILE}" \
+      --preview-oneshot-runtime="$([[ "${LEDGER_PREVIEW_IN_PYTHON:-true}" == "true" ]] && echo "${RUNTIME:-${BASE}}")"; do
+    sleep 1
+  done | {
+    local _act _a _b _c _d
+    while IFS=$'\x1f' read -r _act _a _b _c _d; do
+      case "${_act}" in
+        publish)
+          STATUS_WMBUSMETERS_RUNNING="true"
+          STATUS_DECODED_COUNT="${_a}"
+          # shellcheck disable=SC2034
+          STATUS_LAST_DECODED_SEEN="${_b}"
+          STATUS_LAST_EVENT="${_c}"
+          publish_decoded_json "${_d}" ;;
+        snippet) emit_snippet_if_new "${_a}" "${_b}" "${_c}" "${_d}" ;;
+        search) search_cache_candidate "${_a}" "${_b}" "${_c}" ;;
+        json) _process_listen_json_line "${_a}" ;;
+        preview) preview_decode_raw_if_requested "${_a}" "${_b}" ;;
+      esac
+    done
+  }
+}
+
 # Hand one decoded telegram to the publisher ($1 exclude patterns of its meter,
 # $2 the JSON line); same subshell and byte count as _mqtt_pub_persistent.
 _mqtt_dec_persistent() {

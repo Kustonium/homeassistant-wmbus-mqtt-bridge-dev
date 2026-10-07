@@ -269,6 +269,15 @@ They solve different problems and intentionally see the same physical frame.
 6. The full decoder JSON is published to
    `<state_prefix>/<meter_id>/state`.
 
+Steps 4 to 6 run in one process, `bridge_ledger.py decode`, reading the
+decoder's output: the counters and `status.json`, the meter table and the last
+JSON, key problems from the decoder's log lines, and the hand-over of each
+telegram to the publisher, which builds its Discovery and state. While no meter
+is configured, the main instance's LISTEN output is parsed in the same process.
+With `search_mode` on, without the publisher's Discovery, or with
+`LEDGER_DECODE_IN_PYTHON=false`, the bash loop (`_decode_consume_bash`) does it
+as before.
+
 The bridge selects one cumulative numeric field for its compact meter table,
 but does not remove fields from the MQTT state payload. The WebUI's published
 fields view reads the last complete decoder JSON.
