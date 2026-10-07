@@ -192,6 +192,9 @@ ESP_SUBSCRIBER_PIDS=""
 # When fresh (<90 s) webui.py uses ESP's exact "total" count as the live rate
 # instead of its own per-minute counting — more accurate source of truth.
 STATUS_ESP_DIAG_FILE="${RUNTIME:-${BASE}}/status_esp_diag.json"
+# Booked by the publisher on its own connection when it announced "books"
+# (esp_books.SummaryBook); this loop is the fallback.
+if [[ "${MQTT_PUB_BOOKS:-false}" != "true" ]]; then
 (
   while true; do
     _sub_t0="$(epoch_now)"
@@ -215,6 +218,7 @@ STATUS_ESP_DIAG_FILE="${RUNTIME:-${BASE}}/status_esp_diag.json"
   done
 ) &
 ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
+fi
 
 # Background subscriber for the always-on ESP radio health pulse
 # (wmbus/+/health). Unlike wmbus/+/diag/summary this is published every 60 s
@@ -297,6 +301,9 @@ if [[ "${MQTT_PUB_BOOKS:-false}" != "true" ]]; then
   ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 fi
 
+# Booked by the publisher on its own connection when it announced "books"
+# (esp_books.MetersBook); this loop is the fallback.
+if [[ "${MQTT_PUB_BOOKS:-false}" != "true" ]]; then
 (
   while true; do
     _sub_t0="$(epoch_now)"
@@ -325,6 +332,7 @@ fi
   done
 ) &
 ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
+fi
 
 # Background subscriber for per-meter reception windows (wmbus/+/diag/meter_snapshot).
 # OPT-IN: only published when the ESP runs diagnostic_mode normal/debug/dev with
@@ -334,6 +342,9 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 # quality signal (RSSI was dropped — see BENCHMARKS.md). Stored as a MAP keyed by
 # ESP device so multi-ESP best-of can be computed. Independent of /health,/meters.
 STATUS_ESP_METER_SNAPSHOT_FILE="${RUNTIME:-${BASE}}/status_esp_meter_snapshot.json"
+# Booked by the publisher on its own connection when it announced "books"
+# (esp_books.MeterSnapshotBook); this loop is the fallback.
+if [[ "${MQTT_PUB_BOOKS:-false}" != "true" ]]; then
 (
   while true; do
     _sub_t0="$(epoch_now)"
@@ -361,6 +372,7 @@ STATUS_ESP_METER_SNAPSHOT_FILE="${RUNTIME:-${BASE}}/status_esp_meter_snapshot.js
   done
 ) &
 ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
+fi
 
 # Background subscriber for per-meter reception WINDOWS
 # (wmbus/+/diag/meter/<id>/<mode>/window/<trigger>). Same reception fields as
@@ -370,6 +382,9 @@ ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
 # a board's first 15-min summary_15min batch. Stored as a nested MAP keyed by ESP
 # device then meter id, so webui.py can merge it with the snapshot per-ESP data.
 STATUS_ESP_METER_WINDOW_FILE="${RUNTIME:-${BASE}}/status_esp_meter_window.json"
+# Booked by the publisher on its own connection when it announced "books"
+# (esp_books.MeterWindowBook); this loop is the fallback.
+if [[ "${MQTT_PUB_BOOKS:-false}" != "true" ]]; then
 (
   while true; do
     _sub_t0="$(epoch_now)"
@@ -401,6 +416,7 @@ STATUS_ESP_METER_WINDOW_FILE="${RUNTIME:-${BASE}}/status_esp_meter_window.json"
   done
 ) &
 ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
+fi
 
 # Background subscriber for per-ESP-device telegram tracking.
 # Listens to the RAW telegram topic (with wildcard) and records each

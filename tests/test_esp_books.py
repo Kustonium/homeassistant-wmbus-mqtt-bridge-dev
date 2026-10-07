@@ -118,6 +118,75 @@ class EspBooksTests(unittest.TestCase):
             with self.subTest(seed=seed):
                 self.compare_steps("HealthBook", esp_books.HealthBook, steps, "STATUS_ESP_HEALTH_FILE", seed=seed)
 
+    def test_meters(self):
+        steps = [
+            [(b"wmbus/lilygo/meters", b'{"target":"03534159","highlight":["12345678","00089907"]}')],
+            [(b"wmbus/heltec/meters", b'{"target":"","highlight":[]}'),
+             (b"wmbus/lilygo/meters", b'{"target":"03534159","highlight":[]}'),
+             (b"wmbus/x/meters", b"[1]"), (b"wmbus/meters", b'{"a":1}'), (b"wmbus/x/health", b'{"a":1}')],
+        ]
+        out = self.compare_steps("MetersBook", esp_books.MetersBook, steps, "STATUS_ESP_METERS_FILE")
+        self.assertIn(b'"heltec"', out)
+
+    def test_meter_snapshot(self):
+        snap = (b'{"meters":[{"id":"03534159","mode":"T1","count_window":12,"avg_interval_s":120.5,'
+                b'"elapsed_s":900}],"window_s":900}')
+        steps = [
+            [(b"wmbus/tbeam/diag/meter_snapshot", snap)],
+            [(b"wmbus/lilygo/diag/meter_snapshot", snap), (b"wmbus/tbeam/diag/meter_snapshot", b"{}"),
+             (b"wmbus/diag/meter_snapshot", snap), (b"wmbus/x/diag/meter_snapshot/extra", snap)],
+        ]
+        out = self.compare_steps("MeterSnapshotBook", esp_books.MeterSnapshotBook, steps,
+                                 "STATUS_ESP_METER_SNAPSHOT_FILE")
+        self.assertIn(b'"lilygo"', out)
+
+    def test_device_map_null_cases(self):
+        # jq: null + {..} is an object - a "null" payload or file is accepted.
+        steps = [[(b"wmbus/lilygo/meters", b"null")], [(b"wmbus/heltec/meters", b" null ")],
+                 [(b"wmbus/x/meters", b"true"), (b"wmbus/x/meters", b'"s"')]]
+        self.compare_steps("MetersBook", esp_books.MetersBook, steps, "STATUS_ESP_METERS_FILE")
+        for seed in (b"null", b"null\n{}"):
+            with self.subTest(seed=seed):
+                self.compare_steps("MetersBook", esp_books.MetersBook,
+                                   [[(b"wmbus/a/meters", b'{"t":1}')]], "STATUS_ESP_METERS_FILE", seed=seed)
+
+    def test_summary(self):
+        steps = [
+            [(b"wmbus/lilygo/diag/summary", b'{"event":"summary","interval_s":60,"total":17,"ok":16}')],
+            [(b"wmbus/heltec/diag/summary", b'{"total":3}{"total":4}')],
+            [(b"wmbus/x/diag/summary", b"not json")],
+            [(b"wmbus/x/diag/summary", b'{"a":1} junk')],
+            [(b"wmbus/x/diag/summary", b"   ")],
+            [(b"wmbus/y/diag/summary", b"null")],
+            [(b"wmbus/y/diag/summary", b'{"a":1} 5')],
+            [(b"wmbus/z/diag/summary", b'{"multi":1}\n{"line":2}')],
+            [(b"\twmbus/t/diag/summary", b'\t{"total":9}')],
+        ]
+        self.compare_steps("SummaryBook", esp_books.SummaryBook, steps, "STATUS_ESP_DIAG_FILE")
+
+    def test_meter_window(self):
+        w = lambda mid: ('{"id":%s,"mode":"T1","count_window":5,"avg_interval_s":60,"elapsed_s":300}'  # noqa: E731
+                         % mid).encode()
+        steps = [
+            [(b"wmbus/lilygo/diag/meter/03534159/T1/window/count", w('"03534159"'))],
+            [(b"wmbus/lilygo/diag/meter/00089907/T1/window/count", w('"00089907"')),
+             (b"wmbus/heltec/diag/meter/03534159/T1/window/time", w('"03534159"')),
+             (b"wmbus/lilygo/diag/meter/03534159/T1/window/count", w('"03534159"'))],
+            [(b"wmbus/x/diag/meter/1/T1/window/c", b'{"mode":"T1"}'),
+             (b"wmbus/x/diag/meter/1/T1/window/c", w("12345678")),
+             (b"wmbus/x/diag/meter/1/T1/window/c", w('""')),
+             (b"wmbus/x/diag/meter/1/T1/window/c", b"null"),
+             (b"wmbus/x/diag/meter/1/T1/window/c", b"[1]"),
+             (b"wmbus/diag/meter/1/T1/window/c", w('"aa"')),
+             (b"wmbus/a/b/diag/meter/1/diag/meter/2/window/c", w('"bb"'))],
+        ]
+        self.compare_steps("MeterWindowBook", esp_books.MeterWindowBook, steps, "STATUS_ESP_METER_WINDOW_FILE")
+        for seed in (b'{"lilygo":5}', b'{"lilygo":null}', b"[1]", b"null"):
+            with self.subTest(seed=seed):
+                self.compare_steps("MeterWindowBook", esp_books.MeterWindowBook,
+                                   [[(b"wmbus/lilygo/diag/meter/1/T1/window/c", w('"03534159"'))]],
+                                   "STATUS_ESP_METER_WINDOW_FILE", seed=seed)
+
     def test_ha_presence(self):
         steps = [
             [(b"homeassistant/status", b"online")],

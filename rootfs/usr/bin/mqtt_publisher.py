@@ -210,9 +210,17 @@ def make_books(spec):
         elif mode == "tracker":
             book = bl.TrackerBook(int(cfg["dev_pos"]), cfg["devices_file"], cfg["meter_device_file"],
                                   cfg["reception_file"], cfg["history_file"])
-        elif mode == "health":
+        elif mode in ("health", "meters", "meter_snapshot"):
             import esp_books
-            book = esp_books.HealthBook(cfg["health_file"])
+            cls = {"health": esp_books.HealthBook, "meters": esp_books.MetersBook,
+                   "meter_snapshot": esp_books.MeterSnapshotBook}[mode]
+            book = cls(cfg["file"] if "file" in cfg else cfg["health_file"])
+        elif mode == "summary":
+            import esp_books
+            book = esp_books.SummaryBook(cfg["file"])
+        elif mode == "meter_window":
+            import esp_books
+            book = esp_books.MeterWindowBook(cfg["file"])
         elif mode == "ha_presence":
             import esp_books
             book = esp_books.HaPresenceBook(cfg["presence_file"])

@@ -130,10 +130,18 @@ _mqtt_publisher_books() {
     --arg tg_rec "${STATUS_ESP_METER_RECEPTION_FILE}" --arg tg_hist "${ESP_RX_HISTORY_FILE}" \
     --argjson no_ret "${no_ret}" \
     --arg health_file "${RUNTIME:-${BASE}}/status_esp_health.json" \
+    --arg meters_file "${RUNTIME:-${BASE}}/status_esp_meters.json" \
+    --arg summary_file "${RUNTIME:-${BASE}}/status_esp_diag.json" \
+    --arg window_file "${RUNTIME:-${BASE}}/status_esp_meter_window.json" \
+    --arg snapshot_file "${RUNTIME:-${BASE}}/status_esp_meter_snapshot.json" \
     --arg ha_topic "${DISCOVERY_PREFIX:-homeassistant}/status" --arg presence_file "${STATUS_HA_PRESENCE_FILE:-}" '
       {rssi: {filter: "wmbus/+/rssi/+", no_retained: false,
                meter_dir: $meter_dir, rssi_file: $rssi_file},
        health: {filter: "wmbus/+/health", no_retained: false, health_file: $health_file},
+       meters: {filter: "wmbus/+/meters", no_retained: false, file: $meters_file},
+       summary: {filter: "wmbus/+/diag/summary", no_retained: false, file: $summary_file},
+       meter_window: {filter: "wmbus/+/diag/meter/+/+/window/+", no_retained: false, file: $window_file},
+       meter_snapshot: {filter: "wmbus/+/diag/meter_snapshot", no_retained: false, file: $snapshot_file},
        ha_presence: {filter: $ha_topic, no_retained: false, format: "payload",
                      presence_file: $presence_file},
        rx: {filter: "wmbus/+/rx", no_retained: $no_ret,

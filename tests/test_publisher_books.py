@@ -132,6 +132,12 @@ class EndToEndTests(unittest.TestCase):
         spec["health"] = {"filter": "wmbus/+/health", "health_file": health_file}
         spec["ha_presence"] = {"filter": "homeassistant/status", "format": "payload",
                                "presence_file": presence_file}
+        window_file = os.path.join(tmp, "status_esp_meter_window.json")
+        spec["meters"] = {"filter": "wmbus/+/meters", "file": os.path.join(tmp, "status_esp_meters.json")}
+        spec["meter_snapshot"] = {"filter": "wmbus/+/diag/meter_snapshot",
+                                  "file": os.path.join(tmp, "status_esp_meter_snapshot.json")}
+        spec["summary"] = {"filter": "wmbus/+/diag/summary", "file": os.path.join(tmp, "status_esp_diag.json")}
+        spec["meter_window"] = {"filter": "wmbus/+/diag/meter/+/+/window/+", "file": window_file}
         # HA's birth message is retained: the subscription must replay it.
         broker.publish_to_subscribers("homeassistant/status", b"online", retain=True)
         # Retained before the publisher subscribes: replayed on SUBSCRIBE with
@@ -144,12 +150,15 @@ class EndToEndTests(unittest.TestCase):
                                  "--port", str(broker.port), "--port-file", port_file],
                                 env=env, stderr=subprocess.PIPE, text=True)
         try:
-            self.assertTrue(broker.wait_for(lambda b: len(b.subscribes) >= 5, timeout=10),
+            self.assertTrue(broker.wait_for(lambda b: len(b.subscribes) >= 9, timeout=10),
                             "the publisher did not subscribe")
             self.assertIn("books", Path(port_file).read_text().split()[1:])
             self.assertEqual(sorted(broker.subscribes),
-                             [b"homeassistant/status", b"wmbus/+/health", b"wmbus/+/rssi/+",
-                              b"wmbus/+/rx", b"wmbus/+/telegram"])
+                             [b"homeassistant/status", b"wmbus/+/diag/meter/+/+/window/+",
+                              b"wmbus/+/diag/meter_snapshot", b"wmbus/+/diag/summary", b"wmbus/+/health",
+                              b"wmbus/+/meters", b"wmbus/+/rssi/+", b"wmbus/+/rx", b"wmbus/+/telegram"])
+            broker.publish_to_subscribers("wmbus/lilygo/diag/meter/03534159/T1/window/count",
+                                          b'{"id":"03534159","count_window":3}')
             for mode, messages in MESSAGES.items():
                 for t, p in messages:
                     broker.publish_to_subscribers(t, p)
@@ -158,6 +167,7 @@ class EndToEndTests(unittest.TestCase):
             while time.time() < deadline and not (os.path.exists(health_file) and os.path.exists(presence_file)):
                 time.sleep(0.1)
             self.assertIn('"lilygo": {', Path(health_file).read_text())
+            self.assertIn('"03534159": {', Path(window_file).read_text())
             self.assertTrue(Path(presence_file).read_text().startswith("online\t"),
                             "the retained HA birth message is booked")
             deadline = time.time() + 15  # /rx and the tracker write every 5 s

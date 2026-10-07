@@ -416,11 +416,14 @@ The `rssi`, `rx` and `tracker` books normally run inside `mqtt_publisher.py`:
 it subscribes to their topics on its one broker connection (dropping retained
 messages for `rx` and `tracker` when `ignore_retained` is on, as
 `mosquitto_sub -R` did) and hands each message to the same book, split into
-lines exactly as `mosquitto_sub -F '%t\t%p'` printed it. The ESP health pulse
-(`wmbus/+/health` -> `status_esp_health.json`) and Home Assistant's birth
-message (`<discovery_prefix>/status` -> `status_ha_presence.txt`) are booked
-there too, by `esp_books.py` - ports of their bash loops that write the same
-files byte for byte (`tests/test_esp_books.py` runs both on one corpus). The publisher
+lines exactly as `mosquitto_sub -F '%t\t%p'` printed it. The ESP health pulse,
+meter flags, diagnostic summary, meter snapshots and meter windows
+(`status_esp_health.json`, `status_esp_meters.json`, `status_esp_diag.json`,
+`status_esp_meter_snapshot.json`, `status_esp_meter_window.json`) and Home
+Assistant's birth message (`status_ha_presence.txt`) are booked there too, by
+`esp_books.py` - ports of their bash loops that reproduce the jq programs and
+write the same files byte for byte (`tests/test_esp_books.py` runs the real
+loops and the books on one corpus). The publisher
 announces this as `books`; without it, or with
 `MQTT_PUBLISHER_SUBSCRIBE=false`, the bash loops below start as before.
 
