@@ -1,3 +1,9 @@
+## 1.5.80-dev.384
+
+### Added
+- register new and changed LISTEN candidates and decoded JSON in bridge_ledger.py (63574a1)
+- feed the decode and LISTEN pipelines from the publisher's RAW stream (b8207e9)
+
 ## 1.5.80-dev.383
 
 ### Added
