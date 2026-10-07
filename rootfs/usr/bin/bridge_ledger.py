@@ -2144,12 +2144,14 @@ class ListenBook:
     behind it (see _listen_parse_stage), one request per line, fields
     separated by 0x1F so that empty fields survive `read`: a new or changed
     candidate ("snippet": emit_snippet_if_new), SEARCH ("search":
-    search_cache_candidate) and decoded JSON ("json").
+    search_cache_candidate, when bash did not pass SEARCH_STATE) and decoded
+    JSON ("json").
     """
 
     SEP = "\x1f"
 
-    def __init__(self, a: argparse.Namespace, out=None, err=None) -> None:
+    def __init__(self, a: argparse.Namespace, out=None, err=None,
+                 search: Optional["SearchBook"] = None) -> None:
         self.a = a
         self.out = out if out is not None else sys.stdout
         self.err = err if err is not None else sys.stderr
@@ -2159,6 +2161,11 @@ class ListenBook:
                                          a.preview_meter_dir, a.meter_dir, self.deferred)
         self.block = ("", "", "", "")
         self.decoder = _preview_decoder(a, self.candidates, self.log, self.write_request)
+        self.search = search
+        if search is None and a.search_mode == "true" and self.in_process():
+            state = search_state_from_env()
+            if state is not None:
+                self.search = SearchBook(a, state, err=self.err, request=self.write_request)
 
     def request(self, *fields: str) -> None:
         if fields[0] == "preview" and self.decoder is not None:
@@ -2225,7 +2232,12 @@ class ListenBook:
         if (self.official_meters() > 0) != (self.a.official == "nonzero"):
             return
         if self.a.search_mode == "true" and self.a.search_expected != "0":
-            self.request("search", meter, driver, type_line)
+            if self.search is not None:
+                self.search.cache_candidate(
+                    meter, driver, type_line,
+                    lambda m, d, t: self.candidate_seen(m, d, t, "", "true"))
+            else:
+                self.request("search", meter, driver, type_line)
             return
         if not self.refresh(meter, driver, type_line or "listen", manufacturer):
             if self.in_process():
@@ -2334,6 +2346,375 @@ def run_listen(book: ListenBook, stream=None, err=None) -> None:
         book.deferred.flush(err)
 
 
+# ── SEARCH (10-search.sh) ───────────────────────────────────────────────────
+
+_SEARCH_STATE_NAMES = (
+    "SEARCH_EXPECTED_VALUE_M3", "SEARCH_TOLERANCE_M3", "SEARCH_DELTA_MODE", "SEARCH_MIN_DELTA_M3",
+    "SEARCH_TOPIC", "SEARCH_CANDIDATES_FILE", "SEARCH_MATCHES_FILE", "SEARCH_STATUS_FILE",
+    "SEARCH_USING_TEMP_METERS", "SEARCH_IGNORED_COUNT", "SEARCH_TEMP_METERS_LOADED",
+    "SEARCH_CHECKED_VALUES", "SEARCH_DECODED_JSON_COUNT", "SEARCH_MATCH_COUNT",
+    "SEARCH_LAST_CACHE_CHANGE", "SEARCH_LAST_CANDIDATE_ID", "SEARCH_LAST_CANDIDATE_DRIVER",
+    "SEARCH_LAST_CANDIDATE_TYPE", "SEARCH_LAST_CHECKED_ID", "SEARCH_LAST_CHECKED_DRIVER",
+    "SEARCH_LAST_CHECKED_FIELD", "SEARCH_LAST_CHECKED_VALUE", "SEARCH_LAST_CHECKED_DIFF",
+    "SEARCH_LAST_REASON", "SEARCH_LAST_IGNORED_REASON", "DISCOVERY_ENABLED")
+_SEARCH_COUNTERS = ("SEARCH_IGNORED_COUNT", "SEARCH_TEMP_METERS_LOADED", "SEARCH_CHECKED_VALUES",
+                    "SEARCH_DECODED_JSON_COUNT", "SEARCH_MATCH_COUNT")
+_AWK_NUM_PREFIX = re.compile(r"[ \t\n]*[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?")
+_AWK_STRNUM = re.compile(r"[ \t\n]*[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?[ \t\n]*")
+_SEARCH_CACHED_ROW = re.compile(rb"^[0-9A-Fa-f]{8}[ \t\r\v\f]")
+_SEARCH_NOT_FIELDS = ("_", "id", "name", "meter", "media", "timestamp", "device_date_time",
+                      "rssi", "lqi", "status")
+
+
+def search_state_from_env(env: Optional[Dict[str, str]] = None) -> Optional[Dict[str, str]]:
+    """SEARCH_STATE as _search_state (12-pipeline.sh) prints it: one
+    "name<0x1F>value" line per variable. None when bash did not pass it."""
+    text = (env if env is not None else os.environ).get("SEARCH_STATE")
+    if text is None:
+        return None
+    state = {name: "" for name in _SEARCH_STATE_NAMES}
+    for row in text.split("\n"):
+        k, sep, v = row.partition("\x1f")
+        if sep and k in state:
+            state[k] = v
+    return state
+
+
+def _awk_number(text: str) -> float:
+    """A string in awk arithmetic: its numeric prefix, 0 without one."""
+    m = _AWK_NUM_PREFIX.match(text)
+    return float(m.group(0)) if m else 0.0
+
+
+def _awk_compare(a: str, b: str, op: str) -> bool:
+    """`a <op> b` of two `awk -v` values: numeric when both look numeric, else as strings."""
+    if _AWK_STRNUM.fullmatch(a) and _AWK_STRNUM.fullmatch(b):
+        x, y = float(a), float(b)
+    else:
+        x, y = a, b  # type: ignore[assignment]
+    return x <= y if op == "<=" else x >= y
+
+
+def _bash_int(text: str) -> int:
+    """A counter as `$((X + 1))` reads it (an empty or odd value as 0)."""
+    return int(text) if re.fullmatch(r"-?[0-9]+", text.strip()) else 0
+
+
+def _ascii_lower(text: str) -> str:
+    return text.translate(_ASCII_LOWER)
+
+
+_ASCII_LOWER = {c: c + 32 for c in range(ord("A"), ord("Z") + 1)}
+
+
+def obj_id(text: str) -> str:
+    """01-utils.sh _obj_id: lower case, [a-z0-9_] only, no doubled, leading or trailing "_"."""
+    s = re.sub(r"[^a-z0-9_]", "_", text.lower())
+    while "__" in s:
+        s = s.replace("__", "_")
+    s = s[1:] if s.startswith("_") else s
+    return s[:-1] if s.endswith("_") else s
+
+
+def _tsv_escape(text: str) -> str:
+    """jq's @tsv for one field."""
+    return text.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "\\r")
+
+
+class SearchBook:
+    """10-search.sh: SEARCH's candidate cache, its value check and search_status.json.
+
+    The SEARCH_* variables start as the process that runs it inherited them
+    (SEARCH_STATE). In bash the decode loop and the zero-meter LISTEN parser
+    it forked each kept their own copy and both wrote search_status.json with
+    it; here one book serves both (DecodeBook hands it to its ListenBook).
+    """
+
+    def __init__(self, a: argparse.Namespace, state: Dict[str, str], err=None,
+                 request: Optional[Callable[..., None]] = None) -> None:
+        self.a = a
+        self.v = dict(state)
+        for name in _SEARCH_COUNTERS:
+            self.v[name] = str(_bash_int(self.v.get(name, "")))
+        self.err = err if err is not None else sys.stderr
+        self.request = request
+        self.reported_expected: Set[str] = set()
+        self.reported_delta: Set[str] = set()
+        self.first_value: Dict[str, str] = {}
+        self.cleared_fields: Set[str] = set()
+        self.cleaned_legacy: Set[str] = set()
+
+    @property
+    def mode(self) -> bool:
+        return self.a.search_mode == "true"
+
+    def warn(self, message: str) -> None:
+        print(f"[wmbus-bridge][WARN] {message}", file=self.err, flush=True)
+
+    def bump(self, name: str) -> None:
+        self.v[name] = str(_bash_int(self.v[name]) + 1)
+
+    def cached_count(self) -> int:
+        """search_cached_count."""
+        return sum(1 for ln in _read_lines(self.v["SEARCH_CANDIDATES_FILE"])
+                   if _SEARCH_CACHED_ROW.match(ln))
+
+    def write_status(self, phase: str = "auto", reason: str = "") -> None:
+        """write_search_status."""
+        v = self.v
+        if not v["SEARCH_STATUS_FILE"]:
+            return
+        cached = self.cached_count()
+        try:
+            with open(v["SEARCH_MATCHES_FILE"], "rb") as fh:
+                matches = fh.read().count(b"\n")
+        except OSError:
+            matches = 0
+        if phase == "auto":
+            if _bash_int(v["SEARCH_MATCH_COUNT"]) > 0 or matches > 0:
+                phase = "matched"
+            elif v["SEARCH_USING_TEMP_METERS"] == "true":
+                phase = "search"
+            elif self.mode and v["SEARCH_EXPECTED_VALUE_M3"] != "0":
+                phase = "collecting"
+            else:
+                phase = "listen"
+        if reason:
+            v["SEARCH_LAST_REASON"] = reason
+
+        def num(name: str) -> Any:
+            return _jq_tonumber(v[name] or "0")
+
+        doc = {
+            "updated_at": iso_now(),
+            "phase": phase,
+            "search_mode": self.mode,
+            "expected_m3": num("SEARCH_EXPECTED_VALUE_M3"),
+            "tolerance_m3": num("SEARCH_TOLERANCE_M3"),
+            "cached_candidates": _jq_tonumber(str(cached)),
+            "ignored_candidates": num("SEARCH_IGNORED_COUNT"),
+            "loaded_temp_meters": num("SEARCH_TEMP_METERS_LOADED"),
+            "decoded_json": num("SEARCH_DECODED_JSON_COUNT"),
+            "checked_values": num("SEARCH_CHECKED_VALUES"),
+            "matches": _jq_tonumber(str(matches)),
+            "cache_changed_at": v["SEARCH_LAST_CACHE_CHANGE"],
+            "last_candidate": {"id": v["SEARCH_LAST_CANDIDATE_ID"],
+                               "driver": v["SEARCH_LAST_CANDIDATE_DRIVER"],
+                               "type": v["SEARCH_LAST_CANDIDATE_TYPE"]},
+            "last_checked": {"id": v["SEARCH_LAST_CHECKED_ID"], "driver": v["SEARCH_LAST_CHECKED_DRIVER"],
+                             "field": v["SEARCH_LAST_CHECKED_FIELD"],
+                             "value": v["SEARCH_LAST_CHECKED_VALUE"],
+                             "diff_m3": v["SEARCH_LAST_CHECKED_DIFF"]},
+            "last_reason": v["SEARCH_LAST_REASON"],
+            "last_ignored_reason": v["SEARCH_LAST_IGNORED_REASON"],
+        }
+        try:
+            _write_replace_tmp(v["SEARCH_STATUS_FILE"], _b(_jq_pretty(doc)) + b"\n")
+        except OSError:
+            pass
+
+    # ── a candidate of the LISTEN parser ──
+
+    def cache_candidate(self, meter: str, driver: str, type_line: str,
+                        candidate_seen: Callable[[str, str, str], None]) -> None:
+        """search_cache_candidate; candidate_seen is status_candidate_seen (id, driver, type)."""
+        v = self.v
+        mid = normalize_id(meter)
+        if not _ID8.fullmatch(mid):
+            return
+        driver = driver or "auto"
+        type_lc = _ascii_lower(type_line)
+        if not (type_lc and not candidate_type_requires_aes(type_lc) and "water" in type_lc):
+            self.bump("SEARCH_IGNORED_COUNT")
+            v["SEARCH_LAST_CANDIDATE_ID"] = mid
+            v["SEARCH_LAST_CANDIDATE_DRIVER"] = driver
+            v["SEARCH_LAST_CANDIDATE_TYPE"] = type_line or "unknown"
+            v["SEARCH_LAST_IGNORED_REASON"] = "not_water_m3_candidate_or_encrypted"
+            self.warn(f"SEARCH ignored: id={mid} driver={driver} type={type_line or 'unknown'} "
+                      f"reason=not_water_m3_candidate_or_encrypted (ignored={v['SEARCH_IGNORED_COUNT']}).")
+            self.write_status("auto", "candidate_ignored")
+            return
+        path = v["SEARCH_CANDIDATES_FILE"]
+        open(path, "ab").close()
+        if any(ln.startswith(_b(mid) + b"\t") for ln in _read_lines(path)):
+            return
+        with open(path, "ab") as fh:
+            fh.write(_b(f"{mid}\t{driver}\n"))
+        v["SEARCH_LAST_CACHE_CHANGE"] = iso_now()
+        v["SEARCH_LAST_CANDIDATE_ID"] = mid
+        v["SEARCH_LAST_CANDIDATE_DRIVER"] = driver
+        v["SEARCH_LAST_CANDIDATE_TYPE"] = type_line or "unknown"
+        self.warn(f"SEARCH discovered: id={mid} driver={driver} type={type_line or 'unknown'} stored as "
+                  f"water candidate (cached={self.cached_count()}, ignored={v['SEARCH_IGNORED_COUNT']}).")
+        candidate_seen(mid, driver, type_line or "unknown")
+        self.write_status("auto", "candidate_cached")
+
+    # ── a decoded telegram ──
+
+    def is_temp(self, line: str) -> bool:
+        """09-discovery.sh is_search_temp_json: a temporary search_<id> meter."""
+        return self.mode and jq_r(line, (".name",)).startswith("search_")
+
+    def telegram(self, line: str) -> bool:
+        """What the decode loop runs for SEARCH: status_mark_search_decoded_no_aes,
+        process_search_json and, for a temporary meter, clear_search_discovery_from_json.
+        True for a temporary meter (with any id): nothing else is done with it."""
+        temp = self.is_temp(line)
+        mid = normalize_id(jq_r(line, (".id",)))
+        if not _ID8.fullmatch(mid):
+            return temp
+        if temp and self.a.candidate_analysis_file:
+            # status_mark_search_decoded_no_aes. No LISTEN parser runs while
+            # temporary meters decode, so no candidate row waits for a write.
+            tsv_upsert(self.a.candidate_analysis_file, mid, f"{mid}\tno_aes\tTemporary SEARCH meter decoded without "
+                                                f"key; no AES key was required for this telegram\t\t\t0\t{iso_now()}")
+        self.process_json(line, mid, temp)
+        if temp:
+            self.clear_discovery(line, mid)
+        return temp
+
+    def process_json(self, line: str, mid: str, temp: bool) -> None:
+        """process_search_json."""
+        if not self.mode:
+            return
+        v = self.v
+        if temp:
+            self.bump("SEARCH_DECODED_JSON_COUNT")
+        expected = v["SEARCH_EXPECTED_VALUE_M3"]
+        for field, value in self.numbers(line):
+            if not field or not value:
+                continue
+            field_lc = _ascii_lower(field)
+            if "total_volume" not in field_lc and "m3" not in field_lc:
+                continue
+            meter = jq_r(line, (".meter",))
+            self.bump("SEARCH_CHECKED_VALUES")
+            v["SEARCH_LAST_CHECKED_ID"] = mid
+            v["SEARCH_LAST_CHECKED_DRIVER"] = meter or "auto"
+            v["SEARCH_LAST_CHECKED_FIELD"] = field
+            v["SEARCH_LAST_CHECKED_VALUE"] = value
+            key = f"{mid}|{field}"
+            diff = f"{_awk_number(value) - _awk_number(expected):.6f}"
+            d = float(diff)
+            absdiff = f"{-d if d < 0 else d:.6f}"
+            v["SEARCH_LAST_CHECKED_DIFF"] = absdiff
+            v["SEARCH_LAST_REASON"] = "value_out_of_tolerance"
+            if (expected != "0" and _awk_compare(absdiff, v["SEARCH_TOLERANCE_M3"], "<=")
+                    and key not in self.reported_expected):
+                media = jq_r(line, (".media",))
+                self.warn(f"SEARCH MATCH: id={mid} driver={meter or 'unknown'} media={media or 'unknown'} "
+                          f"field={field} value={value} m3 expected={expected} diff={absdiff} m3")
+                self.warn('SEARCH SUGGESTED CONFIG: {"id":"meter_%s","meter_id":"%s","type":"%s",'
+                          '"type_other":"","key":""}' % (mid, mid, meter or "auto"))
+                self.emit("value_match", line, field, value, absdiff, "0")
+                self.record_match(line, field, value, absdiff)
+                self.bump("SEARCH_MATCH_COUNT")
+                v["SEARCH_LAST_REASON"] = "value_match"
+                self.write_status("matched", "value_match")
+                self.reported_expected.add(key)
+            else:
+                self.write_status("auto", "value_out_of_tolerance")
+            if v["SEARCH_DELTA_MODE"] == "true":
+                if key not in self.first_value:
+                    self.first_value[key] = value
+                else:
+                    first = self.first_value[key]
+                    delta = f"{_awk_number(value) - _awk_number(first):.6f}"
+                    if (_awk_compare(delta, v["SEARCH_MIN_DELTA_M3"], ">=")
+                            and key not in self.reported_delta):
+                        self.warn(f"SEARCH delta: id={mid} field={field} first={first} now={value} "
+                                  f"delta={delta} m3")
+                        self.emit("delta_match", line, field, value, "0", delta)
+                        self.reported_delta.add(key)
+
+    @staticmethod
+    def numbers(line: str) -> List[Tuple[str, str]]:
+        """`jq -r 'to_entries[] | select((.value|type)=="number") | [.key, (.value|tostring)] | @tsv'`
+        read back with `IFS=$'\\t' read -r field value`."""
+        out = []
+        for doc in jq_values(line + "\n"):
+            if not isinstance(doc, dict):
+                continue
+            for k, x in doc.items():
+                if _is_number(x):
+                    field, value = bash_read_fields(_tsv_escape(k) + "\t" + jq_dumps(x), 2, "\t")
+                    out.append((field.strip("\t"), value.strip("\t")))
+        return out
+
+    def emit(self, kind: str, line: str, field: str, value: str, diff: str, delta: str) -> None:
+        """emit_search_payload."""
+        mid = normalize_id(jq_r(line, (".id",)))
+        if not _ID8.fullmatch(mid):
+            return
+        nums = []
+        for text in (value, self.v["SEARCH_EXPECTED_VALUE_M3"], diff, delta):
+            try:
+                vals = jq_values(text)
+            except ValueError:
+                return
+            if len(vals) != 1:
+                return  # jq: invalid JSON text passed to --argjson
+            nums.append(vals[0])
+        payload = jq_dumps({"event": kind, "id": mid, "meter": jq_r(line, (".meter",)),
+                            "media": jq_r(line, (".media",)), "name": jq_r(line, (".name",)),
+                            "field": field, "value_m3": nums[0], "expected_value_m3": nums[1],
+                            "diff_m3": nums[2], "delta_m3": nums[3]})
+        self.publish(self.v["SEARCH_TOPIC"], payload, False)
+
+    def record_match(self, line: str, field: str, value: str, diff: str) -> None:
+        """search_record_match: one row, the last 100 kept."""
+        v = self.v
+        mid = normalize_id(jq_r(line, (".id",)))
+        if not _ID8.fullmatch(mid):
+            return
+        row = "\t".join([iso_now(), mid, jq_r(line, (".meter",)) or "auto", jq_r(line, (".media",)),
+                         field, value, v["SEARCH_EXPECTED_VALUE_M3"], diff, v["SEARCH_TOLERANCE_M3"]])
+        path = v["SEARCH_MATCHES_FILE"]
+        try:
+            with open(path, "ab") as fh:
+                fh.write(_b(row) + b"\n")
+            _write_replace_tmp(path, b"".join(ln + b"\n" for ln in _read_lines(path)[-100:]))
+        except OSError:
+            pass
+
+    def clear_discovery(self, line: str, mid: str) -> None:
+        """clear_search_discovery_from_json: empty retained configs for what a
+        temporary meter would have announced, in case an older run did."""
+        prefix = self.a.discovery_prefix
+        if self.v["DISCOVERY_ENABLED"] == "true" and mid not in self.cleaned_legacy:
+            # clean_legacy_entities; mqtt_pub does not fail (mosquitto_pub || true).
+            self.publish(f"{prefix}/sensor/wmbus_{mid}/rssi_dbm/config", "", True)
+            self.cleaned_legacy.add(mid)
+        uniq = f"wmbus_{mid}"
+        for doc in jq_values(line + "\n"):
+            if not isinstance(doc, dict):
+                continue
+            for k, x in doc.items():
+                if k in _SEARCH_NOT_FIELDS or isinstance(x, (dict, list)):
+                    continue
+                for key in k.split("\n"):  # `jq -r .key` read line by line
+                    obj = obj_id(key)
+                    if not key or not obj or f"{mid}|{obj}" in self.cleared_fields:
+                        continue
+                    self.publish(f"{prefix}/sensor/{uniq}/{obj}/config", "", True)
+                    self.cleared_fields.add(f"{mid}|{obj}")
+        if f"{mid}|status" not in self.cleared_fields:
+            self.publish(f"{prefix}/sensor/{uniq}/status/config", "", True)
+            self.publish(f"{prefix}/binary_sensor/{uniq}/status_problem/config", "", True)
+            self.cleared_fields.add(f"{mid}|status")
+
+    def publish(self, topic: str, payload: str, retain: bool) -> None:
+        """mqtt_pub: a PUB frame to the publisher, else mosquitto_pub in the bash loop."""
+        data = _b(payload)
+        try:
+            with socket.create_connection(("127.0.0.1", int(self.a.publisher_port)), timeout=5) as s:
+                s.sendall(b"PUB %d %d " % (1 if retain else 0, len(data)) + _b(topic) + b"\n" + data + b"\n")
+            return
+        except (OSError, ValueError, AttributeError):
+            pass
+        if self.request is not None:
+            self.request("pub", topic, payload, "true" if retain else "false")
+
 # ── the decode pipeline's output (run_once's loop) ──────────────────────────
 
 _TARIFF_CAPTURE = re.compile(r"^total_energy_consumption_tariff_([0-9]+)_kwh$", re.I)
@@ -2437,12 +2818,16 @@ class DecodeBook:
     meter's exclude patterns), then status.json with Discovery published.
     Any other line: the log, a key problem ("Permanently ignoring telegrams
     from id:"), and - while no meter is configured (--zero) - the LISTEN
-    parser of the main instance, in this process.
+    parser of the main instance, in this process (not while SEARCH decodes
+    its temporary meters).
+    With search_mode, SEARCH (SearchBook) checks every decoded telegram, and
+    one of a temporary search_<id> meter goes no further.
 
     The STATUS_* values start as the pipeline's subshell inherited them
     (--decoded-count etc.), as the bash loop's did. A DEC frame the publisher
     does not take is asked of the bash loop behind ("publish": the
-    mosquitto_pub path of publish_decoded_json).
+    mosquitto_pub path of publish_decoded_json), as is a SEARCH message
+    ("pub": mqtt_pub).
     """
 
     def __init__(self, a: argparse.Namespace, out=None, err=None) -> None:
@@ -2459,11 +2844,16 @@ class DecodeBook:
             k, sep, v = row.partition("\x1f")
             if sep:
                 self.excludes[k] = v
+        state = search_state_from_env()
+        self.search: Optional[SearchBook] = None
+        if a.search_mode == "true":
+            self.search = SearchBook(a, state or search_state_from_env({"SEARCH_STATE": ""}),
+                                     err=self.err, request=self.request)
         self.listen: Optional["ListenBook"] = None
-        if a.zero == "true":
+        if a.zero == "true" and not (state and state["SEARCH_USING_TEMP_METERS"] == "true"):
             la = argparse.Namespace(**vars(a))
             la.official = "zero"
-            self.listen = ListenBook(la, out=self.out, err=self.err)
+            self.listen = ListenBook(la, out=self.out, err=self.err, search=self.search)
         self.deferred = self.listen.deferred if self.listen else Deferred()
         self.decoder = self.listen.decoder if self.listen else None
 
@@ -2492,6 +2882,8 @@ class DecodeBook:
         self.last_decoded = iso_now()
         self.add_event("ok", "Decoded telegram received")
         self.write_status()
+        if self.search is not None and self.search.telegram(line):
+            return
         self.meter_seen(line)
         self.echo(line)
         self.publish(line)

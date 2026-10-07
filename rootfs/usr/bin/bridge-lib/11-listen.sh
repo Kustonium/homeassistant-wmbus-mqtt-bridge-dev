@@ -147,7 +147,10 @@ _process_listen_json_line() {
 # changed one (ListenBook.snippet: what emit_snippet_if_new does, with the
 # preview config and its states) and decoded JSON (ListenBook.json: what
 # _process_listen_json_line does). The loop after it runs what stays in
-# bash, when asked: SEARCH (search_cache_candidate), and the one-shot decode
+# bash, when asked: SEARCH (search_cache_candidate) only with
+# LEDGER_SEARCH_IN_PYTHON=false - otherwise bridge_ledger.py's SearchBook
+# runs it with the SEARCH_* variables this subshell inherited
+# (_search_state) - and the one-shot decode
 # of a preview config just written (preview_decode_raw_if_requested) only
 # with LEDGER_PREVIEW_IN_PYTHON=false - by default bridge_ledger.py runs it.
 # emit_snippet_if_new and _process_listen_json_line stay as they are for the
@@ -165,8 +168,10 @@ _listen_parse_stage() {
   # $1: "nonzero" (default, the parallel LISTEN instance) or "zero" (the main
   # instance's listen output while no meter is configured; see run_once).
   local official="${1:-nonzero}"
+  local _search=()
+  [[ "${LEDGER_SEARCH_IN_PYTHON:-true}" == "true" ]] && _search=( "SEARCH_STATE=$(_search_state)" )
   # --name=value: a value starting with "-" must not read as an option.
-  until python3 -u "${BRIDGE_LEDGER}" listen \
+  until env "${_search[@]}" python3 -u "${BRIDGE_LEDGER}" listen \
       --candidates-file="${STATUS_CANDIDATES_FILE}" \
       --seen-file="${STATUS_SEEN_FILE}" \
       --recent-raw-file="${STATUS_RECENT_RAW_FILE}" \

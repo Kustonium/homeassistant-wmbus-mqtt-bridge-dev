@@ -274,8 +274,16 @@ decoder's output: the counters and `status.json`, the meter table and the last
 JSON, key problems from the decoder's log lines, and the hand-over of each
 telegram to the publisher, which builds its Discovery and state. While no meter
 is configured, the main instance's LISTEN output is parsed in the same process.
-With `search_mode` on, without the publisher's Discovery, or with
-`LEDGER_DECODE_IN_PYTHON=false`, the bash loop (`_decode_consume_bash`) does it
+With `search_mode` on, SEARCH runs there too (`SearchBook`, see 10-search.sh):
+the value check of every decoded telegram, the matches and deltas on
+`search_topic`, the cleanup of Discovery a temporary `search_<id>` meter must
+not have, and the candidate cache the LISTEN parser feeds. It starts from the
+`SEARCH_*` variables the pipeline inherited (`SEARCH_STATE`), and the parser
+and the value check share them, so `search_status.json` has one writer per
+process (bash wrote it from the decode loop and from the parser it forked,
+each with its own counters). Without the publisher's Discovery, with
+`LEDGER_DECODE_IN_PYTHON=false`, or with `search_mode` on and
+`LEDGER_SEARCH_IN_PYTHON=false`, the bash loop (`_decode_consume_bash`) does it
 as before.
 
 The bridge selects one cumulative numeric field for its compact meter table,
@@ -501,7 +509,8 @@ checks; bash repeats them.
   `candidate_seen` as LISTEN); `LEDGER_SAP_IN_PYTHON=false` hands it to bash
   as before.
 - `listen` (fields separated by 0x1F so empty ones survive `read`): SEARCH
-  (`search_cache_candidate`). A new or changed candidate
+  (`search_cache_candidate`) only with `LEDGER_SEARCH_IN_PYTHON=false`;
+  otherwise `SearchBook` caches the candidate itself. A new or changed candidate
   (`emit_snippet_if_new`: registration, the "Candidate detected" event, the
   announcement, the preview config and `pending`) and a decoded JSON line
   (the candidate's preview value and `decoded_value` or

@@ -229,18 +229,22 @@ _decode_consume_bash() {
 
 # The decode pipeline's output, by bridge_ledger.py decode (DecodeBook): the
 # counters, the event, status.json, the meter table, the key problems, the
-# zero-meter LISTEN parser and the hand-over to the publisher in one process,
-# instead of a dozen jq and awk runs per decoded telegram. Needs the
-# publisher's Discovery (MQTT_PUB_DEC); SEARCH runs in bash (part 6b), as
-# does everything with LEDGER_DECODE_IN_PYTHON=false. The loop after it
-# runs what the ledger asks, fields separated by 0x1F: "publish" with the
-# pipeline's counters when the publisher did not take a telegram (the
-# mosquitto_pub path of publish_decoded_json), and what the in-process
-# LISTEN parser asks when it runs without its files (see _listen_parse_stage).
+# zero-meter LISTEN parser, SEARCH (SearchBook, with the SEARCH_* variables
+# this subshell inherited: _search_state) and the hand-over to the publisher
+# in one process, instead of a dozen jq and awk runs per decoded telegram.
+# Needs the publisher's Discovery (MQTT_PUB_DEC); everything runs in bash
+# with LEDGER_DECODE_IN_PYTHON=false, and with search_mode on also with
+# LEDGER_SEARCH_IN_PYTHON=false. The loop after it runs what the ledger
+# asks, fields separated by 0x1F: "publish" with the pipeline's counters
+# when the publisher did not take a telegram (the mosquitto_pub path of
+# publish_decoded_json), "pub" for a SEARCH message the publisher did not
+# take (mqtt_pub), and what the in-process LISTEN parser asks when it runs
+# without its files (see _listen_parse_stage).
 _decode_stage() {
   local zero="$1"
-  if [[ "${LEDGER_DECODE_IN_PYTHON:-true}" != "true" || "${SEARCH_MODE:-false}" == "true" \
-        || "${MQTT_PUB_DEC:-false}" != "true" || -z "${MQTT_PUB_PORT:-}" ]]; then
+  if [[ "${LEDGER_DECODE_IN_PYTHON:-true}" != "true" || "${MQTT_PUB_DEC:-false}" != "true" \
+        || -z "${MQTT_PUB_PORT:-}" \
+        || ( "${SEARCH_MODE:-false}" == "true" && "${LEDGER_SEARCH_IN_PYTHON:-true}" != "true" ) ]]; then
     _decode_consume_bash "${zero}"
     return
   fi
@@ -252,7 +256,9 @@ _decode_stage() {
     done
   fi
   # --name=value: a value starting with "-" must not read as an option.
-  until METER_EXCLUDE_LINES="${_excl}" python3 -u "${BRIDGE_LEDGER}" decode \
+  local _search
+  _search="$(_search_state)"
+  until METER_EXCLUDE_LINES="${_excl}" SEARCH_STATE="${_search}" python3 -u "${BRIDGE_LEDGER}" decode \
       --status-json-file="${STATUS_JSON}" --raw-count-file="${STATUS_RAW_COUNT_FILE}" \
       --last-raw-file="${STATUS_LAST_RAW_FILE}" --discovery-flag-file="${STATUS_DISCOVERY_FLAG}" \
       --events-file="${STATUS_EVENTS_FILE}" --meters-file="${STATUS_METERS_FILE}" \
@@ -289,6 +295,7 @@ _decode_stage() {
           STATUS_LAST_DECODED_SEEN="${_b}"
           STATUS_LAST_EVENT="${_c}"
           publish_decoded_json "${_d}" ;;
+        pub) mqtt_pub "${_a}" "${_b}" "${_c}" ;;
         snippet) emit_snippet_if_new "${_a}" "${_b}" "${_c}" "${_d}" ;;
         search) search_cache_candidate "${_a}" "${_b}" "${_c}" ;;
         json) _process_listen_json_line "${_a}" ;;
