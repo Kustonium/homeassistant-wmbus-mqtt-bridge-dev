@@ -1,3 +1,9 @@
+## 1.5.80-dev.385
+
+### Added
+- register Diehl/SAP candidates from RAW frames in bridge_ledger.py (85fd575)
+- register new and changed LISTEN candidates and decoded JSON in bridge_ledger.py (63574a1)
+
 ## 1.5.80-dev.384
 
 ### Added
