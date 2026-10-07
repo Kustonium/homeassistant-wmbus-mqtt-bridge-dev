@@ -1,3 +1,9 @@
+## 1.5.80-dev.394
+
+### Added
+- clean up stale candidates in wmbus_meters.py housekeeping (d4044d3)
+- write the radio path's meter and preview files in wmbus_meters.py (dc4db8f)
+
 ## 1.5.80-dev.393
 
 ### Added
