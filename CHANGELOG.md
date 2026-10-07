@@ -1,3 +1,9 @@
+## 1.5.80-dev.382
+
+### Added
+- book the $SYS broker identity in the publisher (5f07897)
+- book the ESP diagnostic event log in the publisher (aa94d3e)
+
 ## 1.5.80-dev.381
 
 ### Added
