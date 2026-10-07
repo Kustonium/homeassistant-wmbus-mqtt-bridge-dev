@@ -1,3 +1,11 @@
+## 1.5.80-dev.379
+
+### Added
+- book the ESP health pulse and HA birth message in the publisher (8dc9b8a)
+
+### Fixed
+- keep candidate preview values across a restart (eda2108)
+
 ## 1.5.80-dev.378
 
 ### Added
