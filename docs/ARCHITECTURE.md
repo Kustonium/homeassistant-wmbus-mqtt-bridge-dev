@@ -581,6 +581,14 @@ writes `status_mbus.json` — current state, the meters configured and rejected,
 per meter the last id seen and when it last answered — and the WebUI renders it as
 the bus-status card.
 
+The decoder's output is read by `wmbus_mbus.py consume`: the stamped console log
+and its trimming, the traffic state, the address-clash check and `status_mbus.json`
+in one process. An accepted telegram (with `rssi_dbm` removed — it is 0 on a wire)
+goes back to the bash loop behind it, which publishes it as before: the meter's
+exclude patterns under its learned id, Discovery, state and the meter table.
+`MBUS_CONSUMER_IN_PYTHON=false` reads the output in bash again
+(`_mbus_consume_bash`).
+
 The two halves stay separate on purpose. Whether the port can be *opened* is
 answered in `webui.py` by actually opening it, which is the only thing that proves
 access; whether anything *answers* is answered by the bridge. A stale runtime state

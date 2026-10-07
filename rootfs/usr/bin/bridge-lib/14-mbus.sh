@@ -483,6 +483,73 @@ mbus_consume_line() {
   echo "${line}"
 }
 
+# The bash consumer of the decoder's output - the fallback of
+# _mbus_consume_stage (MBUS_CONSUMER_IN_PYTHON=false).
+_mbus_consume_bash() {
+  local line
+  while IFS= read -r line; do
+    mbus_log_console_line "${line}"
+    mbus_consume_line "${line}"
+  done
+}
+
+# Publish one accepted telegram handed back by wmbus_mbus.py: what
+# mbus_consume_line does after its own bookkeeping ($1 name, $2 normalized
+# id, $3 the telegram, rssi_dbm already removed).
+_mbus_publish_telegram() {
+  local name="$1" id="$2" line="$3"
+  if [[ -n "${name}" && -n "${id}" ]]; then
+    # The id is only now known, and field_excluded_for_meter() looks the
+    # patterns up by id; set before emit_discovery_from_json() below.
+    if [[ -n "${MBUS_EXCLUDE_BY_NAME[${name}]:-}" ]]; then
+      # shellcheck disable=SC2034  # read by field_excluded_for_meter() in 08-discovery-helpers.sh
+      METER_EXCLUDE_FIELDS["${id,,}"]="${MBUS_EXCLUDE_BY_NAME[${name}]}"
+    else
+      unset 'METER_EXCLUDE_FIELDS[${id,,}]'
+    fi
+  fi
+  if [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]]; then
+    status_meter_seen "${line}"
+    emit_discovery_from_json "${line}"
+    mqtt_pub "${STATE_PREFIX}/${id}/state" "${line}" "${STATE_RETAIN}" || true
+    status_mark_discovery_published
+    write_status_json
+  fi
+  echo "${line}"
+}
+
+# The decoder's output: the console log, the traffic state and status_mbus.json
+# in wmbus_mbus.py (one process instead of a jq per telegram line and a log
+# append per line); the loop after it publishes what it accepts and echoes
+# the rest, in the decoder's order. Fields are separated by 0x1F, which `read`
+# keeps, so an empty name survives; the line is the last field, so `read`
+# hands it over whole, and a newline in it travels as 0x1E. python3 exits 0
+# only at the end of its input; any other exit is a crash and it is started
+# again on the same input.
+MBUS_CONSUMER="${MBUS_CONSUMER:-${BRIDGE_SCRIPT_DIR:-/usr/bin}/wmbus_mbus.py}"
+_mbus_consume_stage() {
+  if [[ "${MBUS_CONSUMER_IN_PYTHON:-true}" != "true" ]] || ! command -v python3 >/dev/null 2>&1; then
+    _mbus_consume_bash
+    return
+  fi
+  # --name=value: a value starting with "-" must not read as an option.
+  until python3 -u "${MBUS_CONSUMER}" consume \
+      --log="${MBUS_LOG}" --status-file="${MBUS_STATUS_FILE}" --options="${OPTIONS_JSON}" \
+      --events-file="${STATUS_EVENTS_FILE}" --alias="${MBUS_BUS_ALIAS}" \
+      --configured="${MBUS_METERS_OK:-0}" --skipped="${MBUS_METERS_SKIPPED:-0}" \
+      --state="${MBUS_TRAFFIC_STATE}"; do
+    sleep 1
+  done | {
+    local _act _a _b _c
+    while IFS=$'\x1f' read -r _act _a _b _c; do
+      case "${_act}" in
+        tg) _mbus_publish_telegram "${_a}" "${_b}" "${_c//$'\x1e'/$'\n'}" ;;
+        log) printf '%s\n' "${_c}" ;;
+      esac
+    done
+  }
+}
+
 # ------------------------------------------------------------
 # Supervisor
 # ------------------------------------------------------------
@@ -510,13 +577,10 @@ start_mbus_instance() {
       local _t0
       _t0="$(epoch_now)"
       # tee wrote the decoder's line verbatim, with no time and no boundary
-      # between readings. Logging inside the loop instead lets the log carry a
-      # stamp while mbus_consume_line still gets the untouched line.
+      # between readings. Logging in the consumer instead lets the log carry a
+      # stamp while the parser still gets the untouched line.
       ${STDBUF_BIN} /usr/bin/wmbusmeters --useconfig="${MBUS_BASE}" 2>&1 \
-        | while IFS= read -r line; do
-            mbus_log_console_line "${line}"
-            mbus_consume_line "${line}"
-          done &
+        | _mbus_consume_stage &
       local pipeline_pid=$!
       wait "${pipeline_pid}" 2>/dev/null || true
       # Only an exiting process gets here. A vanished port does not end the
