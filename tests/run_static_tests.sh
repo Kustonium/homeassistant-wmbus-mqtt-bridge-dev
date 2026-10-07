@@ -39,3 +39,4 @@ python3 -m unittest tests/test_mqtt_publisher.py -v
 python3 -m unittest tests/test_publisher_books.py -v
 python3 -m unittest tests/test_esp_books.py -v
 python3 -m unittest tests/test_listen_book.py -v
+python3 -m unittest tests/test_preview_oneshot.py -v

@@ -486,15 +486,13 @@ Two stages hand work back to bash, one request per line, to a loop in the
 same stage. Python asks only when the bash code would get past its own cheap
 checks; bash repeats them.
 
-- `raw`: starting a preview one-shot (`preview_decode_raw_if_requested`,
-  which keeps the preview throttle and its state machine). Registering a new
-  Diehl/SAP candidate from its RAW frame, or changing its driver or type
-  (`status_raw_candidate_seen`), is done by Python itself
-  (`RawBook.candidate`, through the same `candidate_seen` as LISTEN);
-  `LEDGER_SAP_IN_PYTHON=false` hands it to bash as before.
+- `raw`: nothing left by default. Registering a new Diehl/SAP candidate from
+  its RAW frame, or changing its driver or type (`status_raw_candidate_seen`),
+  is done by Python itself (`RawBook.candidate`, through the same
+  `candidate_seen` as LISTEN); `LEDGER_SAP_IN_PYTHON=false` hands it to bash
+  as before.
 - `listen` (fields separated by 0x1F so empty ones survive `read`): SEARCH
-  (`search_cache_candidate`) and the preview one-shot of a candidate whose
-  preview config was just written. A new or changed candidate
+  (`search_cache_candidate`). A new or changed candidate
   (`emit_snippet_if_new`: registration, the "Candidate detected" event, the
   announcement, the preview config and `pending`) and a decoded JSON line
   (the candidate's preview value and `decoded_value` or
@@ -502,6 +500,17 @@ checks; bash repeats them.
   (`ListenBook.snippet` and `.json`), writing what the bash functions wrote;
   refreshes still waiting for the deferred write are written first, so the
   rows keep the order in which the telegrams arrived.
+
+Both stages run the preview one-shot themselves (`PreviewDecoder`, the
+`preview_decode_raw_if_requested` of bash on the same files: the id from the
+preview configs, the 20 s and 300 s throttle, the per-id lock directory, the
+`PREVIEW_DECODE_MAX_PARALLEL` slots, the temporary config). The decoder runs
+in a thread, as bash ran it in the background; its result - `decoded_value`
+or `decoded_without_numeric_value` with the value, or one more attempt
+without JSON towards `no_decode_result` - is booked by the thread that reads
+the input, which the finished decoder wakes through a pipe. At the end of the
+input the decoders still running are waited for, and a lock or slot left is
+freed. `LEDGER_PREVIEW_IN_PYTHON=false` hands the one-shot to bash again.
 
 A candidate that is already registered with exactly the driver and type bash
 would write, already announced in `seen_ids.txt` and whose preview config

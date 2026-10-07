@@ -42,13 +42,16 @@ import glob
 import json
 import math
 import os
+import queue
 import re
 import select
 import shutil
 import signal
+import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import time
 from decimal import Decimal
 from contextlib import contextmanager
@@ -256,20 +259,28 @@ def _apply(changes: List[Rows], lines: List[bytes]) -> List[bytes]:
     return lines
 
 
-def read_lines_flushing(stream, deferred: Deferred) -> Iterator[bytes]:
+def read_lines_flushing(stream, deferred: Deferred, waker=None) -> Iterator[bytes]:
     """The lines of stream, as iterating it gives them; while no line arrives,
-    the deferred writes are made when they fall due."""
+    the deferred writes are made when they fall due. waker (a PreviewDecoder)
+    is drained whenever its descriptor is readable: a one-shot finished."""
     try:
         fd = stream.fileno()
     except (AttributeError, OSError, ValueError):
         for line in stream:  # tests: an in-memory stream
             yield line
             deferred.flush_if_due()
+            if waker is not None:
+                waker.drain()
         return
     buf = b""
+    fds = [fd] + ([waker.fileno()] if waker is not None else [])
     while True:
         wait = deferred.due_in()
-        ready, _, _ = select.select([fd], [], [], wait)
+        ready, _, _ = select.select(fds, [], [], wait)
+        if waker is not None and waker.fileno() in ready:
+            waker.drain()
+            if fd not in ready:
+                continue
         if not ready:
             deferred.flush()
             continue
@@ -1554,6 +1565,272 @@ def candidate_seen(files: CandidateFiles, meter: str, driver: str, type_line: st
         append_event(events_file, "candidate", f"Candidate detected {meter} ({driver})")
 
 
+def candidate_seen_from_json(files: CandidateFiles, line: str, state_file: str, attempts_dir: str,
+                             events_file: str, log: Callable[[str, str], None],
+                             request: Callable[..., None]) -> None:
+    """11-listen.sh status_candidate_seen_from_json."""
+    meter = normalize_id(jq_r(line, (".id",)))
+    if not re.fullmatch(r"[0-9A-Fa-f]{8}", meter):
+        return
+    driver = jq_r(line, (".meter", ".driver"))
+    if not driver or driver == "null":
+        driver = "auto"
+    type_line = jq_r(line, (".media",))
+    type_line = "" if type_line == "null" else type_line
+    row = next((_bash_read_tabs(_s(ln), 9) for ln in _read_lines(files.candidates)
+                if _first_field(ln) == _b(meter)), None)
+    existing_driver, existing_type = (row[1], row[2]) if row else ("", "")
+    # Decoded JSON wins; a stored value only fills what it lacks, and not
+    # the generic placeholders, so a decode heals a RAW-registered row.
+    if driver == "auto" and existing_driver and existing_driver != "auto":
+        driver = existing_driver
+    if not type_line and existing_type and existing_type != "wMBus telegram":
+        type_line = existing_type
+    # reload=false: no LISTEN reload per decoded preview telegram.
+    candidate_seen(files, meter, driver, type_line or "decoded", "", "false", state_file, attempts_dir,
+                   events_file, log, request)
+
+
+def _env_int(name: str, default: int) -> int:
+    """`${NAME:-default}`, then `[[ =~ ^[0-9]+$ ]] || default`."""
+    v = os.environ.get(name, "")
+    return int(v) if re.fullmatch(r"[0-9]+", v) else default
+
+
+def record_no_decode_attempt(attempts_dir: str, state_file: str, meter: str,
+                             log: Callable[[str, str], None]) -> None:
+    """06-candidates.sh _record_preview_no_decode_attempt: count the one-shots
+    that gave no JSON; three of them over 60 s or more make it no_decode_result."""
+    cnt_file = os.path.join(attempts_dir, meter)
+    cnt = start = 0
+    if os.path.isfile(cnt_file):
+        lines = _read_lines(cnt_file)
+        c, st = _bash_read_tabs(_s(lines[0]) if lines else "", 2)
+        cnt = int(c) if re.fullmatch(r"[0-9]+", c) else 0
+        start = int(st) if re.fullmatch(r"[0-9]+", st) else 0
+    ts = int(now())
+    start = start if start > 0 else ts
+    cnt += 1
+    elapsed = ts - start
+    try:  # mktemp "<file>.tmp.XXXXXX" && mv: nothing when the directory is gone
+        fd, tmp = tempfile.mkstemp(prefix=meter + ".tmp.", dir=attempts_dir)
+        with os.fdopen(fd, "w") as fh:
+            fh.write(f"{cnt}\t{start}\n")
+        os.replace(tmp, cnt_file)
+    except OSError:
+        pass
+    if cnt >= 3 and elapsed >= 60:
+        log("verbose", f"[DIAG] preview one-shot {meter}: no JSON after {cnt} attempts ({elapsed}s)")
+        set_preview_state(state_file, attempts_dir, meter, "no_decode_result")
+    else:
+        log("debug", f"[DIAG] preview one-shot {meter}: no JSON attempt #{cnt} (elapsed={elapsed}s)")
+
+
+class PreviewDecoder:
+    """06-candidates.sh preview_decode_raw_if_requested: the one-shot preview decode.
+
+    A candidate's RAW frame is decoded by a short-lived wmbusmeters with a
+    temporary config holding only that candidate's meter-preview-<id> file.
+    The checks, the per-id lock, the parallel slots and the throttle are the
+    bash function's, on the same files, so either side can hold them. The
+    decoder runs in a thread, as bash ran it in the background; its result is
+    booked on the thread that reads the input (drain, woken through a pipe),
+    so the bookkeeping is never written from two threads. close() waits for
+    the decoders still running and books them, or frees their lock and slot.
+    """
+
+    def __init__(self, files: CandidateFiles, runtime: str, state_file: str, attempts_dir: str,
+                 values_file: str, events_file: str, loglevel: str,
+                 log: Callable[[str, str], None], request: Callable[..., None]) -> None:
+        self.files, self.runtime = files, runtime
+        self.state_file, self.attempts_dir = state_file, attempts_dir
+        self.values_file, self.events_file = values_file, events_file
+        self.loglevel, self.log, self.forward = loglevel, log, request
+        self.binary = os.environ.get("WMBUSMETERS_ONESHOT_BIN") or "/usr/bin/wmbusmeters"
+        self.results: "queue.SimpleQueue" = queue.SimpleQueue()
+        self.running: List[Tuple[threading.Thread, str, str, str]] = []
+        self.rfd, self.wfd = os.pipe()
+        os.set_blocking(self.rfd, False)
+
+    def fileno(self) -> int:
+        return self.rfd
+
+    def request(self, raw: str, id_hint: str = "") -> None:
+        """Everything up to the start of the decoder, as bash does it in the caller."""
+        raw = _ascii_upper(_BASH_SPACE.sub("", raw))
+        if not _HEX_UPPER.fullmatch(raw):
+            return
+        if re.fullmatch(r"[0-9A-Fa-f]{8}", id_hint):
+            meter = normalize_id(id_hint)
+        else:
+            # The preview config whose id is in the frame (little-endian), as
+            # the A-field is not the id for manufacturer-specific layouts.
+            meter, lower = "", raw.lower()
+            for path in sorted(glob.glob(os.path.join(self.files.preview_meter_dir, "meter-preview-*"))):
+                cand = os.path.basename(path)[len("meter-preview-"):]
+                if not os.path.exists(path) or not _ID8.fullmatch(cand):
+                    continue
+                if (cand[6:8] + cand[4:6] + cand[2:4] + cand[0:2]).lower() in lower:
+                    meter = cand.upper()
+                    break
+            meter = meter or meter_id_from_raw_hex(raw)
+        if not _ID8.fullmatch(meter):
+            return
+        cfg = os.path.join(self.files.preview_meter_dir, f"meter-preview-{meter}")
+        if not os.path.isfile(cfg):
+            return
+        locks = os.path.join(self.runtime, ".preview_decode_locks")
+        lasts = os.path.join(self.runtime, ".preview_decode_last")
+        os.makedirs(locks, exist_ok=True)
+        os.makedirs(lasts, exist_ok=True)
+        lock_dir, last_file = os.path.join(locks, meter), os.path.join(lasts, meter)
+        ts = int(now())
+        last = int(_digits_or_zero(last_file))
+        if ts - last < _env_int("PREVIEW_DECODE_MIN_INTERVAL_SECONDS", 20):
+            return
+        # A preview that already shows a value is decoded again at most every
+        # PREVIEW_DECODED_MIN_INTERVAL_SECONDS; any change of its config sets
+        # "pending" first, which decodes at once.
+        if (ts - last < _env_int("PREVIEW_DECODED_MIN_INTERVAL_SECONDS", 300)
+                and preview_state(self.state_file, meter) == "decoded_value"):
+            return
+        try:
+            os.mkdir(lock_dir)
+        except OSError:
+            return
+        slot = self._acquire_slot()
+        if not slot:
+            _rmdir(lock_dir)
+            return
+        try:
+            with open(last_file, "w") as fh:
+                fh.write(f"{ts}\n")
+        except OSError:
+            pass
+        try:
+            tmp = tempfile.mkdtemp(prefix=f".preview_decode.{meter}.", dir=self.runtime)
+        except OSError:
+            _rmdir(slot)
+            _rmdir(lock_dir)
+            return
+        try:
+            conf_dir = os.path.join(tmp, "etc", "wmbusmeters.d")
+            os.makedirs(conf_dir, exist_ok=True)
+            with open(os.path.join(tmp, "etc", "wmbusmeters.conf"), "w") as fh:
+                fh.write(f"loglevel={self.loglevel}\ndevice=stdin:hex\nlogfile=/dev/stdout\nformat=json\n")
+            shutil.copyfile(cfg, os.path.join(conf_dir, f"meter-preview-{meter}"))
+        except OSError:
+            pass
+        t = threading.Thread(target=self._decode, args=(meter, raw, tmp, slot, lock_dir), daemon=True)
+        self.running.append((t, tmp, slot, lock_dir))
+        t.start()
+
+    def _acquire_slot(self) -> str:
+        """_preview_acquire_slot: one of PREVIEW_DECODE_MAX_PARALLEL slot directories."""
+        n_max = max(_env_int("PREVIEW_DECODE_MAX_PARALLEL", 2), 1)
+        slots = os.path.join(self.runtime, ".preview_decode_slots")
+        os.makedirs(slots, exist_ok=True)
+        for n in range(1, n_max + 1):
+            slot = os.path.join(slots, str(n))
+            try:
+                os.mkdir(slot)
+                return slot
+            except OSError:
+                continue
+        return ""
+
+    def _decode(self, meter: str, raw: str, tmp: str, slot: str, lock_dir: str) -> None:
+        json_line = ""
+        try:
+            out = subprocess.run([self.binary, f"--useconfig={tmp}"], input=_b(raw + "\n"),
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT).stdout
+            json_line = next((ln for ln in _s(out).split("\n")
+                              if re.match(r'\{.*"_":"telegram"', ln)), "")
+        except OSError:
+            pass
+        self.results.put((meter, json_line, tmp, slot, lock_dir))
+        try:
+            os.write(self.wfd, b"x")
+        except OSError:
+            pass
+
+    def drain(self) -> None:
+        """Book the decoders that finished."""
+        try:
+            while os.read(self.rfd, 4096):
+                pass
+        except (BlockingIOError, OSError):
+            pass
+        while True:
+            try:
+                meter, json_line, tmp, slot, lock_dir = self.results.get_nowait()
+            except queue.Empty:
+                return
+            self.running = [r for r in self.running if r[1] != tmp]
+            try:
+                if json_line:
+                    self.log("debug", f"[DIAG] preview one-shot {meter}: decoded JSON")
+                    candidate_seen_from_json(self.files, json_line, self.state_file, self.attempts_dir,
+                                             self.events_file, self.log, self._route)
+                    store_candidate_value(json_line, self.values_file, self.state_file,
+                                          self.attempts_dir, self.log)
+                else:
+                    record_no_decode_attempt(self.attempts_dir, self.state_file, meter, self.log)
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+                _rmdir(slot)
+                _rmdir(lock_dir)
+
+    def _route(self, *fields: str) -> None:
+        """A one-shot asked for while booking one (a preview config the decoded
+        driver changed) comes back here; it meets the throttle bash met."""
+        if fields[0] == "preview":
+            self.request(fields[1], fields[2])
+        else:
+            self.forward(*fields)
+
+    def close(self, timeout: float = 30.0) -> None:
+        """At the end of the input: book the decoders still running; a decoder
+        that does not finish in time leaves its candidate to the next one-shot
+        (its lock and slot are freed, its result dropped)."""
+        deadline = time.monotonic() + timeout
+        for t, _tmp, _slot, _lock in list(self.running):
+            t.join(max(0.0, deadline - time.monotonic()))
+        self.drain()
+        for _t, tmp, slot, lock_dir in self.running:
+            shutil.rmtree(tmp, ignore_errors=True)
+            _rmdir(slot)
+            _rmdir(lock_dir)
+        self.running = []
+        # A new pipe: a decoder that did not finish may still write to the old one.
+        for fd in (self.rfd, self.wfd):
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        self.rfd, self.wfd = os.pipe()
+        os.set_blocking(self.rfd, False)
+
+
+def _rmdir(path: str) -> None:
+    try:
+        os.rmdir(path)
+    except OSError:
+        pass
+
+
+def _preview_decoder(a: argparse.Namespace, files: CandidateFiles, log: Callable[[str, str], None],
+                     forward: Callable[..., None]) -> Optional[PreviewDecoder]:
+    """The one-shot decoder of a book, when bash passed what it writes
+    (--preview-oneshot-runtime and the files of the preview state machine);
+    otherwise None and the one-shot is asked of bash ("preview" request)."""
+    need = [getattr(a, n, "") for n in ("preview_oneshot_runtime", "candidate_values_file",
+                                        "preview_attempts_dir", "preview_state_file", "events_file")]
+    if not all(need):
+        return None
+    return PreviewDecoder(files, need[0], need[3], need[2], need[1], need[4], a.loglevel, log, forward)
+
+
 _DEVICE_TYPES = {"02": "Electricity meter (0x02)", "03": "Gas meter (0x03)",
                  "04": "Heat meter (0x04)", "06": "Warm water meter (0x06)",
                  "07": "Water meter (0x07)", "08": "Heat Cost Allocator (0x08)",
@@ -1613,8 +1890,15 @@ class RawBook:
                                          a.candidate_raw_file, a.candidate_analysis_file,
                                          a.preview_meter_dir, a.meter_dir, self.deferred)
         self.ring_lines: Optional[int] = None
+        self.decoder = _preview_decoder(a, self.candidates, self.log, self.write_request)
 
     def request(self, *fields: str) -> None:
+        if fields[0] == "preview" and self.decoder is not None:
+            self.decoder.request(fields[1], fields[2] if len(fields) > 2 else "")
+            return
+        self.write_request(*fields)
+
+    def write_request(self, *fields: str) -> None:
         # A lost reader must not stop the counting itself.
         try:
             self.out.write("\t".join(fields) + "\n")
@@ -1823,7 +2107,7 @@ def run_lines(book: "RawBook", stream=None, err=None) -> None:
     stream = stream if stream is not None else sys.stdin.buffer
     err = err if err is not None else sys.stderr
     try:
-        for raw in read_lines_flushing(stream, book.deferred):
+        for raw in read_lines_flushing(stream, book.deferred, book.decoder):
             if not raw.endswith(b"\n"):  # `read` does not hand over an unterminated last line
                 continue
             try:
@@ -1835,6 +2119,8 @@ def run_lines(book: "RawBook", stream=None, err=None) -> None:
         # this process start it again; what is collected is written first.
         raise SystemExit(128 + signal.SIGTERM)
     finally:
+        if book.decoder is not None:
+            book.decoder.close()
         book.deferred.flush(err)
 
 
@@ -1871,8 +2157,15 @@ class ListenBook:
                                          a.candidate_raw_file, a.candidate_analysis_file,
                                          a.preview_meter_dir, a.meter_dir, self.deferred)
         self.block = ("", "", "", "")
+        self.decoder = _preview_decoder(a, self.candidates, self.log, self.write_request)
 
     def request(self, *fields: str) -> None:
+        if fields[0] == "preview" and self.decoder is not None:
+            self.decoder.request(fields[1], fields[2])
+            return
+        self.write_request(*fields)
+
+    def write_request(self, *fields: str) -> None:
         try:
             self.out.write(self.SEP.join(fields) + "\n")
             self.out.flush()
@@ -1966,25 +2259,8 @@ class ListenBook:
 
     def candidate_seen_from_json(self, line: str) -> None:
         """11-listen.sh status_candidate_seen_from_json."""
-        meter = normalize_id(jq_r(line, (".id",)))
-        if not re.fullmatch(r"[0-9A-Fa-f]{8}", meter):
-            return
-        driver = jq_r(line, (".meter", ".driver"))
-        if not driver or driver == "null":
-            driver = "auto"
-        type_line = jq_r(line, (".media",))
-        type_line = "" if type_line == "null" else type_line
-        row = next((_bash_read_tabs(_s(ln), 9) for ln in _read_lines(self.candidates.candidates)
-                    if _first_field(ln) == _b(meter)), None)
-        existing_driver, existing_type = (row[1], row[2]) if row else ("", "")
-        # Decoded JSON wins; a stored value only fills what it lacks, and not
-        # the generic placeholders, so a decode heals a RAW-registered row.
-        if driver == "auto" and existing_driver and existing_driver != "auto":
-            driver = existing_driver
-        if not type_line and existing_type and existing_type != "wMBus telegram":
-            type_line = existing_type
-        # reload=false: no LISTEN reload per decoded preview telegram.
-        self.candidate_seen(meter, driver, type_line or "decoded", "", "false")
+        candidate_seen_from_json(self.candidates, line, self.a.preview_state_file,
+                                 self.a.preview_attempts_dir, self.a.events_file, self.log, self.request)
 
     def snippet(self, meter: str, driver: str, type_line: str, manufacturer: str) -> None:
         """11-listen.sh emit_snippet_if_new."""
@@ -2037,7 +2313,7 @@ def run_listen(book: ListenBook, stream=None, err=None) -> None:
     stream = stream if stream is not None else sys.stdin.buffer
     err = err if err is not None else sys.stderr
     try:
-        for raw in read_lines_flushing(stream, book.deferred):
+        for raw in read_lines_flushing(stream, book.deferred, book.decoder):
             if not raw.endswith(b"\n"):  # `read` does not hand over an unterminated last line
                 continue
             try:
@@ -2052,6 +2328,8 @@ def run_listen(book: ListenBook, stream=None, err=None) -> None:
         # As in run(): what is collected is written first.
         raise SystemExit(128 + signal.SIGTERM)
     finally:
+        if book.decoder is not None:
+            book.decoder.close()
         book.deferred.flush(err)
 
 
@@ -2318,6 +2596,10 @@ def _parser() -> argparse.ArgumentParser:
     # With it (and --preview-state-file) a new or changed Diehl/SAP candidate
     # is registered here (RawBook.candidate); without, it is asked of bash.
     raw.add_argument("--preview-attempts-dir", default="")
+    # With these two the preview one-shot runs here (PreviewDecoder); without,
+    # it is asked of bash ("preview" request).
+    raw.add_argument("--preview-oneshot-runtime", default="")
+    raw.add_argument("--candidate-values-file", default="")
     raw.add_argument("--preview-decoded-min-interval", type=int, default=300)
     # Values the counter subshell inherits when the pipeline starts; they go
     # into status.json unchanged, as the bash counter wrote them.
@@ -2339,7 +2621,8 @@ def _parser() -> argparse.ArgumentParser:
         listen.add_argument(f"--{name}", default="")
     # With these three a new or changed candidate is registered here
     # (ListenBook.snippet); without, it is asked of the bash loop as before.
-    for name in ("events-file", "preview-state-file", "preview-attempts-dir", "candidate-values-file"):
+    for name in ("events-file", "preview-state-file", "preview-attempts-dir", "candidate-values-file",
+                 "preview-oneshot-runtime"):
         listen.add_argument(f"--{name}", default="")
     rx = modes.add_parser("rx", help="wmbus/<board>/rx messages")
     for name in ("reception", "mode", "history", "sequence", "boots", "clock"):

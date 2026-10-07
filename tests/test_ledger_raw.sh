@@ -158,7 +158,10 @@ snapshot() {  # snapshot <dir>
 # `set +e` before run_once. status_raw_candidate_seen in the loop behind
 # python3 relies on that (a `read` from an empty awk result returns 1 for an
 # unknown SAP candidate), so the stage runs the same way here.
-stage() { ( set +e; LEDGER_SAP_IN_PYTHON=false; _raw_counter_stage ); }
+# The preview one-shot runs in python3 now (PreviewDecoder, compared with
+# preview_decode_raw_if_requested in tests/test_preview_oneshot.py); the
+# recorded one-shots are bash's, so it is handed over here as it used to be.
+stage() { ( set +e; LEDGER_SAP_IN_PYTHON=false; LEDGER_PREVIEW_IN_PYTHON=false; _raw_counter_stage ); }
 
 # The run inside one minute, as the recording was, so the per-minute rate is
 # comparable.

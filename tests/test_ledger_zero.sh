@@ -117,10 +117,13 @@ dump() {
   printf '== oneshots\n' >> "$1"
   cat "${TMP}/oneshots" >> "$1"
 }
+# The preview one-shot runs in python3 now (PreviewDecoder, compared with
+# preview_decode_raw_if_requested in tests/test_preview_oneshot.py); the
+# recorded one-shots are bash's, so it is handed over here as it used to be.
 batch() {  # batch <offset> <file>
   ( export LEDGER_TEST_EPOCH=$(( T0 + $1 )) PYTHONPATH="${TMP}/clock"
     set +eu
-    zero_parse < "$2" ) >> "${TMP}/log" 2>&1 || true
+    LEDGER_PREVIEW_IN_PYTHON=false zero_parse < "$2" ) >> "${TMP}/log" 2>&1 || true
 }
 block_of() {
   awk -v id="$1" '/^Received telegram from:/ { on = (tolower($4) == tolower(id)) } on' "${LISTEN_OUT}"

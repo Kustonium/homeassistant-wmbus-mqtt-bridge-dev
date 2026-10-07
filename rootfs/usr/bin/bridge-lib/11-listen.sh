@@ -147,8 +147,9 @@ _process_listen_json_line() {
 # changed one (ListenBook.snippet: what emit_snippet_if_new does, with the
 # preview config and its states) and decoded JSON (ListenBook.json: what
 # _process_listen_json_line does). The loop after it runs what stays in
-# bash, when asked: SEARCH (search_cache_candidate) and the one-shot decode
-# of a preview config just written (preview_decode_raw_if_requested).
+# bash, when asked: SEARCH (search_cache_candidate), and the one-shot decode
+# of a preview config just written (preview_decode_raw_if_requested) only
+# with LEDGER_PREVIEW_IN_PYTHON=false - by default bridge_ledger.py runs it.
 # emit_snippet_if_new and _process_listen_json_line stay as they are for the
 # one-shot decoder and for an older bridge_ledger.py. Fields are
 # separated by 0x1F, which `read` does not treat as whitespace, so empty ones
@@ -176,6 +177,7 @@ _listen_parse_stage() {
       --preview-state-file="${STATUS_CANDIDATE_PREVIEW_STATE_FILE}" \
       --preview-attempts-dir="${RUNTIME:-${BASE}}/.preview_attempts" \
       --candidate-values-file="${STATUS_CANDIDATE_VALUES_FILE}" \
+      --preview-oneshot-runtime="$([[ "${LEDGER_PREVIEW_IN_PYTHON:-true}" == "true" ]] && echo "${RUNTIME:-${BASE}}")" \
       --official-count-file="${STATUS_OFFICIAL_METERS_COUNT_FILE}" \
       --meter-dir="${METER_DIR}" \
       --preview-meter-dir="${PREVIEW_METER_DIR}" \

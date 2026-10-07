@@ -130,10 +130,13 @@ dump() {
 # A batch at a fixed clock. The stage returns when the bash loop has done
 # every hand-over; a batch hands over only at its end (or only), so the run is
 # deterministic.
+# The preview one-shot runs in python3 now (PreviewDecoder, compared with
+# preview_decode_raw_if_requested in tests/test_preview_oneshot.py); the
+# recorded one-shots are bash's, so it is handed over here as it used to be.
 batch() {  # batch <offset> <file>
   ( export LEDGER_TEST_EPOCH=$(( T0 + $1 )) PYTHONPATH="${TMP}/clock"
     set +e
-    _listen_parse_stage < "$2" ) >> "${TMP}/log" 2>&1 || true
+    LEDGER_PREVIEW_IN_PYTHON=false _listen_parse_stage < "$2" ) >> "${TMP}/log" 2>&1 || true
 }
 
 block_of() {  # the block of one meter id in a recording
