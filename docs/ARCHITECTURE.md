@@ -490,10 +490,16 @@ checks; bash repeats them.
   its driver or type (`status_raw_candidate_seen`), and starting a preview
   one-shot (`preview_decode_raw_if_requested`, which keeps the preview
   throttle and its state machine).
-- `listen` (fields separated by 0x1F so empty ones survive `read`): a new or
-  changed candidate (`emit_snippet_if_new`: registration, the "Candidate
-  detected" event, the announcement, the preview config and `pending`),
-  SEARCH (`search_cache_candidate`) and decoded JSON lines.
+- `listen` (fields separated by 0x1F so empty ones survive `read`): SEARCH
+  (`search_cache_candidate`) and the preview one-shot of a candidate whose
+  preview config was just written. A new or changed candidate
+  (`emit_snippet_if_new`: registration, the "Candidate detected" event, the
+  announcement, the preview config and `pending`) and a decoded JSON line
+  (the candidate's preview value and `decoded_value` or
+  `decoded_without_numeric_value`) are booked by Python itself
+  (`ListenBook.snippet` and `.json`), writing what the bash functions wrote;
+  refreshes still waiting for the deferred write are written first, so the
+  rows keep the order in which the telegrams arrived.
 
 A candidate that is already registered with exactly the driver and type bash
 would write, already announced in `seen_ids.txt` and whose preview config

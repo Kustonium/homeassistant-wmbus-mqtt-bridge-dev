@@ -763,7 +763,7 @@ run_once() {
         # While no meter is configured this instance prints a "Received
         # telegram from:" block per telegram; bridge_ledger.py books them (the
         # same parser as the parallel LISTEN instance, which books nothing
-        # then) and hands new candidates and SEARCH back to bash. It reads the
+        # then) and hands SEARCH and preview one-shots back to bash. It reads the
         # official count file per block, so with meters it books nothing.
         if [[ "${SEARCH_USING_TEMP_METERS}" != "true" ]]; then
           [[ -n "${_zero_fd:-}" ]] || exec {_zero_fd}> >(_listen_parse_stage zero)

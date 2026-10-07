@@ -143,11 +143,14 @@ _process_listen_json_line() {
 }
 
 # The parser behind the pure LISTEN instance. bridge_ledger.py parses the
-# output and books every telegram of a candidate that is already registered
-# with the same driver and type, already announced and whose preview config
-# would stay as it is; the loop after it runs what stays in bash, when asked:
-# a new or changed candidate (emit_snippet_if_new, with the preview config and
-# its states), SEARCH (search_cache_candidate) and decoded JSON. Fields are
+# output and books every telegram: a known candidate (refresh), a new or
+# changed one (ListenBook.snippet: what emit_snippet_if_new does, with the
+# preview config and its states) and decoded JSON (ListenBook.json: what
+# _process_listen_json_line does). The loop after it runs what stays in
+# bash, when asked: SEARCH (search_cache_candidate) and the one-shot decode
+# of a preview config just written (preview_decode_raw_if_requested).
+# emit_snippet_if_new and _process_listen_json_line stay as they are for the
+# one-shot decoder and for an older bridge_ledger.py. Fields are
 # separated by 0x1F, which `read` does not treat as whitespace, so empty ones
 # survive. python3 exits 0 only at the end of its input; any other exit is a
 # crash and it is started again on the same input, losing at most the block
@@ -169,6 +172,10 @@ _listen_parse_stage() {
       --candidate-raw-file="${STATUS_CANDIDATE_RAW_FILE}" \
       --candidate-analysis-file="${STATUS_CANDIDATE_ANALYSIS_FILE}" \
       --snippet-file="${SNIPPET_STATE}" \
+      --events-file="${STATUS_EVENTS_FILE}" \
+      --preview-state-file="${STATUS_CANDIDATE_PREVIEW_STATE_FILE}" \
+      --preview-attempts-dir="${RUNTIME:-${BASE}}/.preview_attempts" \
+      --candidate-values-file="${STATUS_CANDIDATE_VALUES_FILE}" \
       --official-count-file="${STATUS_OFFICIAL_METERS_COUNT_FILE}" \
       --meter-dir="${METER_DIR}" \
       --preview-meter-dir="${PREVIEW_METER_DIR}" \
@@ -185,6 +192,7 @@ _listen_parse_stage() {
     while IFS=$'\x1f' read -r _act _a _b _c _d; do
       case "${_act}" in
         snippet) emit_snippet_if_new "${_a}" "${_b}" "${_c}" "${_d}" ;;
+        preview) preview_decode_raw_if_requested "${_a}" "${_b}" ;;
         search) search_cache_candidate "${_a}" "${_b}" "${_c}" ;;
         json) _process_listen_json_line "${_a}" ;;
       esac

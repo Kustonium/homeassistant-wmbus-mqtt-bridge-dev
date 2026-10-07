@@ -7,14 +7,17 @@
 # With bridge_ledger.py the block of a candidate that is already registered
 # with the same driver and type, already announced and whose preview config
 # would stay as it is, is booked in python3 (candidate_seen_refresh, shared
-# with the RAW stage); new and changed candidates, SEARCH and decoded JSON go
+# with the RAW stage); new and changed candidates and decoded JSON are booked
+# there as well (ListenBook.snippet / .json: status_candidate_seen with the
+# preview config and its state), and only SEARCH and the preview one-shot go
 # to the bash loop behind it. This test feeds recorded `wmbusmeters --listen`
 # output (tests/fixtures/listen) through _listen_parse_stage and checks:
 #   - every file under the data directory and the log lines are what the bash
 #     parser wrote for the same batches - recorded before it was removed, in
 #     tests/fixtures/ledger/listen/ - with the clock fixed per batch (date in
 #     bash, time.time in python3);
-#   - once every candidate is known, nothing reaches bash;
+#   - neither known nor new or changed candidates nor decoded JSON reach
+#     bash, though the files are what bash wrote for them;
 #   - python3 killed between two blocks is started again and loses at most the
 #     block it held;
 #   - the preview states: pending -> one-shot -> decoded_value (needs
@@ -158,6 +161,7 @@ run_all() {
   seed
   batch 0 "${CORPUS}"
   cp "${TMP}/handovers" "${TMP}/handovers.new"
+  cp "${SNIPPET_STATE}" "${TMP}/announced.new"
   : > "${TMP}/handovers"
   batch 1 "${CORPUS}"
   printf '0\n' > "${STATUS_OFFICIAL_METERS_COUNT_FILE}"   # no official meters: nothing booked
@@ -182,12 +186,16 @@ diff -u "${GOLDEN}/files.dump" "${TMP}/dump" >&2 \
   || fail "files differ from what parse_listen_candidates wrote (tests/fixtures/ledger/listen/files.dump)"
 diff -u "${GOLDEN}/log.sorted" <(LC_ALL=C sort "${TMP}/log" | sed "s#${TMP}#TMP#g") >&2 \
   || fail "log lines differ from what parse_listen_candidates logged (tests/fixtures/ledger/listen/log.sorted)"
-[[ "$(wc -l < "${TMP}/handovers.new")" -ge 12 ]] \
-  || fail "the recording registered only $(wc -l < "${TMP}/handovers.new") candidates - it tests nothing"
+[[ "$(wc -l < "${TMP}/announced.new")" -ge 12 ]] \
+  || fail "the recording registered only $(wc -l < "${TMP}/announced.new") candidates - it tests nothing"
+[[ ! -s "${TMP}/handovers.new" ]] \
+  || { cat "${TMP}/handovers.new" >&2; fail "new candidates were handed to bash"; }
 [[ ! -s "${TMP}/handovers.known" ]] \
   || { cat "${TMP}/handovers.known" >&2; fail "known candidates were handed to bash"; }
-[[ "$(cat "${TMP}/handovers.changed")" == $'snippet 67433753 qheatv2\nsnippet 53119425 kamwater\nsnippet 32131245 fhkvdataiii\njson\nsnippet 21031894 evo868v2' ]] \
-  || { cat "${TMP}/handovers.changed" >&2; fail "only the preview change, the unannounced candidate, the type and driver changes and the JSON line may reach bash"; }
+# The preview change, the unannounced candidate, the type and driver changes
+# and the JSON line: booked in python3 (the dump above holds what bash wrote).
+[[ ! -s "${TMP}/handovers.changed" ]] \
+  || { cat "${TMP}/handovers.changed" >&2; fail "changed candidates or decoded JSON were handed to bash"; }
 grep -q $'^67250945\t.*\t(LSE) Landis Staefa electronic (0xb265)$' "${STATUS_CANDIDATES_FILE}" \
   || fail "the block's manufacturer did not replace the stored text"
 grep -q $'^44556677\tqwaterv2\tlisten\t' "${STATUS_CANDIDATES_FILE}" \

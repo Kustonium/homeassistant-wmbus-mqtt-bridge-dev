@@ -142,6 +142,7 @@ run_all() {
   seed
   batch 0 "${CORPUS}"
   cp "${TMP}/handovers" "${TMP}/handovers.new"; : > "${TMP}/handovers"
+  cp "${SNIPPET_STATE}" "${TMP}/announced.new"
   batch 1 "${CORPUS}"
   batch 5 "${CORPUS}"
   cp "${TMP}/handovers" "${TMP}/handovers.known"; : > "${TMP}/handovers"
@@ -173,13 +174,19 @@ FILL='[wmbus-bridge] [DIAG] candidate 52632878: updated manufacturer text from L
 [[ "$(grep -cxF "${FILL}" "${TMP}/log.sorted")" == 1 ]] || fail "the manufacturer fill was not logged once"
 diff -u "${GOLDEN}/log.sorted" <(grep -vxF "${FILL}" "${TMP}/log.sorted") >&2 \
   || fail "log lines differ from what the inline parser logged (tests/fixtures/ledger/zero/log.sorted)"
-diff -u "${GOLDEN}/handovers.new" "${TMP}/handovers.new" >&2 \
-  || fail "new candidates must reach bash as with the inline parser"
+# The inline parser handed every new candidate to bash (handovers.new);
+# python3 now registers and announces them itself, in the same order.
+diff -u <(awk '{ print $2 }' "${GOLDEN}/handovers.new") "${TMP}/announced.new" >&2 \
+  || fail "new candidates are not announced as the inline parser announced them"
+[[ ! -s "${TMP}/handovers.new" ]] \
+  || { cat "${TMP}/handovers.new" >&2; fail "new candidates were handed to bash"; }
 # The inline parser handed every block to bash; known ones no longer go there.
 [[ ! -s "${TMP}/handovers.known" ]] \
   || { cat "${TMP}/handovers.known" >&2; fail "known candidates were handed to bash"; }
-[[ "$(cat "${TMP}/handovers.changed")" == $'snippet 67433753 qheatv2\nsnippet 53119425 kamwater\nsnippet 32131245 fhkvdataiii\nsnippet 21031894 evo868v2' ]] \
-  || { cat "${TMP}/handovers.changed" >&2; fail "only the preview change, the unannounced candidate and the type and driver changes may reach bash"; }
+# The preview change, the unannounced candidate and the type and driver
+# changes: booked in python3 (the dump above holds what bash wrote).
+[[ ! -s "${TMP}/handovers.changed" ]] \
+  || { cat "${TMP}/handovers.changed" >&2; fail "changed candidates were handed to bash"; }
 
 # ── 0 -> 1 meter: every block booked once ───────────────────────────────────
 # The main instance's parser (zero) and the parallel LISTEN one (nonzero) see

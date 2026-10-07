@@ -1324,6 +1324,200 @@ def autodecode_unchanged(files: CandidateFiles, meter: str, driver: str, type_li
         return False
 
 
+def normalize_id(text: str) -> str:
+    """05-raw.sh normalize_meter_id: 8 upper-case hex digits, "" when it is no id."""
+    t = re.sub(r"[ \t\n\r\f\v]", "", text)
+    if t in ("", "null"):
+        return ""
+    t = t[2:] if t[:2] in ("0x", "0X") else t
+    t = _ascii_upper(t)
+    if not re.fullmatch(r"[0-9A-F]+", t):
+        return ""
+    if len(t) < 8:
+        return t.rjust(8, "0")
+    return meter_id_from_raw_hex(t) if len(t) > 8 else t
+
+
+def jq_r(line: str, alternatives: Tuple[str, ...]) -> str:
+    """`$(jq -r '.a // .b // empty' <<< "$line" 2>/dev/null)` for top-level keys.
+
+    Every JSON value of the line is one input; a value that cannot be indexed
+    (number, string, array, boolean) is a jq error that prints nothing for it.
+    """
+    out = []
+    for v in jq_values(line + "\n"):
+        if v is None:
+            continue
+        if not isinstance(v, dict):
+            continue
+        for key in alternatives:
+            x = v.get(key[1:])
+            if x is not None and x is not False:
+                out.append(x if isinstance(x, str) else _jq_pretty(x))
+                break
+    return "\n".join(out).rstrip("\n")
+
+
+def jq_number_text(x: float) -> str:
+    """How jq prints a number it computed (a double), e.g. a sum."""
+    if x != x or x in (float("inf"), float("-inf")):
+        return "null" if x != x else ("1.7976931348623157e+308" if x > 0 else "-1.7976931348623157e+308")
+    if x == int(x) and abs(x) < 1e17:
+        return str(int(x))
+    return repr(x)
+
+
+_PRIMARY_CANONICAL = ("total_m3", "total_kwh", "total_wh", "total_energy_consumption_kwh", "total_volume_m3")
+_PRIMARY_LIKE = re.compile(r"(^total|_m3$|kwh|wh$|energy|volume)", re.I)
+_PRIMARY_NOT = re.compile(r"(last_month|last_year|previous_month|previous_year|previous|prev|at_history|"
+                          r"history|historic|billing|due_date|target|backflow|fraud|leak|tamper|alarm|"
+                          r"production|tariff)", re.I)
+_TARIFF_KWH = re.compile(r"^total_energy_consumption_tariff_[0-9]+_kwh$", re.I)
+_INSTANT = re.compile(r"(_kw$|_w$|_m3h$|_l_h$)", re.I)
+_META_KEYS = ("_", "id", "name", "meter", "media", "timestamp", "device_date_time", "rssi", "lqi",
+              "status", "driver", "type")
+
+
+def _tsv_cell(text: str) -> str:
+    """jq @tsv escaping of one string."""
+    return (text.replace("\\", "\\\\").replace("\t", "\\t").replace("\r", "\\r")
+            .replace("\n", "\\n"))
+
+
+def _first_object_lines(line: str, each: Callable[[dict], List[str]]) -> str:
+    """The first output line of a jq program run over every value of line;
+    a value the program fails on (not an object) prints nothing."""
+    for v in jq_values(line + "\n"):
+        if not isinstance(v, dict):
+            continue
+        out = each(v)
+        if out:
+            return out[0].split("\n", 1)[0]
+    return ""
+
+
+def select_primary_meter_value(line: str) -> str:
+    """07-meters.sh _select_primary_meter_value: "key<TAB>value" or ""."""
+    def each(v: dict) -> List[str]:
+        pair = next(([k, v[k]] for k in _PRIMARY_CANONICAL if _is_number(v.get(k))), None)
+        if pair is None:
+            pair = next(([k, x] for k, x in v.items() if _is_number(x) and _PRIMARY_LIKE.search(k)
+                         and not _PRIMARY_NOT.search(k)), None)
+        return [] if pair is None else [_tsv_cell(pair[0]) + "\t" + _jq_tostring(pair[1])]
+    return _first_object_lines(line, each)
+
+
+def store_candidate_value(line: str, values_file: str, state_file: str, attempts_dir: str,
+                          log: Callable[[str, str], None]) -> None:
+    """11-listen.sh _store_candidate_value: the preview's value of a decoded
+    candidate telegram, picked as status_meter_seen picks it, and the
+    preview state decoded_value (or decoded_without_numeric_value)."""
+    meter = normalize_id(jq_r(line, (".id",)))
+    if not re.fullmatch(r"[0-9A-Fa-f]{8}", meter):
+        return
+    value_key, value = _bash_read_tabs(select_primary_meter_value(line), 2)
+    if not value_key:
+        def tariffs(v: dict) -> List[str]:
+            vals = [float(x) for k, x in v.items() if _is_number(x) and _TARIFF_KWH.search(k)]
+            return [f"total_energy_consumption_kwh\t{jq_number_text(sum(vals))}"] if vals else []
+        value_key, value = _bash_read_tabs(_first_object_lines(line, tariffs), 2)
+    if not value_key:
+        value_key = _first_object_lines(
+            line, lambda v: [k for k, x in v.items() if _is_number(x) and _INSTANT.search(k)])
+    if value_key:
+        if not value:
+            for v in jq_values(line + "\n"):
+                if isinstance(v, dict) and v.get(value_key) not in (None, False):
+                    value = _jq_tostring(v[value_key]) if not isinstance(v[value_key], (dict, list)) \
+                        else _jq_pretty(v[value_key])
+                    break
+    else:
+        value_key, value = _bash_read_tabs(_first_object_lines(
+            line, lambda v: [f"{k}\t{_jq_tostring(x)}" for k, x in v.items()
+                             if k not in _META_KEYS and _is_number(x)]), 2)
+    if not value:
+        log("verbose", f"[DIAG] _store_candidate_value {meter}: no numeric value found, skipping")
+        set_preview_state(state_file, attempts_dir, meter, "decoded_without_numeric_value")
+        return
+    log("debug", f"[DIAG] _store_candidate_value {meter}: value_key={value_key} value={value}")
+    tsv_upsert(values_file, meter, f"{meter}\t{value}\t{value_key}\t{iso_now()}")
+    set_preview_state(state_file, attempts_dir, meter, "decoded_value")
+    log("debug", f"[DIAG] _store_candidate_value {meter}: wrote to status_candidate_values.tsv")
+
+
+def set_preview_state(path: str, attempts_dir: str, meter: str, state: str, note: str = "") -> None:
+    """06-candidates.sh _set_preview_state (see CLAUDE.md for the state machine).
+
+    A terminal state (decoded_value, decoded_without_numeric_value,
+    no_decode_result) discards the one-shot attempt counter.
+    """
+    tsv_upsert(path, meter, f"{meter}\t{state}\t{iso_now()}\t{note}")
+    if state in ("decoded_value", "decoded_without_numeric_value", "no_decode_result"):
+        _remove(os.path.join(attempts_dir, meter))
+
+
+def _remove(path: str) -> None:
+    """rm -f"""
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
+def ensure_autodecode(files: CandidateFiles, meter: str, driver: str, type_line: str, reload: str,
+                      state_file: str, attempts_dir: str,
+                      log: Callable[[str, str], None], request: Callable[..., None]) -> None:
+    """06-candidates.sh ensure_candidate_autodecode.
+
+    Keeps meter-preview-<id> as the candidate's driver says. An official
+    meter or one that needs AES has none (an existing one is removed with its
+    attempt counter). A preview config that is written or changes sets the
+    state "pending", drops the attempt counter and, when the RAW ring holds a
+    telegram of the meter, asks for a one-shot decode of it ("preview":
+    preview_decode_raw_if_requested, which stays in bash for now). LISTEN is
+    never reloaded; reload is only logged, as in bash.
+    """
+    preview = os.path.join(files.preview_meter_dir, f"meter-preview-{meter}")
+    attempts = os.path.join(attempts_dir, meter)
+    if official_meter(files.meter_dir, meter):
+        if os.path.isfile(preview):
+            _remove(preview)
+            _remove(attempts)
+            log("info", f"autodecode {meter}: skipped (official meter), pruned orphaned preview")
+        return
+    log("debug", f"[DIAG] autodecode {meter}: file={preview} driver={driver or 'auto'} "
+                 f"type={type_line or '?'} reload={reload}")
+    if candidate_type_requires_aes(type_line):
+        log("verbose", f"[DIAG] autodecode {meter}: AES required, skipping preview")
+        if os.path.isfile(preview):
+            _remove(preview)
+            _remove(attempts)
+        return
+    os.makedirs(files.preview_meter_dir, exist_ok=True)
+    content = f"name=preview_{meter}\nid={meter.lower()}\n"
+    if driver and driver not in ("auto", "unknown"):
+        content += f"driver={driver}\n"
+    try:
+        with open(preview, "rb") as fh:
+            unchanged = fh.read() == _b(content)
+    except OSError:
+        unchanged = False
+    if unchanged:
+        log("debug", f"[DIAG] autodecode {meter}: {preview} unchanged, no reload triggered")
+        return
+    with open(preview + ".tmp", "wb") as fh:  # the temporary name bash uses
+        fh.write(_b(content))
+    os.replace(preview + ".tmp", preview)
+    log("verbose", f"[DIAG] autodecode {meter}: wrote {preview} (driver={driver or 'auto'})")
+    set_preview_state(state_file, attempts_dir, meter, "pending")
+    _remove(attempts)
+    found = find_recent_raw(files.recent_raw, meter)
+    if found and found[2]:
+        # The candidate id goes with it: the RAW A-field is not the id for
+        # manufacturer-specific layouts (Diehl/izar).
+        request("preview", found[2], meter)
+
+
 _DEVICE_TYPES = {"02": "Electricity meter (0x02)", "03": "Gas meter (0x03)",
                  "04": "Heat meter (0x04)", "06": "Warm water meter (0x06)",
                  "07": "Water meter (0x07)", "08": "Heat Cost Allocator (0x08)",
@@ -1626,13 +1820,18 @@ class ListenBook:
             pass
 
     def log(self, level: str, message: str) -> None:
-        """log_debug / log_verbose: printed only at those log levels."""
-        if self.a.loglevel == "debug" or (level == "verbose" and self.a.loglevel == "verbose"):
+        """log ("info", always), log_verbose and log_debug. On stderr: stdout
+        carries the requests to the bash loop."""
+        if level == "info" or self.a.loglevel == "debug" or (
+                level == "verbose" and self.a.loglevel == "verbose"):
             print(f"[wmbus-bridge] {message}", file=self.err, flush=True)
 
     def line(self, text: str) -> None:
         if text.startswith("{") and '"_":"telegram"' in text:
-            self.request("json", text)
+            if self.in_process() and self.a.candidate_values_file:
+                self.json(text)
+            else:
+                self.request("json", text)
             return
         meter, driver, type_line, manufacturer = self.block
         m = _LISTEN_RECEIVED.match(text)
@@ -1675,7 +1874,98 @@ class ListenBook:
             self.request("search", meter, driver, type_line)
             return
         if not self.refresh(meter, driver, type_line or "listen", manufacturer):
-            self.request("snippet", meter, driver, type_line, manufacturer)
+            if self.in_process():
+                self.snippet(meter, driver, type_line, manufacturer)
+            else:
+                self.request("snippet", meter, driver, type_line, manufacturer)
+
+    def in_process(self) -> bool:
+        """bash passed the files status_candidate_seen writes: new and changed
+        candidates and decoded JSON are booked here, not asked of bash."""
+        return bool(self.a.preview_state_file and self.a.events_file and self.a.preview_attempts_dir)
+
+    def candidate_seen(self, meter: str, driver: str, type_line: str, manufacturer: str,
+                       reload: str) -> None:
+        """06-candidates.sh status_candidate_seen for a normalized id.
+
+        status.json is not written (write_status_json is a no-op in the bash
+        loop this replaces: its STATUS_* snapshot is stale).
+        """
+        files = self.candidates
+        # The refreshes still waiting for the deferred write happened before
+        # this: written first, the rows keep the order in which the telegrams
+        # arrived (and a waiting refresh of this candidate cannot overwrite
+        # it later).
+        _flush_candidate_refreshes(files)
+        existed = any(_first_field(ln) == _b(meter) for ln in _read_lines(files.candidates))
+        record_seen(files.seen, meter, "candidate")
+        last_seen = iso_now()
+        upsert_candidate_row(files.candidates, meter, driver, type_line, last_seen,
+                             seen_stats(files.seen, meter), manufacturer)
+        analyze_candidate_from_text(files, meter, type_line)
+        ensure_autodecode(files, meter, driver or "auto", type_line, reload, self.a.preview_state_file,
+                          self.a.preview_attempts_dir, self.log, self.request)
+        if not existed:
+            self.add_event("candidate", f"Candidate detected {meter} ({driver})")
+
+    def json(self, line: str) -> None:
+        """11-listen.sh _process_listen_json_line: a decoded telegram of a candidate."""
+        self.log("debug", f"[DIAG] LISTEN-parse: JSON telegram received: {line[:160]}")
+        if self.official_meters() > 0:
+            self.candidate_seen_from_json(line)
+        self.log("debug", "[DIAG] LISTEN-parse: calling _store_candidate_value")
+        store_candidate_value(line, self.a.candidate_values_file, self.a.preview_state_file,
+                              self.a.preview_attempts_dir, self.log)
+
+    def candidate_seen_from_json(self, line: str) -> None:
+        """11-listen.sh status_candidate_seen_from_json."""
+        meter = normalize_id(jq_r(line, (".id",)))
+        if not re.fullmatch(r"[0-9A-Fa-f]{8}", meter):
+            return
+        driver = jq_r(line, (".meter", ".driver"))
+        if not driver or driver == "null":
+            driver = "auto"
+        type_line = jq_r(line, (".media",))
+        type_line = "" if type_line == "null" else type_line
+        row = next((_bash_read_tabs(_s(ln), 9) for ln in _read_lines(self.candidates.candidates)
+                    if _first_field(ln) == _b(meter)), None)
+        existing_driver, existing_type = (row[1], row[2]) if row else ("", "")
+        # Decoded JSON wins; a stored value only fills what it lacks, and not
+        # the generic placeholders, so a decode heals a RAW-registered row.
+        if driver == "auto" and existing_driver and existing_driver != "auto":
+            driver = existing_driver
+        if not type_line and existing_type and existing_type != "wMBus telegram":
+            type_line = existing_type
+        # reload=false: no LISTEN reload per decoded preview telegram.
+        self.candidate_seen(meter, driver, type_line or "decoded", "", "false")
+
+    def snippet(self, meter: str, driver: str, type_line: str, manufacturer: str) -> None:
+        """11-listen.sh emit_snippet_if_new."""
+        meter = normalize_id(meter)
+        if not re.fullmatch(r"[0-9A-Fa-f]{8}", meter):
+            return
+        self.candidate_seen(meter, driver or "auto", type_line or "listen", manufacturer, "true")
+        if _b(meter) not in _read_lines(self.a.snippet_file):
+            with open(self.a.snippet_file, "ab") as fh:
+                fh.write(_b(meter) + b"\n")
+            for line in ("=== NEW METER CANDIDATE DETECTED ===", f"Received telegram from: {meter}",
+                         *([f"Suggested driver: {driver}"] if driver else []),
+                         "Add to options.json meters[] (example):",
+                         f'  no key:   {{"id":"meter_{meter}","meter_id":"{meter}","type":"auto",'
+                         f'"type_other":"","key":""}}',
+                         f'  zero key: {{"id":"meter_{meter}","meter_id":"{meter}","type":"auto",'
+                         f'"type_other":"","key":"00000000000000000000000000000000"}}',
+                         "=================================="):
+                print(f"[wmbus-bridge][WARN] {line}", file=self.err, flush=True)
+
+    def add_event(self, level: str, message: str) -> None:
+        """status_add_event: append, then keep the last 40 lines."""
+        try:
+            with open(self.a.events_file, "ab") as fh:
+                fh.write(_b(f"{iso_now()}\t{level}\t{message}") + b"\n")
+            _replace_with(self.a.events_file, _tail_lines(self.a.events_file, 40))
+        except OSError:
+            pass
 
     def refresh(self, meter: str, driver: str, type_line: str, manufacturer: str) -> bool:
         """emit_snippet_if_new for a known, announced candidate; False leaves it to bash."""
@@ -2005,6 +2295,10 @@ def _parser() -> argparse.ArgumentParser:
                              "parallel LISTEN instance) or while none is (the main instance)")
     # Values the parser subshell inherits when the LISTEN instance starts.
     for name in ("official-count-default", "search-mode", "search-expected", "loglevel"):
+        listen.add_argument(f"--{name}", default="")
+    # With these three a new or changed candidate is registered here
+    # (ListenBook.snippet); without, it is asked of the bash loop as before.
+    for name in ("events-file", "preview-state-file", "preview-attempts-dir", "candidate-values-file"):
         listen.add_argument(f"--{name}", default="")
     rx = modes.add_parser("rx", help="wmbus/<board>/rx messages")
     for name in ("reception", "mode", "history", "sequence", "boots", "clock"):
