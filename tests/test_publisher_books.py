@@ -118,10 +118,27 @@ class TopicMatchTests(unittest.TestCase):
         self.assertFalse(m(b"#", b"$SYS/broker/version"))
         self.assertTrue(m(b"$SYS/broker/version", b"$SYS/broker/version"))
 
+    def test_filter_covers(self):
+        c = mp.filter_covers
+        self.assertTrue(c(b"wmbus/+/diag/#", b"wmbus/+/diag"))
+        self.assertTrue(c(b"wmbus/+/diag/#", b"wmbus/+/diag/summary"))
+        self.assertTrue(c(b"wmbus/+/diag/#", b"wmbus/+/diag/meter/+/+/window/+"))
+        self.assertTrue(c(b"wmbus/+/diag/#", b"wmbus/x/diag/a/#"))
+        self.assertFalse(c(b"wmbus/+/diag/#", b"wmbus/+/health"))
+        self.assertFalse(c(b"wmbus/+/diag", b"wmbus/+/diag/#"))
+        self.assertFalse(c(b"wmbus/x/diag/#", b"wmbus/+/diag"))
+        self.assertFalse(c(b"wmbus/+/rssi/+", b"wmbus/+/rssi/#"))
+        self.assertFalse(c(b"#", b"$SYS/broker/version"))
+        self.assertFalse(c(b"+/broker/version", b"$SYS/broker/version"))
+        self.assertTrue(c(b"#", b"homeassistant/status"))
+
 
 class EndToEndTests(unittest.TestCase):
     def test_publisher_books_live_messages(self):
         broker = FakeBroker()
+        # Overlapping filters (wmbus/+/diag/# and .../diag/summary) must not
+        # book a message twice even where the broker sends a copy per filter.
+        broker.copy_per_subscription = True
         tmp = tempfile.mkdtemp()
         spec = {}
         for mode in MESSAGES:
@@ -138,6 +155,13 @@ class EndToEndTests(unittest.TestCase):
                                   "file": os.path.join(tmp, "status_esp_meter_snapshot.json")}
         spec["summary"] = {"filter": "wmbus/+/diag/summary", "file": os.path.join(tmp, "status_esp_diag.json")}
         spec["meter_window"] = {"filter": "wmbus/+/diag/meter/+/+/window/+", "file": window_file}
+        events_file = os.path.join(tmp, "status_esp_events.tsv")
+        config_file = os.path.join(tmp, "status_esp_config.json")
+        spec["diag_events"] = {"filter": "wmbus/+/diag/#", "format": "retained", "events_file": events_file,
+                               "suggestion_file": os.path.join(tmp, "suggestion.json"),
+                               "boot_file": os.path.join(tmp, "boot.json"), "config_file": config_file}
+        # Retained: the settings are learned from it, the event log skips it.
+        broker.publish_to_subscribers("wmbus/lilygo/diag/config", b'{"mode":"T1"}', retain=True)
         # HA's birth message is retained: the subscription must replay it.
         broker.publish_to_subscribers("homeassistant/status", b"online", retain=True)
         # Retained before the publisher subscribes: replayed on SUBSCRIBE with
@@ -150,13 +174,15 @@ class EndToEndTests(unittest.TestCase):
                                  "--port", str(broker.port), "--port-file", port_file],
                                 env=env, stderr=subprocess.PIPE, text=True)
         try:
-            self.assertTrue(broker.wait_for(lambda b: len(b.subscribes) >= 9, timeout=10),
+            self.assertTrue(broker.wait_for(lambda b: len(b.subscribes) >= 7, timeout=10),
                             "the publisher did not subscribe")
             self.assertIn("books", Path(port_file).read_text().split()[1:])
+            # wmbus/+/diag/# covers the summary, snapshot and window filters.
             self.assertEqual(sorted(broker.subscribes),
-                             [b"homeassistant/status", b"wmbus/+/diag/meter/+/+/window/+",
-                              b"wmbus/+/diag/meter_snapshot", b"wmbus/+/diag/summary", b"wmbus/+/health",
+                             [b"homeassistant/status", b"wmbus/+/diag/#", b"wmbus/+/health",
                               b"wmbus/+/meters", b"wmbus/+/rssi/+", b"wmbus/+/rx", b"wmbus/+/telegram"])
+            broker.publish_to_subscribers("wmbus/lilygo/diag/summary", b'{"event":"summary","total":5}')
+            broker.publish_to_subscribers("wmbus/lilygo/diag", b'{"event":"dropped","n":1}')
             broker.publish_to_subscribers("wmbus/lilygo/diag/meter/03534159/T1/window/count",
                                           b'{"id":"03534159","count_window":3}')
             for mode, messages in MESSAGES.items():
@@ -168,6 +194,14 @@ class EndToEndTests(unittest.TestCase):
                 time.sleep(0.1)
             self.assertIn('"lilygo": {', Path(health_file).read_text())
             self.assertIn('"03534159": {', Path(window_file).read_text())
+            self.assertIn('"total": 5', Path(spec["summary"]["file"]).read_text())
+            self.assertIn('"lilygo": {', Path(config_file).read_text())
+            events = Path(events_file).read_text().splitlines()
+            self.assertEqual([e.split("	")[1:3] for e in events],
+                             [["summary", "wmbus/lilygo/diag/summary"], ["dropped", "wmbus/lilygo/diag"],
+                              ["unknown", "wmbus/lilygo/diag/meter/03534159/T1/window/count"]],
+                             "each diag message is one row (as in the bash loop, which also saw"
+                             " the window topics); the retained config none")
             self.assertTrue(Path(presence_file).read_text().startswith("online\t"),
                             "the retained HA birth message is booked")
             deadline = time.time() + 15  # /rx and the tracker write every 5 s

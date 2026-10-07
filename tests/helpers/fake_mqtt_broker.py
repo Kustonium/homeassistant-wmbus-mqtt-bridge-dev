@@ -88,6 +88,9 @@ class FakeBroker:
         self.retained = {}   # topic bytes -> payload
         self.subscribes = []  # [filter bytes] of every SUBSCRIBE received
         self.refuse = set()   # filters answered with 0x80 (as EMQX's ACL does for $SYS)
+        # One copy per matching subscription instead of one per client, which
+        # MQTT 3.1.1 also allows for overlapping subscriptions.
+        self.copy_per_subscription = False
         self.lock = threading.Lock()
         self.cond = threading.Condition(self.lock)
         self.closed = False
@@ -181,7 +184,10 @@ class FakeBroker:
         with self.cond:
             if retain:
                 self.retained[topic] = payload
-            targets = [c for c, flts in self.subs.items() if any(topic_matches(f, topic) for f in flts)]
+            targets = [c for c, flts in self.subs.items()
+                       for _ in range(sum(topic_matches(f, topic) for f in flts)
+                                      if self.copy_per_subscription else
+                                      any(topic_matches(f, topic) for f in flts))]
         for c in targets:
             self._send_publish(c, topic, payload, False)
 

@@ -97,7 +97,7 @@ start_mqtt_publisher() {
   # topics and keeps their bookkeeping itself; start_esp_subscribers then
   # skips its own mosquitto_sub | bridge_ledger.py loops for them.
   [[ " ${_caps} " == *" books "* ]] && MQTT_PUB_BOOKS="true"
-  log "MQTT: persistent publisher ready (one broker connection for all publishes; Discovery in Python: ${MQTT_PUB_DEC}; ESP rssi, /rx and RAW subscriptions in it: ${MQTT_PUB_BOOKS})"
+  log "MQTT: persistent publisher ready (one broker connection for all publishes; Discovery in Python: ${MQTT_PUB_DEC}; ESP subscriptions in it: ${MQTT_PUB_BOOKS})"
 }
 
 # The ESP subscriptions the publisher takes over, as JSON for
@@ -111,7 +111,8 @@ _mqtt_publisher_books() {
   for _v in METER_DIR STATUS_RSSI_FILE STATUS_ESP_RX_RECEPTION_FILE STATUS_ESP_RX_MODE_FILE \
             ESP_RF_RX_HISTORY_FILE STATUS_ESP_RX_SEQUENCE_FILE STATUS_ESP_RX_BOOTS_FILE \
             STATUS_ESP_RX_CLOCK_FILE STATUS_ESP_TELEGRAM_DEVICES_FILE STATUS_ESP_METER_DEVICE_FILE \
-            STATUS_ESP_METER_RECEPTION_FILE ESP_RX_HISTORY_FILE RAW_TOPIC STATUS_HA_PRESENCE_FILE; do
+            STATUS_ESP_METER_RECEPTION_FILE ESP_RX_HISTORY_FILE RAW_TOPIC STATUS_HA_PRESENCE_FILE \
+            STATUS_ESP_CONFIG_FILE ESP_DIAG_HISTORY_FILE; do
     [[ -n "${!_v:-}" ]] || return 0
   done
   [[ "${IGNORE_RETAINED:-false}" == "true" ]] && no_ret=true
@@ -134,6 +135,11 @@ _mqtt_publisher_books() {
     --arg summary_file "${RUNTIME:-${BASE}}/status_esp_diag.json" \
     --arg window_file "${RUNTIME:-${BASE}}/status_esp_meter_window.json" \
     --arg snapshot_file "${RUNTIME:-${BASE}}/status_esp_meter_snapshot.json" \
+    --arg events_file "${RUNTIME:-${BASE}}/status_esp_events.tsv" \
+    --arg suggestion_file "${RUNTIME:-${BASE}}/status_esp_suggestion.json" \
+    --arg boot_file "${RUNTIME:-${BASE}}/status_esp_boot.json" \
+    --arg config_file "${STATUS_ESP_CONFIG_FILE}" --arg diag_hist "${ESP_DIAG_HISTORY_FILE}" \
+    --argjson diag_hist_on "$([[ "${ESP_DIAG_HISTORY_ENABLED:-false}" == "true" ]] && echo true || echo false)" \
     --arg ha_topic "${DISCOVERY_PREFIX:-homeassistant}/status" --arg presence_file "${STATUS_HA_PRESENCE_FILE:-}" '
       {rssi: {filter: "wmbus/+/rssi/+", no_retained: false,
                meter_dir: $meter_dir, rssi_file: $rssi_file},
@@ -144,6 +150,12 @@ _mqtt_publisher_books() {
        meter_snapshot: {filter: "wmbus/+/diag/meter_snapshot", no_retained: false, file: $snapshot_file},
        ha_presence: {filter: $ha_topic, no_retained: false, format: "payload",
                      presence_file: $presence_file},
+       # One filter for both of the loop: wmbus/+/diag/# matches the bare
+       # wmbus/<board>/diag as well.
+       diag_events: {filter: "wmbus/+/diag/#", no_retained: false, format: "retained",
+                     events_file: $events_file, suggestion_file: $suggestion_file,
+                     boot_file: $boot_file, config_file: $config_file,
+                     history_file: $diag_hist, history_enabled: $diag_hist_on},
        rx: {filter: "wmbus/+/rx", no_retained: $no_ret,
             reception_file: $rx_rec, mode_file: $rx_mode, history_file: $rx_hist,
             sequence_file: $rx_seq, boots_file: $rx_boots, clock_file: $rx_clock}}

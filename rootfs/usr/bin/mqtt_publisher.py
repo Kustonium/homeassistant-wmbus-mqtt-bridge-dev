@@ -112,6 +112,23 @@ def topic_matches(flt, topic):
     return len(f_parts) == len(t_parts)
 
 
+def filter_covers(wide, narrow):
+    """True when every topic matching filter narrow also matches filter wide."""
+    w_parts, n_parts = wide.split(b"/"), narrow.split(b"/")
+    for i, part in enumerate(w_parts):
+        if part == b"#":
+            # '#' also matches the parent level, but not a '$' topic from the root.
+            return not (i == 0 and narrow[:1] == b"$")
+        if i >= len(n_parts):
+            return False
+        if part == b"+":
+            if n_parts[i] == b"#" or (i == 0 and n_parts[i][:1] == b"$"):
+                return False
+        elif part != n_parts[i]:
+            return False
+    return len(w_parts) == len(n_parts)
+
+
 PINGREQ = b"\xc0\x00"
 DISCONNECT = b"\xe0\x00"
 CONNACK_REASONS = {
@@ -224,31 +241,48 @@ def make_books(spec):
         elif mode == "ha_presence":
             import esp_books
             book = esp_books.HaPresenceBook(cfg["presence_file"])
+        elif mode == "diag_events":
+            import esp_books
+            book = esp_books.DiagEventsBook(cfg["events_file"], cfg["suggestion_file"], cfg["boot_file"],
+                                            cfg["config_file"], cfg.get("history_file", ""),
+                                            bool(cfg.get("history_enabled")))
         else:
             raise ValueError(f"unknown book {mode!r}")
-        deliver = _deliver_lines(book, mode, payload_only=cfg.get("format") == "payload")
+        deliver = _deliver_lines(book, mode, payload_only=cfg.get("format") == "payload",
+                                 with_retained=cfg.get("format") == "retained")
         out.append((cfg["filter"].encode(), bool(cfg.get("no_retained")), deliver, book))
     return out
 
 
-def _deliver_lines(book, mode, payload_only=False):
+def _deliver_lines(book, mode, payload_only=False, with_retained=False):
     """Hand one message to a book as `mosquitto_sub -F '%t\\t%p'` would have
     printed it and bridge_ledger.run() read it: one line, or several when
     the payload holds newlines (the later ones then carry no topic). With
     payload_only (`-F '%p'`, read whole with `IFS= read -r`), each payload
-    line is handed over as it is, with the topic for reference."""
+    line is handed over as it is, with the topic for reference. With
+    with_retained (`-F '%r\\t%t\\t%p'`) the book gets the retained flag
+    first: book(retained, topic, payload)."""
     import bridge_ledger as bl
 
-    def deliver(topic, payload):
-        data = (b"" if payload_only else topic + b"\t") + payload + b"\n"
+    def deliver(topic, payload, retain=False):
+        if with_retained:
+            data = (b"1" if retain else b"0") + b"\t" + topic + b"\t" + payload + b"\n"
+        else:
+            data = (b"" if payload_only else topic + b"\t") + payload + b"\n"
         start = 0
         while start < len(data):
             nl = data.find(b"\n", start)
             line = data[start:nl + 1]
             start = nl + 1
-            t, p = (topic, line[:-1]) if payload_only else bl.split_message(line)
+            if with_retained:
+                import esp_books
+                fields = esp_books.split_retained_line(line)
+                t = fields[1]
+            else:
+                t, p = (topic, line[:-1]) if payload_only else bl.split_message(line)
+                fields = (t, p)
             try:
-                book(t, p)
+                book(*fields)
             except Exception as exc:  # one bad message must not stop the bookkeeping
                 print(f"[wmbus-bridge][WARN] ledger {mode}: message on {t!r} skipped: {exc!r}",
                       file=sys.stderr, flush=True)
@@ -401,8 +435,9 @@ class Broker:
             elif kind == 3:  # PUBLISH
                 self._on_publish(first, body)
             elif kind == 9:  # SUBACK
-                refused = [self.subscriptions[i][0].decode("utf-8", "replace")
-                           for i, code in enumerate(body[2:]) if code & 0x80 and i < len(self.subscriptions)]
+                sent = self.broker_filters()
+                refused = [sent[i].decode("utf-8", "replace")
+                           for i, code in enumerate(body[2:]) if code & 0x80 and i < len(sent)]
                 if refused:
                     log("subscription refused by the broker: " + ", ".join(refused))
 
@@ -423,13 +458,22 @@ class Broker:
         for flt, no_retained, deliver in self.subscriptions:
             if (no_retained and retain) or not topic_matches(flt, topic):
                 continue
-            deliver(topic, payload)
+            deliver(topic, payload, retain)
+
+    def broker_filters(self):
+        """The filters subscribed at the broker: those no other filter covers.
+
+        Messages are routed here, to every matching filter, so one copy is
+        enough; a broker may send one per matching subscription (MQTT 3.1.1
+        allows either), and wmbus/+/diag/# overlaps wmbus/+/diag/summary."""
+        flts = list(dict.fromkeys(flt for flt, _, _ in self.subscriptions))
+        return [f for f in flts if not any(o != f and filter_covers(o, f) for o in flts)]
 
     def subscribe_all(self):
         """Subscribe to every filter (QoS 0), after each (re)connect: clean session."""
         if not self.subscriptions or self.sock is None:
             return
-        body = struct.pack("!H", 1) + b"".join(_string(flt) + b"\x00" for flt, _, _ in self.subscriptions)
+        body = struct.pack("!H", 1) + b"".join(_string(flt) + b"\x00" for flt in self.broker_filters())
         try:
             self.sock.sendall(bytes([0x82]) + _remaining_length(len(body)) + body)
         except OSError as exc:

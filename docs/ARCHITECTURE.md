@@ -423,8 +423,15 @@ meter flags, diagnostic summary, meter snapshots and meter windows
 Assistant's birth message (`status_ha_presence.txt`) are booked there too, by
 `esp_books.py` - ports of their bash loops that reproduce the jq programs and
 write the same files byte for byte (`tests/test_esp_books.py` runs the real
-loops and the books on one corpus). The publisher
-announces this as `books`; without it, or with
+loops and the books on one corpus). So is the ESP event log
+(`wmbus/+/diag/#`: `status_esp_events.tsv`, the per-board
+`status_esp_config.json`, the last suggestion and boot, and the optional
+`esp_diag_history.jsonl`), which also needs the retained flag that
+`mosquitto_sub -F '%r\t%t\t%p'` printed. Routing to the books happens in the
+publisher, so at the broker it subscribes only the filters no other one covers
+(`wmbus/+/diag/#` covers the summary, snapshot and window filters): a broker
+may send one copy per matching subscription, and every copy would be booked.
+The publisher announces this as `books`; without it, or with
 `MQTT_PUBLISHER_SUBSCRIBE=false`, the bash loops below start as before.
 
 Those loops pipe `mosquitto_sub` into Python through a descriptor, so the

@@ -458,6 +458,14 @@ touch "${STATUS_ESP_EVENTS_FILE}" 2>/dev/null || true
 if [[ "${ESP_DIAG_HISTORY_ENABLED:-false}" == "true" ]]; then
   touch "${ESP_DIAG_HISTORY_FILE}" 2>/dev/null || true
 fi
+# Booked by the publisher on its own connection when it announced "books"
+# (esp_books.DiagEventsBook); this loop is the fallback. The history is
+# trimmed here at start either way, as the loop does before connecting.
+if [[ "${MQTT_PUB_BOOKS:-false}" == "true" ]]; then
+  if [[ "${ESP_DIAG_HISTORY_ENABLED:-false}" == "true" ]]; then
+    _trim_esp_rx_history "${ESP_DIAG_HISTORY_FILE}" 10000 9000 || true
+  fi
+else
 (
   _n=0
   _diag_since_trim=0
@@ -547,6 +555,7 @@ fi
   done
 ) &
 ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
+fi
 
 # Background subscriber for the Home Assistant MQTT birth/availability message.
 # HA's MQTT integration publishes <discovery_prefix>/status = "online" (retained,

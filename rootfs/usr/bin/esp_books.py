@@ -220,6 +220,184 @@ class MeterSnapshotBook(DeviceMapBook):
     suffix = "/diag/meter_snapshot"
 
 
+def jq_add_each(text: str, add: dict) -> tuple:
+    """`printf '%s\\n' "$text" | jq '. + $add'`: (outputs, exit status 0).
+
+    jq goes on to the next input after a type error and stops at a parse
+    error; either way the outputs written so far stay in the redirect."""
+    outputs, ok = [], not _trailing_garbage(text)
+    for v in bl.jq_values(text):
+        try:
+            outputs.append(jq_add(v, add))
+        except _JqError:
+            ok = False
+    return outputs, ok
+
+
+def _jq_raw(value: Any) -> str:
+    """One output of `jq -r`: a string as it is, anything else as `jq .`."""
+    return value if isinstance(value, str) else jq_pretty(value)
+
+
+def _event_type(payload: str) -> str:
+    """`$(printf '%s\\n' "$p" | jq -r '.event // "unknown"' || echo unknown)`,
+    then 13-esp.sh's fallback for an empty or "null" answer."""
+    text = payload + "\n"
+    out, failed = [], _trailing_garbage(text)
+    for v in bl.jq_values(text):
+        if v is None:
+            out.append("unknown")
+        elif isinstance(v, dict):
+            e = v.get("event")
+            out.append("unknown" if e is None or e is False else _jq_raw(e))
+        else:
+            failed = True  # cannot index a number, string, array or boolean
+    evtype = ("".join(o + "\n" for o in out) + ("unknown\n" if failed else "")).rstrip("\n")
+    return evtype if evtype and evtype != "null" else "unknown"
+
+
+def _is_one(value: Any) -> bool:
+    """jq's `. == 1` (numbers compare as doubles; true is not 1)."""
+    return isinstance(value, bl.Decimal) and float(value) == 1.0
+
+
+def split_retained_line(line: bytes) -> tuple:
+    """`IFS=$'\\t' read -r retained topic payload` of one `-F '%r\\t%t\\t%p'` line."""
+    rest = line.rstrip(b"\n").strip(b"\t")
+    fields = []
+    for _ in range(2):
+        head, sep, rest = rest.partition(b"\t")
+        fields.append(head)
+        rest = rest.lstrip(b"\t") if sep else b""
+    return fields[0], fields[1], rest
+
+
+class DiagEventsBook:
+    """wmbus/+/diag and wmbus/+/diag/# -> the ESP event log and its side files
+    (13-esp.sh's diagnostic events loop, which read `-F '%r\\t%t\\t%p'`).
+
+    - <board>/diag/config: the board's settings, merged into the config file
+      (retained ones too: that is how the settings are learned);
+    - retained replays stop there; a boot repeated with the same payload too;
+    - every other message is a row of the events TSV (epoch, type, topic,
+      payload), cut to the last 200 rows every 50 rows;
+    - lr_fifo/lr_drop samples go to the persistent diag history when enabled;
+    - a suggestion or boot is kept as its own JSON (a boot drops the suggestion).
+    """
+
+    def __init__(self, events_file: str, suggestion_file: str, boot_file: str, config_file: str,
+                 history_file: str = "", history_enabled: bool = False) -> None:
+        self.events_file = events_file
+        self.suggestion_file = suggestion_file
+        self.boot_file = boot_file
+        self.config_file = config_file
+        self.history_file = history_file
+        self.history_enabled = history_enabled and bool(history_file)
+        self.n = 0
+        self.since_trim = 0
+        self.boot_seen: dict = {}
+
+    def __call__(self, retained_b: bytes, topic_b: bytes, payload_b: bytes) -> None:
+        if not topic_b or not payload_b:
+            return
+        topic, payload = bl._s(topic_b), bl._s(payload_b)
+        ts = int(bl.now())
+        if topic.startswith("wmbus/") and topic.endswith("/diag/config") and len(topic) > 18:
+            self._config(topic[6:-12], ts, payload)
+        if retained_b == b"1":
+            return
+        evtype = _event_type(payload)
+        if topic.endswith("/summary_15min"):
+            evtype = "summary_15min"
+        elif topic.endswith("/summary_60min"):
+            evtype = "summary_60min"
+        if evtype == "boot" and not self._boot_is_new(topic, payload):
+            return
+        with open(self.events_file, "ab") as fh:
+            fh.write(bl._b(f"{ts}\t{evtype}\t{topic}\t{payload}\n"))
+        tail = topic[6:] if topic.startswith("wmbus/") else None
+        if self.history_enabled and tail is not None and (
+                "/diag/lr_fifo/" in tail or "/diag/lr_drop/" in tail):
+            src = topic[6:]
+            src = src[:src.find("/diag/")] if "/diag/" in src else src
+            self._history(ts, src, topic, payload)
+            self.since_trim += 1
+            if self.since_trim >= 100:
+                bl.trim_locked(self.history_file, 10000, 9000)
+                self.since_trim = 0
+        self.n += 1
+        if self.n % 50 == 0:
+            bl._replace_with(self.events_file, bl._tail_lines(self.events_file, 200))
+        if evtype == "suggestion":
+            self._keep(self.suggestion_file, payload, ts)
+        if evtype == "boot":
+            self._keep(self.boot_file, payload, ts)
+            # A suggestion from before the restart is no longer actionable.
+            try:
+                os.unlink(self.suggestion_file)
+            except OSError:
+                pass
+
+    def _config(self, src: str, ts: int, payload: str) -> None:
+        if not src:
+            return
+        pl = jq_argjson(payload)
+        if pl is None and payload.strip(bl._JQ_WS) != "null":
+            return  # --argjson refused it: jq does not run, the file stays
+        # `[[ -s file ]] && cur="$(cat file)"`, else {}: unlike _read_current a
+        # file of newlines gives jq no input at all, and an empty file results.
+        try:
+            with open(self.config_file, "rb") as fh:
+                data = fh.read()
+        except OSError:
+            data = b""
+        cur = bl._s(data).rstrip("\n") if data else "{}"
+        try:
+            outputs = [jq_add(c, {src: jq_add(pl, {"_bridge_rx_epoch": ts})}) for c in jq_inputs(cur)]
+        except _JqError:
+            return
+        _write_outputs(self.config_file, outputs)
+
+    def _boot_is_new(self, topic: str, payload: str) -> bool:
+        src = topic[6:] if topic.startswith("wmbus/") else topic
+        cut = src.find("/diag")
+        src = src[:cut] if cut >= 0 else src
+        if not src:
+            return True
+        if self.boot_seen.get(src) == payload:
+            return False
+        self.boot_seen[src] = payload
+        return True
+
+    def _history(self, ts: int, src: str, topic: str, payload: str) -> None:
+        """_append_esp_diag_history: the fifo_sample/pipeline_drop records, -c."""
+        text = payload + "\n"
+        if _trailing_garbage(text):
+            return
+        lines = []
+        for v in bl.jq_values(text):
+            if v is None:
+                continue
+            if not isinstance(v, dict):
+                return  # jq stops with an error: nothing is appended
+            if not _is_one(v.get("schema")) or v.get("kind") not in ("fifo_sample", "pipeline_drop"):
+                continue
+            lines.append(bl.jq_dumps(jq_add(v, {"bridge_rx_time": ts, "source": src, "topic": topic})))
+        if lines:
+            bl.append_locked(self.history_file, "\n".join(lines))
+
+    @staticmethod
+    def _keep(path: str, payload: str, ts: int) -> None:
+        """`jq '. + {_bridge_rx_epoch: $t}' > path.tmp && mv path.tmp path`."""
+        outputs, ok = jq_add_each(payload + "\n", {"_bridge_rx_epoch": ts})
+        data = "".join(jq_pretty(v) + "\n" for v in outputs).encode("utf-8", "surrogateescape")
+        tmp = path + ".tmp"
+        with open(tmp, "wb") as fh:
+            fh.write(data)
+        if ok:
+            os.replace(tmp, path)
+
+
 def _trailing_garbage(text: str) -> bool:
     """True when text holds anything after its JSON values that jq would fail on."""
     i, n = 0, len(text)
