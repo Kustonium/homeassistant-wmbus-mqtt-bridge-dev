@@ -6,6 +6,13 @@ pipeline's wmbusmeters, from options.json meters[] (or, in SEARCH, the
 temporary search_<id> meters of the candidate cache), with the same files,
 warnings and log lines, instead of about ten jq runs per meter.
 
+`housekeeping` replaces prune_stale_candidates and
+expire_stale_pending_previews, which the heartbeat ticker runs every
+CANDIDATE_PRUNE_INTERVAL_SECONDS: candidate rows silent for longer than
+--prune-after are removed with their preview value, state, attempt counter
+and preview config, then preview states stuck in "pending" for longer than
+--pending-timeout become "no_decode_result".
+
 `previews` replaces sync_candidate_autodecode_files (a preview config per
 registered candidate, ensure_candidate_autodecode with reload=false) and
 prune_official_meter_previews (none for an id that is now a configured
@@ -27,10 +34,12 @@ Logs and warnings go to stderr.
 from __future__ import annotations
 
 import argparse
+import datetime
 import glob
 import os
 import re
 import sys
+import tempfile
 from typing import Any, Dict, List
 
 import bridge_ledger as bl
@@ -285,6 +294,96 @@ class Previews(Tool):
                 self.log("info", f"pruned orphaned meter-preview-{mid} (now official configured meter)")
 
 
+def _iso_age_over(ts: str, now: datetime.datetime, max_age: int) -> bool:
+    """The age test of the python programs bash ran: naive times are UTC."""
+    try:
+        d = datetime.datetime.fromisoformat(ts.strip())
+    except ValueError:
+        return False
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=datetime.timezone.utc)
+    return (now - d).total_seconds() > max_age
+
+
+def _seconds(text: str, default: int) -> int:
+    return int(text) if re.fullmatch(r"[0-9]+", text or "") else default
+
+
+class Housekeeping(Tool):
+    """prune_stale_candidates, then expire_stale_pending_previews."""
+
+    def run(self) -> int:
+        self.prune()
+        self.expire()
+        self.emit("rc", "0")
+        return 0
+
+    def prune(self) -> None:
+        a = self.a
+        path = a.candidates_file
+        max_age = _seconds(a.prune_after, 86400)
+        if not os.path.isfile(path):
+            return
+        now = datetime.datetime.now(datetime.timezone.utc)
+        dropped: List[str] = []
+        with bl.locked(path):
+            fd, tmp = tempfile.mkstemp(prefix=os.path.basename(path) + ".tmp.", dir=os.path.dirname(path) or ".")
+            try:
+                with open(path, "r", encoding="utf-8", errors="replace") as f, \
+                        os.fdopen(fd, "w", encoding="utf-8") as out:
+                    for line in f:
+                        row = line.rstrip("\n")
+                        if not row:
+                            continue
+                        cols = row.split("\t")
+                        if len(cols) >= 4 and _iso_age_over(cols[3], now, max_age):
+                            dropped.append(cols[0])
+                        else:
+                            out.write(row + "\n")
+                os.replace(tmp, path)
+            except BaseException:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
+        for mid in dropped:
+            mid = bl.normalize_id(mid)
+            if not re.fullmatch(r"[0-9A-Fa-f]{8}", mid):
+                continue
+            bl.tsv_remove(a.candidate_values_file, mid)
+            bl.tsv_remove(a.preview_state_file, mid)
+            for p in (os.path.join(a.attempts_dir, mid), os.path.join(a.preview_meter_dir, f"meter-preview-{mid}")):
+                try:
+                    os.unlink(p)
+                except OSError:
+                    pass
+            self.log("info", f"pruned stale candidate {mid} (no telegram for >{max_age // 3600}h)")
+
+    def expire(self) -> None:
+        a = self.a
+        path = a.preview_state_file
+        max_age = _seconds(a.pending_timeout, 300)
+        if not os.path.isfile(path):
+            return
+        now = datetime.datetime.now(datetime.timezone.utc)
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            stuck = [cols[0] for cols in (ln.rstrip("\n").split("\t") for ln in f)
+                     if len(cols) >= 3 and cols[1] == "pending" and _iso_age_over(cols[2], now, max_age)]
+        for mid in stuck:
+            mid = bl.normalize_id(mid)
+            if not re.fullmatch(r"[0-9A-Fa-f]{8}", mid):
+                continue
+            # Read again right before writing: a frame may have ended the state meanwhile.
+            states = [bl._s(ln).split("\t")[1] if "\t" in bl._s(ln) else ""
+                      for ln in bl._read_lines(path) if bl._first_field(ln) == bl._b(mid)]
+            if not states or states[-1] != "pending":
+                continue
+            bl.set_preview_state(path, a.attempts_dir, mid, "no_decode_result")
+            self.log("info", f"preview {mid}: stuck pending for >{max_age // 60}min without a telegram, "
+                             "marked no_decode_result")
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="mode", required=True)
@@ -298,8 +397,14 @@ def main(argv=None) -> int:
                  "attempts-dir"):
         p.add_argument(f"--{name}", required=True)
     p.add_argument("--loglevel", default="")
+    h = sub.add_parser("housekeeping", help="prune_stale_candidates + expire_stale_pending_previews")
+    for name in ("candidates-file", "candidate-values-file", "preview-state-file", "preview-meter-dir",
+                 "attempts-dir"):
+        h.add_argument(f"--{name}", required=True)
+    for name in ("prune-after", "pending-timeout", "loglevel"):
+        h.add_argument(f"--{name}", default="")
     a = ap.parse_args(argv)
-    return (MeterFiles if a.mode == "refresh" else Previews)(a).run()
+    return {"refresh": MeterFiles, "previews": Previews, "housekeeping": Housekeeping}[a.mode](a).run()
 
 
 if __name__ == "__main__":

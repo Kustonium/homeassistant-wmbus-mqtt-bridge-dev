@@ -454,9 +454,11 @@ start_esp_subscribers
 # idle" from "bridge down / run.sh waiting for the broker". Dies with bridge.sh.
 (
   _last_candidate_prune=0
-  _last_runtime_snapshot="$(epoch_now)"
+  _last_runtime_snapshot="${EPOCHSECONDS:-$(epoch_now)}"
   while true; do
-    printf '%s\n' "$(epoch_now)" > "${STATUS_HEARTBEAT_FILE}.tmp" 2>/dev/null \
+    # EPOCHSECONDS (bash 5): no date process per tick.
+    _hb_now="${EPOCHSECONDS:-$(epoch_now)}"
+    printf '%s\n' "${_hb_now}" > "${STATUS_HEARTBEAT_FILE}.tmp" 2>/dev/null \
       && mv "${STATUS_HEARTBEAT_FILE}.tmp" "${STATUS_HEARTBEAT_FILE}" 2>/dev/null \
       || true
     # Throttled bridge-side cleanup of long-silent candidates. The pipeline
@@ -464,14 +466,12 @@ start_esp_subscribers
     # reloads, so this ticker (already excluded from soft-reload kills) drives
     # the time-based self-deletion. Heartbeat is stamped first every tick, so a
     # prune run can never delay liveness past the 30 s WebUI threshold.
-    _hb_now="$(epoch_now)"
     if (( _hb_now - _last_candidate_prune >= ${CANDIDATE_PRUNE_INTERVAL_SECONDS:-600} )); then
-      prune_stale_candidates || true
-      # Same tick, after pruning: rows that survived but are stuck in "pending"
-      # (heard once, then silent -> decode attempts never reach the count that
-      # would end the state) get a time-based terminal state, so the WebUI stops
+      # After pruning, rows that survived but are stuck in "pending" (heard
+      # once, then silent -> decode attempts never reach the count that would
+      # end the state) get a time-based terminal state, so the WebUI stops
       # showing "decoding…" for a candidate that is never coming back.
-      expire_stale_pending_previews || true
+      candidate_housekeeping
       _last_candidate_prune="${_hb_now}"
     fi
     if (( _hb_now - _last_runtime_snapshot >= RUNTIME_SNAPSHOT_SECONDS )); then

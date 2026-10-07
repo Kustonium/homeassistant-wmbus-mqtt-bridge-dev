@@ -396,6 +396,17 @@ The main script also owns a heartbeat ticker and the restart loop around the
 DECODE pipeline. Background subscribers and LISTEN are long-lived workers, not
 children that should be replaced on every meter change.
 
+The ticker stamps the liveness file every `HEARTBEAT_INTERVAL_SECONDS` (from
+bash's own clock, no process per tick). Every `CANDIDATE_PRUNE_INTERVAL_SECONDS`
+it runs `wmbus_meters.py housekeeping`: candidates silent for longer than
+`CANDIDATE_PRUNE_AFTER_SECONDS` are removed with their preview value, state,
+attempt counter and preview config, then preview states stuck in `pending`
+for longer than `PREVIEW_PENDING_TIMEOUT_SECONDS` become `no_decode_result`
+(`METER_FILES_IN_PYTHON=false`: `prune_stale_candidates` and
+`expire_stale_pending_previews` in bash). The runtime snapshot, the Discovery
+Doctor probe and the factory reset, which run on a timer or on a WebUI
+request, stay in the ticker as they are.
+
 Everything the bridge publishes leaves through `mqtt_publisher.py`: one MQTT
 connection kept open for the life of the bridge (MQTT 3.1.1, QoS 0, clean
 session, client id `wmbus_bridge_pub_<random>`), with a bounded queue while the

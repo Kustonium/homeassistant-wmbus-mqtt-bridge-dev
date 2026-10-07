@@ -1,5 +1,6 @@
-"""wmbus_meters.py against refresh_meter_files (07-meters.sh) and against
-sync_candidate_autodecode_files + prune_official_meter_previews (06-candidates.sh).
+"""wmbus_meters.py against refresh_meter_files (07-meters.sh), against
+sync_candidate_autodecode_files + prune_official_meter_previews and against
+prune_stale_candidates + expire_stale_pending_previews (06-candidates.sh).
 
 Each case runs refresh_meter_files and refresh_candidate_previews with
 METER_FILES_IN_PYTHON=false (the bash functions) and with Python, in two
@@ -11,6 +12,7 @@ SEARCH mode, exclude patterns per id) and the one-shot decodes asked for
 """
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import shutil
@@ -210,6 +212,101 @@ class MeterFilesTests(unittest.TestCase):
                 if name == "cache":
                     self.assertIn("temp=true loaded=5", out["vars"])
                     self.assertEqual(json.loads(out["search_status.json"])["phase"], "search")
+
+
+# The python programs bash ran compare with the real clock, so the times are
+# far in the past (stale) or the future (fresh).
+OLD, NEW = "2020-01-01T00:00:00+00:00", "2099-01-01T00:00:00+00:00"
+# A minute ago: past, but younger than every limit.
+RECENT = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=60)).isoformat(timespec="seconds")
+HK_CANDIDATES = "".join(row + "\n" for row in [
+    f"21031894\tevo868\tCold water\t{OLD}\t1\t0\t1\t1\t",
+    f"03264950\thydrodigit\tWater\t{NEW}\t1\t0\t1\t1\t",
+    f"03314056\tauto\tWater\t{RECENT}\t1",
+    "52632878\tqwaterv2\tWater\t2020-01-01T00:00:00\t1",   # naive: UTC
+    "24360570\tauto\tWater\tnot-a-date\t1",
+    "67433753\tauto\tWater\t \t1",
+    "zz\tauto\tx\t2020-01-01T00:00:00+00:00",
+    "",
+    "03314055\tauto",
+])
+HK_STATES = "".join(row + "\n" for row in [
+    f"21031894\tpending\t{OLD}\t",
+    f"03264950\tpending\t{OLD}\t",
+    f"52632878\tpending\t{NEW}\t",
+    f"03314056\tpending\t{RECENT}\t",
+    f"24360570\tdecoded_value\t{OLD}\t",
+    f"67433753\tpending\t{OLD}\t",
+    f"67433753\tdecoded_value\t{NEW}\t",  # the last row decides
+    f"03314055\tpending\t 2020-01-01T00:00:00 \t",
+    "zz\tpending\t2020-01-01T00:00:00+00:00\t",
+    "short\tpending",
+])
+
+
+class HousekeepingTests(unittest.TestCase):
+    """candidate_housekeeping against prune_stale_candidates + expire_stale_pending_previews."""
+
+    maxDiff = None
+
+    def run_side(self, root, side, extra=""):
+        d = os.path.join(root, side)
+        data = os.path.join(d, "data")
+        os.makedirs(os.path.join(data, "preview", "etc", "wmbusmeters.d"))
+        os.makedirs(os.path.join(data, ".preview_attempts"))
+        Path(data, "status_candidates.tsv").write_text(HK_CANDIDATES)
+        Path(data, "status_candidate_preview_state.tsv").write_text(HK_STATES)
+        Path(data, "status_candidate_values.tsv").write_text(
+            "".join(f"{m}\t1.5\t{OLD}\n" for m in ("21031894", "03264950", "52632878")))
+        for m in ("21031894", "03264950", "52632878", "03314055"):
+            Path(data, "preview", "etc", "wmbusmeters.d", f"meter-preview-{m}").write_text(f"id={m.lower()}\n")
+            Path(data, ".preview_attempts", m).write_text("1 1\n")
+        clock = os.path.join(d, "clock")
+        os.makedirs(clock)
+        Path(clock, "sitecustomize.py").write_text("import time\ntime.time = lambda: float(%d)\n" % NOW)
+        script = "\n".join([
+            "set -uo pipefail",
+            f"BASE='{data}'", "RUNTIME=\"${BASE}\"",
+            "while IFS= read -r _a; do _s=\"${_a#*=\\\"\\$\\{}\"; _s=\"${_s%%\\}*}\"; "
+            "[[ -n \"${!_s+x}\" ]] || continue; eval \"${_a}\"; done < <(grep -E "
+            f"'^[A-Z_][A-Z0-9_]*=\"\\$\\{{[A-Z_][A-Z0-9_]*\\}}[^\"$`]*\"$' '{BRIDGE_SH}')",
+            *(f"source '{p}'" for p in sorted(LIB_DIR.glob("*.sh"))),
+            "LOGLEVEL=normal", extra,
+            f"iso_now() {{ echo {ISO}; }}", f"epoch_now() {{ echo {NOW}; }}",
+            f"export METER_FILES_IN_PYTHON={'false' if side == 'bash' else 'true'}",
+            "candidate_housekeeping > \"${BASE}/log\" 2>&1",
+        ])
+        subprocess.run(["bash", "-c", script], check=True, timeout=120,
+                       env=dict(os.environ, PYTHONPATH=clock, TZ="UTC"))
+        out = {}
+        for r, _, files in os.walk(data):
+            for name in files:
+                if name.endswith(".lock"):
+                    continue
+                rel = os.path.relpath(os.path.join(r, name), data)
+                text = Path(r, name).read_text().replace(d, "D")
+                out[rel] = sorted(text.splitlines()) if rel == "log" else text
+        return out
+
+    def test_housekeeping(self):
+        for name, extra in {"defaults": "",
+                            "limits": "CANDIDATE_PRUNE_AFTER_SECONDS=7200 PREVIEW_PENDING_TIMEOUT_SECONDS=120",
+                            "bad_limits": "CANDIDATE_PRUNE_AFTER_SECONDS=x PREVIEW_PENDING_TIMEOUT_SECONDS=-1"}.items():
+            with self.subTest(name):
+                root = tempfile.mkdtemp()
+                try:
+                    b = self.run_side(root, "bash", extra)
+                    p = self.run_side(root, "py", extra)
+                finally:
+                    shutil.rmtree(root, ignore_errors=True)
+                self.assertEqual(p, b)
+                self.assertNotIn("21031894", p["status_candidates.tsv"])
+                self.assertIn("03264950", p["status_candidates.tsv"])
+                self.assertNotIn("preview/etc/wmbusmeters.d/meter-preview-21031894", p)
+                self.assertIn("03264950\tno_decode_result", p["status_candidate_preview_state.tsv"])
+                self.assertIn("03314056\tpending", p["status_candidate_preview_state.tsv"])
+                self.assertIn("03314056", p["status_candidates.tsv"])
+                self.assertIn("03314055\tno_decode_result", p["status_candidate_preview_state.tsv"])
 
 
 if __name__ == "__main__":

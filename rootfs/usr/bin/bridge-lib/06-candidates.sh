@@ -319,6 +319,27 @@ prune_official_meter_previews() {
   : "${_pruned}"  # preview files are one-shot inputs; LISTEN never reloads
 }
 
+# The heartbeat ticker's candidate cleanup: prune_stale_candidates, then
+# expire_stale_pending_previews - in one process by wmbus_meters.py
+# housekeeping (the same files and log lines), or by the two functions with
+# METER_FILES_IN_PYTHON=false or when it gives no result.
+candidate_housekeeping() {
+  if [[ "${METER_FILES_IN_PYTHON:-true}" == "true" ]] && command -v python3 >/dev/null 2>&1; then
+    local _out
+    # --name=value: a value starting with "-" must not read as an option.
+    _out="$(python3 "${METER_FILES_TOOL}" housekeeping --candidates-file="${STATUS_CANDIDATES_FILE}" \
+      --candidate-values-file="${STATUS_CANDIDATE_VALUES_FILE}" \
+      --preview-state-file="${STATUS_CANDIDATE_PREVIEW_STATE_FILE}" \
+      --preview-meter-dir="${PREVIEW_METER_DIR}" --attempts-dir="${RUNTIME:-${BASE}}/.preview_attempts" \
+      --prune-after="${CANDIDATE_PRUNE_AFTER_SECONDS:-}" \
+      --pending-timeout="${PREVIEW_PENDING_TIMEOUT_SECONDS:-}" --loglevel="${LOGLEVEL:-}")"
+    [[ "${_out}" == *$'rc\x1f0'* ]] && return 0
+    warn "wmbus_meters.py housekeeping gave no result -> cleaning the candidates in bash"
+  fi
+  prune_stale_candidates || true
+  expire_stale_pending_previews || true
+}
+
 # Flip preview rows stuck in "pending" to the terminal "no_decode_result".
 #
 # The only other way out of "pending" is _record_preview_no_decode_attempt(),
