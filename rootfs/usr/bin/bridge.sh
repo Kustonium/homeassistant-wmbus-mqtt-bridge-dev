@@ -275,11 +275,14 @@ mkdir -p "${RUNTIME}/.preview_attempts" 2>/dev/null || true
 # HA verification verdict is session-scoped (it depends on the running bridge's
 # Discovery publication and on the HA instance reachable now).
 : > "${STATUS_HA_VERIFICATION_FILE}" 2>/dev/null || true
-# Preview values are session-scoped — clear stale entries from previous runs
-# so the WebGUI doesn't show outdated readings (or the legacy first-numeric-field
-# pick that briefly stored bogus backflow_m3 / fraud counter values) until the
-# next telegram arrives. New correct values appear ~2 min later on first decode.
-: > "${STATUS_CANDIDATE_VALUES_FILE}" 2>/dev/null || touch "${STATUS_CANDIDATE_VALUES_FILE}"
+# Preview values are kept across a restart, like the preview state next to
+# them (both come back from the runtime snapshot). They used to be emptied here,
+# from when an old pick stored bogus backflow/fraud counters; but the state of
+# an already decoded candidate survived, so the WebUI showed "decoding..." for it
+# until its next telegram - up to an hour for a meter that sends rarely. A
+# kept value is the last reading the candidate sent; the next telegram
+# replaces it.
+touch "${STATUS_CANDIDATE_VALUES_FILE}" 2>/dev/null || true
 [[ -f "${STATUS_RAW_COUNT_FILE}" ]] || echo "0" > "${STATUS_RAW_COUNT_FILE}"
 
 # Record bridge start time for the WebGUI rate denominator fix.
