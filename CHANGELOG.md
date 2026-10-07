@@ -1,3 +1,9 @@
+## 1.5.80-dev.380
+
+### Added
+- book ESP meter flags, summaries, snapshots and windows in the publisher (cbcaf70)
+- book the ESP health pulse and HA birth message in the publisher (8dc9b8a)
+
 ## 1.5.80-dev.379
 
 ### Added
