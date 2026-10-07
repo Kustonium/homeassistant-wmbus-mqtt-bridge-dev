@@ -171,11 +171,12 @@ class DecodeStageTests(unittest.TestCase):
         self.assertEqual(sorted(p), sorted(b))
         for k in b:
             if zero == "true" and k in ("status_events.tsv", "status_seen.tsv"):
-                # Appended to by both: bash ran the zero-meter LISTEN parser as a process of its
-                # own, so its events landed among the decode loop's in
-                # whatever order the two raced; in one process they follow
-                # the input. The rows themselves must be the same.
-                self.assertEqual(sorted(p[k].splitlines()), sorted(b[k].splitlines()), k)
+                # Written by both of bash's processes - the decode loop and
+                # the zero-meter LISTEN parser it ran apart - in whatever order
+                # they raced, and the events file is cut to its last 40 rows:
+                # which rows survive, even a doubled one, depends on that race
+                # (seen on CI). In one process they follow the input; checked
+                # in test_zero_meter_listen instead.
                 continue
             self.assertEqual(p[k], b[k], k)
         return p
@@ -192,7 +193,13 @@ class DecodeStageTests(unittest.TestCase):
     def test_zero_meter_listen(self):
         listen = (FIXTURES / "listen" / "wmbusmeters-listen.txt").read_text().splitlines()
         out = self.compare(listen + CORPUS[:2], zero="true")
-        self.assertGreater(len(out.get("seen_ids.txt", "").splitlines()), 5)
+        announced = out.get("seen_ids.txt", "").split()
+        self.assertGreater(len(announced), 5)
+        events = out["status_events.tsv"].splitlines()
+        detected = [e.split("	")[2].split()[2] for e in events if "	Candidate detected " in e]
+        self.assertEqual(sorted(detected), sorted(set(detected)), "one event per new candidate")
+        self.assertEqual(set(detected), set(announced), "every announced candidate has its event")
+        self.assertEqual(sum("Decoded telegram received" in e for e in events), 2)
 
 
 if __name__ == "__main__":
