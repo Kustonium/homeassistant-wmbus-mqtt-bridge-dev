@@ -12,7 +12,11 @@
 #   - every file the counter writes, byte for byte apart from the time;
 #   - the decisions handed to bash: status_candidate_seen for SAP frames and
 #     the preview one-shot reaching its slot (both stubbed to log the call, so
-#     no decoder runs and the comparison does not depend on timing).
+#     no decoder runs and the comparison does not depend on timing). The SAP
+#     registration itself now runs in python3 (RawBook.candidate, compared
+#     with status_raw_candidate_seen in tests/test_listen_book.py); here the
+#     stage hands it over as it used to (LEDGER_SAP_IN_PYTHON=false), so the
+#     recorded decisions still apply.
 # Then python3 is stopped (SIGTERM) in the middle of a stream: the stage must start it
 # again and lose at most the telegram being handled.
 #
@@ -154,7 +158,7 @@ snapshot() {  # snapshot <dir>
 # `set +e` before run_once. status_raw_candidate_seen in the loop behind
 # python3 relies on that (a `read` from an empty awk result returns 1 for an
 # unknown SAP candidate), so the stage runs the same way here.
-stage() { ( set +e; _raw_counter_stage ); }
+stage() { ( set +e; LEDGER_SAP_IN_PYTHON=false; _raw_counter_stage ); }
 
 # The run inside one minute, as the recording was, so the per-minute rate is
 # comparable.

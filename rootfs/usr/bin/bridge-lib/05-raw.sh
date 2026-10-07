@@ -38,6 +38,7 @@ _raw_counter_stage() {
       --preview-last-dir="${RUNTIME:-${BASE}}/.preview_decode_last" \
       --preview-min-interval="${PREVIEW_DECODE_MIN_INTERVAL_SECONDS:-20}" \
       --preview-state-file="${STATUS_CANDIDATE_PREVIEW_STATE_FILE}" \
+      --preview-attempts-dir="$([[ "${LEDGER_SAP_IN_PYTHON:-true}" == "true" ]] && echo "${RUNTIME:-${BASE}}/.preview_attempts")" \
       --preview-decoded-min-interval="${PREVIEW_DECODED_MIN_INTERVAL_SECONDS:-300}" \
       --raw-topic="${RAW_TOPIC:-}" \
       --state-prefix="${STATE_PREFIX:-}" \

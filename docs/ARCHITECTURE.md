@@ -486,10 +486,12 @@ Two stages hand work back to bash, one request per line, to a loop in the
 same stage. Python asks only when the bash code would get past its own cheap
 checks; bash repeats them.
 
-- `raw`: registering a new Diehl/SAP candidate from its RAW frame, or changing
-  its driver or type (`status_raw_candidate_seen`), and starting a preview
-  one-shot (`preview_decode_raw_if_requested`, which keeps the preview
-  throttle and its state machine).
+- `raw`: starting a preview one-shot (`preview_decode_raw_if_requested`,
+  which keeps the preview throttle and its state machine). Registering a new
+  Diehl/SAP candidate from its RAW frame, or changing its driver or type
+  (`status_raw_candidate_seen`), is done by Python itself
+  (`RawBook.candidate`, through the same `candidate_seen` as LISTEN);
+  `LEDGER_SAP_IN_PYTHON=false` hands it to bash as before.
 - `listen` (fields separated by 0x1F so empty ones survive `read`): SEARCH
   (`search_cache_candidate`) and the preview one-shot of a candidate whose
   preview config was just written. A new or changed candidate

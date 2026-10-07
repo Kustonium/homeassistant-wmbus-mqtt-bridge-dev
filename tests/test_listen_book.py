@@ -191,5 +191,78 @@ class ListenBookTests(unittest.TestCase):
                   extra={"official_count": "0\n"})
 
 
+FIXTURES = ROOT / "tests" / "fixtures"
+IZAR1 = "".join((FIXTURES / "izar" / "2156B4C2.hex").read_text().split())
+IZAR2 = "".join((FIXTURES / "izar" / "215F908A.hex").read_text().split())
+
+
+def run_raw_python(d: str, raw: str) -> tuple:
+    """RawBook.candidate: the Diehl/SAP registration of the RAW stage."""
+    p = lambda n: os.path.join(d, n)  # noqa: E731
+    a = bl._parser().parse_args([
+        "raw", f"--raw-count-file={p('raw_count')}", f"--last-raw-file={p('last_raw')}",
+        f"--recent-raw-file={p(NAMES['STATUS_RECENT_RAW_FILE'])}", f"--broker-error-file={p('broker_error')}",
+        f"--candidates-file={p(NAMES['STATUS_CANDIDATES_FILE'])}", f"--events-file={p(NAMES['STATUS_EVENTS_FILE'])}",
+        f"--rate-file={p('rate')}", f"--rate-history-file={p('rate_history')}", f"--status-json-file={p('status.json')}",
+        f"--discovery-flag-file={p('discovery_flag')}", f"--seen-file={p(NAMES['STATUS_SEEN_FILE'])}",
+        f"--candidate-raw-file={p(NAMES['STATUS_CANDIDATE_RAW_FILE'])}",
+        f"--candidate-analysis-file={p(NAMES['STATUS_CANDIDATE_ANALYSIS_FILE'])}",
+        f"--meter-dir={p('meters')}", f"--preview-meter-dir={p('preview')}",
+        f"--preview-last-dir={p('.preview_decode_last')}",
+        f"--preview-state-file={p(NAMES['STATUS_CANDIDATE_PREVIEW_STATE_FILE'])}",
+        f"--preview-attempts-dir={p('.preview_attempts')}", "--loglevel=debug"])
+    out = io.StringIO()
+    book = bl.RawBook(a, out=out)
+    err = io.StringIO()
+    real_err, sys.stderr = sys.stderr, err
+    try:
+        book.candidate(raw)
+        book.deferred.flush()
+    finally:
+        sys.stderr = real_err
+    requests = [ln.split("\t") for ln in out.getvalue().splitlines()]
+    assert all(r[0] == "preview" for r in requests), requests  # nothing else goes to bash now
+    return err.getvalue().replace(d, "D").splitlines(), [f"{r[2]} {r[1]}" for r in requests]
+
+
+class RawSapTests(ListenBookTests):
+    """RawBook.candidate against status_raw_candidate_seen (05-raw.sh)."""
+
+    test_snippets = test_json = None  # run once, in ListenBookTests
+
+    def sap(self, name, raw, rows="", extra=None):
+        extra = dict(extra or {})
+        # The ring holds the frame, so the analysis and the preview find it.
+        extra[NAMES["STATUS_RECENT_RAW_FILE"]] = f"2026-10-02T09:59:00+00:00\t{len(raw)}\t{raw}\n"
+        if rows:
+            extra[NAMES["STATUS_CANDIDATES_FILE"]] = rows
+        b, p = os.path.join(self.tmp, name, "bash"), os.path.join(self.tmp, name, "py")
+        seed(b, extra)
+        seed(p, extra)
+        log_b, shots_b = run_bash(b, f"status_raw_candidate_seen '{raw}'")
+        log_p, shots_p = run_raw_python(p, raw)
+        self.assertEqual(dump(p), dump(b), f"{name}: files")
+        self.assertEqual(sorted(log_p), sorted(log_b), f"{name}: log lines")
+        self.assertEqual(shots_p, shots_b, f"{name}: preview one-shots")
+        return dump(p)
+
+    def test_sap(self):
+        water = IZAR1[:18] + "07" + IZAR1[20:]
+        out = self.sap("new", IZAR1)
+        self.assertIn(b"2156B4C2\tauto\tUnknown meter type (0x01)", out[NAMES["STATUS_CANDIDATES_FILE"]])
+        self.sap("new_second", IZAR2)
+        self.sap("water_izarv2", water)
+        self.sap("auto_same", IZAR1, "2156B4C2\tauto\tUnknown meter type (0x01)\tOLD\t1\t0\t1\t1\t\n",
+                 {"preview/meter-preview-2156B4C2": "name=preview_2156B4C2\nid=2156b4c2\n"})
+        self.sap("auto_type_changes", IZAR1, "2156B4C2\tauto\tWater meter (0x07)\tOLD\t1\t0\t1\t1\t\n")
+        self.sap("driver_known", IZAR1, "2156B4C2\tizar\tWater meter (0x07)\tOLD\t1\t0\t1\t1\t\n")
+        self.sap("aes_kept", IZAR1, "2156B4C2\tauto\tWater meter (0x07) encrypted\tOLD\t1\t0\t1\t1\t\n")
+        self.sap("empty_driver", IZAR1, "2156B4C2\t\tsomething\tOLD\t1\t0\t1\t1\t\n")
+        enc = IZAR1[:20] + "7A" + IZAR1[22:28] + "05" + IZAR1[30:]
+        self.sap("cfg_encrypted", enc, extra={"preview/meter-preview-2156B4C2": "x\n"})
+        self.sap("official", IZAR1[:8] + "50492603" + IZAR1[16:])
+        self.sap("not_sap", "1e44ae4c785634127b077a2a0000000c13" + "00" * 10)
+
+
 if __name__ == "__main__":
     unittest.main()

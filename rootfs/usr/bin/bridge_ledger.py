@@ -1518,6 +1518,42 @@ def ensure_autodecode(files: CandidateFiles, meter: str, driver: str, type_line:
         request("preview", found[2], meter)
 
 
+def append_event(path: str, level: str, message: str) -> None:
+    """status_add_event's file: append, then keep the last 40 lines. (Its
+    STATUS_LAST_EVENT lived in the bash subshell that called it, so nothing
+    reaches status.json from here.)"""
+    try:
+        with open(path, "ab") as fh:
+            fh.write(_b(f"{iso_now()}\t{level}\t{message}") + b"\n")
+        _replace_with(path, _tail_lines(path, 40))
+    except OSError:
+        pass
+
+
+def candidate_seen(files: CandidateFiles, meter: str, driver: str, type_line: str, manufacturer: str,
+                   reload: str, state_file: str, attempts_dir: str, events_file: str,
+                   log: Callable[[str, str], None], request: Callable[..., None]) -> None:
+    """06-candidates.sh status_candidate_seen for a normalized id, without
+    status.json (its callers here passed update_status=false or ran where
+    write_status_json is a no-op).
+
+    The refreshes still waiting for the deferred write happened before this:
+    written first, the rows keep the order in which the telegrams arrived
+    (and a waiting refresh of this candidate cannot overwrite it later).
+    """
+    _flush_candidate_refreshes(files)
+    existed = any(_first_field(ln) == _b(meter) for ln in _read_lines(files.candidates))
+    record_seen(files.seen, meter, "candidate")
+    last_seen = iso_now()
+    upsert_candidate_row(files.candidates, meter, driver, type_line, last_seen,
+                         seen_stats(files.seen, meter), manufacturer)
+    analyze_candidate_from_text(files, meter, type_line)
+    ensure_autodecode(files, meter, driver or "auto", type_line, reload, state_file, attempts_dir,
+                      log, request)
+    if not existed:
+        append_event(events_file, "candidate", f"Candidate detected {meter} ({driver})")
+
+
 _DEVICE_TYPES = {"02": "Electricity meter (0x02)", "03": "Gas meter (0x03)",
                  "04": "Heat meter (0x04)", "06": "Warm water meter (0x06)",
                  "07": "Water meter (0x07)", "08": "Heat Cost Allocator (0x08)",
@@ -1632,7 +1668,9 @@ class RawBook:
             return
         code = mfct_code_from_raw_hex(norm)
         if code:
-            candidate_fill_manufacturer(a.candidates_file, meter, _MFCT_NAMES.get(code) or code)
+            full = _MFCT_NAMES.get(code) or code
+            if candidate_fill_manufacturer(a.candidates_file, meter, full):
+                self.log("debug", f"[DIAG] candidate {meter}: filled manufacturer fallback code={full}")
         if norm[4:8] != "304C":
             return
         driver, type_line = "", ""
@@ -1660,8 +1698,30 @@ class RawBook:
         if (driver == new_driver and type_line == new_type
                 and autodecode_unchanged(self.candidates, meter, new_driver, new_type)
                 and candidate_seen_refresh(self.candidates, meter, new_driver, new_type)):
+            # What ensure_candidate_autodecode logs for an unchanged candidate.
+            preview = os.path.join(self.candidates.preview_meter_dir, f"meter-preview-{meter}")
+            if not official_meter(self.candidates.meter_dir, meter):
+                self.log("debug", f"[DIAG] autodecode {meter}: file={preview} driver={new_driver} "
+                                  f"type={new_type} reload=true")
+                if candidate_type_requires_aes(new_type):
+                    self.log("verbose", f"[DIAG] autodecode {meter}: AES required, skipping preview")
+                else:
+                    self.log("debug", f"[DIAG] autodecode {meter}: {preview} unchanged, no reload triggered")
+            return
+        if a.preview_state_file and a.preview_attempts_dir:
+            # status_candidate_seen <id> <driver> <type> false: no status.json.
+            candidate_seen(self.candidates, meter, new_driver, new_type, "", "true",
+                           a.preview_state_file, a.preview_attempts_dir, a.events_file,
+                           self.log, self.request)
             return
         self.request("sap", raw)
+
+    def log(self, level: str, message: str) -> None:
+        """log ("info", always), log_verbose and log_debug, on stderr: stdout
+        carries the requests to the bash loop."""
+        if level == "info" or self.a.loglevel == "debug" or (
+                level == "verbose" and self.a.loglevel == "verbose"):
+            print(f"[wmbus-bridge] {message}", file=sys.stderr, flush=True)
 
     def preview(self, raw: str) -> None:
         """preview_decode_raw_if_requested up to its throttle; bash decides the rest."""
@@ -1891,22 +1951,9 @@ class ListenBook:
         status.json is not written (write_status_json is a no-op in the bash
         loop this replaces: its STATUS_* snapshot is stale).
         """
-        files = self.candidates
-        # The refreshes still waiting for the deferred write happened before
-        # this: written first, the rows keep the order in which the telegrams
-        # arrived (and a waiting refresh of this candidate cannot overwrite
-        # it later).
-        _flush_candidate_refreshes(files)
-        existed = any(_first_field(ln) == _b(meter) for ln in _read_lines(files.candidates))
-        record_seen(files.seen, meter, "candidate")
-        last_seen = iso_now()
-        upsert_candidate_row(files.candidates, meter, driver, type_line, last_seen,
-                             seen_stats(files.seen, meter), manufacturer)
-        analyze_candidate_from_text(files, meter, type_line)
-        ensure_autodecode(files, meter, driver or "auto", type_line, reload, self.a.preview_state_file,
-                          self.a.preview_attempts_dir, self.log, self.request)
-        if not existed:
-            self.add_event("candidate", f"Candidate detected {meter} ({driver})")
+        candidate_seen(self.candidates, meter, driver, type_line, manufacturer, reload,
+                       self.a.preview_state_file, self.a.preview_attempts_dir, self.a.events_file,
+                       self.log, self.request)
 
     def json(self, line: str) -> None:
         """11-listen.sh _process_listen_json_line: a decoded telegram of a candidate."""
@@ -1957,15 +2004,6 @@ class ListenBook:
                          f'"type_other":"","key":"00000000000000000000000000000000"}}',
                          "=================================="):
                 print(f"[wmbus-bridge][WARN] {line}", file=self.err, flush=True)
-
-    def add_event(self, level: str, message: str) -> None:
-        """status_add_event: append, then keep the last 40 lines."""
-        try:
-            with open(self.a.events_file, "ab") as fh:
-                fh.write(_b(f"{iso_now()}\t{level}\t{message}") + b"\n")
-            _replace_with(self.a.events_file, _tail_lines(self.a.events_file, 40))
-        except OSError:
-            pass
 
     def refresh(self, meter: str, driver: str, type_line: str, manufacturer: str) -> bool:
         """emit_snippet_if_new for a known, announced candidate; False leaves it to bash."""
@@ -2277,6 +2315,9 @@ def _parser() -> argparse.ArgumentParser:
     raw.add_argument("--preview-last-dir", required=True)
     raw.add_argument("--preview-min-interval", type=int, default=20)
     raw.add_argument("--preview-state-file", default="")
+    # With it (and --preview-state-file) a new or changed Diehl/SAP candidate
+    # is registered here (RawBook.candidate); without, it is asked of bash.
+    raw.add_argument("--preview-attempts-dir", default="")
     raw.add_argument("--preview-decoded-min-interval", type=int, default=300)
     # Values the counter subshell inherits when the pipeline starts; they go
     # into status.json unchanged, as the bash counter wrote them.
