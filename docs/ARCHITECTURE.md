@@ -431,6 +431,12 @@ loops and the books on one corpus). So is the ESP event log
 publisher, so at the broker it subscribes only the filters no other one covers
 (`wmbus/+/diag/#` covers the summary, snapshot and window filters): a broker
 may send one copy per matching subscription, and every copy would be booked.
+The broker identity from `$SYS` (`status_broker_info.txt`) is asked for on a
+SUBSCRIBE of its own, after the other filters are granted: EMQX's default ACL
+gives `$SYS` to localhost clients only, and a broker set to disconnect on a
+refusal must not take the other subscriptions with it. A refusal, or a
+connection lost while it is pending, is recorded as `denied` and asked again
+after `BROKER_SYS_DENIED_RETRY_S` (an hour), as the bash subscriber did.
 The publisher announces this as `books`; without it, or with
 `MQTT_PUBLISHER_SUBSCRIBE=false`, the bash loops below start as before.
 

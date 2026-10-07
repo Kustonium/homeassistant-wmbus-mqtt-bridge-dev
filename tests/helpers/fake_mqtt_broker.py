@@ -91,6 +91,9 @@ class FakeBroker:
         # One copy per matching subscription instead of one per client, which
         # MQTT 3.1.1 also allows for overlapping subscriptions.
         self.copy_per_subscription = False
+        # Close the connection instead of answering a refused SUBSCRIBE (an
+        # EMQX authorization deny_action of "disconnect").
+        self.disconnect_on_refuse = False
         self.lock = threading.Lock()
         self.cond = threading.Condition(self.lock)
         self.closed = False
@@ -147,6 +150,10 @@ class FakeBroker:
                         codes += b"\x80" if flt in self.refuse else b"\x00"
                     with self.cond:
                         self.subscribes.extend(flts)
+                        if self.disconnect_on_refuse and any(f in self.refuse for f in flts):
+                            self.cond.notify_all()
+                            conn.close()
+                            return
                         self.subs.setdefault(conn, []).extend(f for f in flts if f not in self.refuse)
                         replay = [(t, p) for t, p in self.retained.items()
                                   if any(topic_matches(f, t) for f in flts if f not in self.refuse)]

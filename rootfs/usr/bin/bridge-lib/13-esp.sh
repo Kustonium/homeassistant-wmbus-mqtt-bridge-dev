@@ -601,6 +601,10 @@ fi
 # connection and an authorization warning in the broker log each time, for an
 # answer that does not change. A refusal is recorded (fourth column "denied",
 # shown by the WebUI) and asked again after BROKER_SYS_DENIED_RETRY_S.
+# Booked by the publisher on its own connection when it announced "books"
+# (esp_books.BrokerInfoBook), on a SUBSCRIBE of its own; this loop is the
+# fallback.
+if [[ "${MQTT_PUB_BOOKS:-false}" != "true" ]]; then
 (
   _bk_brand=""
   _bk_version=""
@@ -655,6 +659,7 @@ fi
   done
 ) &
 ESP_SUBSCRIBER_PIDS="${ESP_SUBSCRIBER_PIDS} $!"
+fi
 
 # HA entity verification worker (opt-in). Round-trips Discovery through the HA
 # Core API: asks "does sensor.wmbus_bridge_health exist?" — the definitive check

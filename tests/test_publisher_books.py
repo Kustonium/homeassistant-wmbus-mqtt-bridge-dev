@@ -224,5 +224,68 @@ class EndToEndTests(unittest.TestCase):
         self.assertNotIn("skipped", err, err)
 
 
+class SysTests(unittest.TestCase):
+    """$SYS on a SUBSCRIBE of its own, after the ordinary filters."""
+
+    SYS = [f.encode() for f in __import__("esp_books").BrokerInfoBook.FILTERS]
+
+    def start(self, broker, retry_s="3600"):
+        tmp = tempfile.mkdtemp()
+        info = os.path.join(tmp, "status_broker_info.txt")
+        spec = {"health": {"filter": "wmbus/+/health", "health_file": os.path.join(tmp, "h.json")},
+                "broker_info": {"info_file": info}}
+        env = dict(os.environ, MQTT_PUBLISHER_BOOKS=json.dumps(spec), BROKER_SYS_DENIED_RETRY_S=retry_s)
+        proc = subprocess.Popen([sys.executable, str(PUBLISHER), "--host", "127.0.0.1", "--port", str(broker.port),
+                                 "--port-file", os.path.join(tmp, "port")],
+                                env=env, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: (proc.terminate(), proc.communicate(timeout=10), broker.close()))
+        return proc, info
+
+    @staticmethod
+    def wait_file(path, want, timeout=10):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if os.path.exists(path) and Path(path).read_text() == want:
+                return True
+            time.sleep(0.05)
+        return False
+
+    def test_answering_broker(self):
+        broker = FakeBroker()
+        broker.retained[b"$SYS/broker/version"] = b"mosquitto version 2.0.18"
+        _, info = self.start(broker)
+        self.assertTrue(broker.wait_for(lambda b: len(b.subscribes) >= 6))
+        self.assertEqual(broker.subscribes, [b"wmbus/+/health"] + self.SYS, "$SYS asked after, on its own")
+        broker.publish_to_subscribers("$SYS/broker/clients/connected", b"4")
+        self.assertTrue(self.wait_file(info, "Mosquitto\t2.0.18\t4\n"), Path(info).read_text())
+        broker.publish_to_subscribers("wmbus/a/health", b"{}")
+        self.assertEqual(len(broker.connects), 1)
+
+    def test_refusing_broker_is_asked_again_later(self):
+        broker = FakeBroker()
+        broker.refuse = set(self.SYS)
+        _, info = self.start(broker, retry_s="1")
+        self.assertTrue(self.wait_file(info, "\t\t\tdenied\n"), "the refusal is recorded")
+        self.assertEqual(broker.subscribes.count(self.SYS[0]), 1, "not asked again at once")
+        broker.refuse = set()
+        self.assertTrue(broker.wait_for(lambda b: b.subscribes.count(self.SYS[0]) == 2, timeout=5),
+                        "asked again after BROKER_SYS_DENIED_RETRY_S")
+        broker.publish_to_subscribers("$SYS/brokers/n/sysdescr", b"EMQX")
+        self.assertTrue(self.wait_file(info, "EMQX\t\t\n"))
+        self.assertEqual(len(broker.connects), 1, "a refusal costs no reconnect")
+
+    def test_broker_disconnecting_on_refusal(self):
+        broker = FakeBroker()
+        broker.refuse = set(self.SYS)
+        broker.disconnect_on_refuse = True
+        proc, info = self.start(broker)
+        self.assertTrue(self.wait_file(info, "\t\t\tdenied\n"), "the refusal is recorded")
+        self.assertTrue(broker.wait_for(lambda b: len(b.connects) >= 2, timeout=10), "reconnected")
+        time.sleep(1.5)
+        self.assertEqual(broker.subscribes.count(self.SYS[0]), 1, "$SYS not asked again on the reconnect")
+        self.assertEqual(broker.subscribes.count(b"wmbus/+/health"), 2, "ordinary filters subscribed again")
+        self.assertEqual(len(broker.connects), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

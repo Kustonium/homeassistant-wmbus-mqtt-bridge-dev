@@ -36,6 +36,8 @@ import time
 KEEPALIVE_S = 60
 QUEUE_MAX = 2000
 RECONNECT_MAX_S = 30
+# A broker that refused $SYS is asked again after this long (BROKER_SYS_DENIED_RETRY_S).
+SYS_RETRY_S = 3600
 FRAME_MAX = 4 * 1024 * 1024
 
 
@@ -241,6 +243,10 @@ def make_books(spec):
         elif mode == "ha_presence":
             import esp_books
             book = esp_books.HaPresenceBook(cfg["presence_file"])
+        elif mode == "broker_info":
+            import esp_books
+            book = esp_books.BrokerInfoBook(cfg["info_file"])
+            cfg = dict(cfg, filters=list(book.FILTERS))
         elif mode == "diag_events":
             import esp_books
             book = esp_books.DiagEventsBook(cfg["events_file"], cfg["suggestion_file"], cfg["boot_file"],
@@ -250,7 +256,8 @@ def make_books(spec):
             raise ValueError(f"unknown book {mode!r}")
         deliver = _deliver_lines(book, mode, payload_only=cfg.get("format") == "payload",
                                  with_retained=cfg.get("format") == "retained")
-        out.append((cfg["filter"].encode(), bool(cfg.get("no_retained")), deliver, book))
+        for flt in cfg.get("filters") or [cfg["filter"]]:
+            out.append((flt.encode(), bool(cfg.get("no_retained")), deliver, book))
     return out
 
 
@@ -342,9 +349,15 @@ class Broker:
         self.ping_sent = 0.0
         self.inbuf = b""
         self.last_error = ""
-        # (filter, drop retained messages, deliver(topic, payload)), in the
-        # order they are subscribed: SUBACK reports per position.
+        # (filter, drop retained messages, deliver(topic, payload, retain)).
         self.subscriptions = []
+        # SUBSCRIBE packet id -> the filters it asked for (SUBACK answers
+        # per position). Packet 1 holds the ordinary filters, packet 2 the
+        # $SYS ones (see subscribe_sys).
+        self.pending = {}
+        self.sys_held_until = 0.0
+        self.sys_retry_s = SYS_RETRY_S
+        self.on_sys_refused = None  # called when the broker refuses all of $SYS
 
     def connected(self):
         return self.sock is not None
@@ -357,6 +370,12 @@ class Broker:
                 pass
             self.sock = None
             log(f"connection to {self.addr[0]}:{self.addr[1]} lost ({why}), reconnecting")
+            if 2 in self.pending:
+                # Lost while the broker had $SYS to answer: a broker set to
+                # disconnect on an ACL refusal does this. Not asked again for
+                # an hour, or every reconnect would end the same way.
+                self._sys_refused(f"connection lost after asking for {self.pending[2][0].decode()}")
+            self.pending = {}
         elif why != self.last_error:
             log(f"cannot connect to {self.addr[0]}:{self.addr[1]} ({why}), retrying")
         self.last_error = why
@@ -435,11 +454,16 @@ class Broker:
             elif kind == 3:  # PUBLISH
                 self._on_publish(first, body)
             elif kind == 9:  # SUBACK
-                sent = self.broker_filters()
-                refused = [sent[i].decode("utf-8", "replace")
-                           for i, code in enumerate(body[2:]) if code & 0x80 and i < len(sent)]
-                if refused:
-                    log("subscription refused by the broker: " + ", ".join(refused))
+                pid = struct.unpack("!H", body[:2])[0] if len(body) >= 2 else 0
+                sent = self.pending.pop(pid, [])
+                refused = [sent[i] for i, code in enumerate(body[2:]) if code & 0x80 and i < len(sent)]
+                if pid == 2 and sent and len(refused) == len(sent):
+                    self._sys_refused("refused by the broker")
+                elif refused:
+                    log("subscription refused by the broker: "
+                        + ", ".join(f.decode("utf-8", "replace") for f in refused))
+                if pid == 1:
+                    self.subscribe_sys()
 
     def _on_publish(self, first, body):
         qos, retain = (first >> 1) & 0x03, bool(first & 0x01)
@@ -466,23 +490,61 @@ class Broker:
         Messages are routed here, to every matching filter, so one copy is
         enough; a broker may send one per matching subscription (MQTT 3.1.1
         allows either), and wmbus/+/diag/# overlaps wmbus/+/diag/summary."""
-        flts = list(dict.fromkeys(flt for flt, _, _ in self.subscriptions))
+        flts = list(dict.fromkeys(flt for flt, _, _ in self.subscriptions if flt[:1] != b"$"))
         return [f for f in flts if not any(o != f and filter_covers(o, f) for o in flts)]
+
+    def sys_filters(self):
+        return list(dict.fromkeys(flt for flt, _, _ in self.subscriptions if flt[:1] == b"$"))
+
+    def _send_subscribe(self, pid, flts):
+        body = struct.pack("!H", pid) + b"".join(_string(flt) + b"\x00" for flt in flts)
+        try:
+            self.sock.sendall(bytes([0x82]) + _remaining_length(len(body)) + body)
+        except OSError as exc:
+            self._fail(str(exc) or "send failed")
+            return
+        self.pending[pid] = flts
+        self.last_sent = time.monotonic()
+
+    def subscribe_sys(self):
+        """$SYS on its own SUBSCRIBE, once the ordinary filters are granted.
+
+        A broker may refuse it (EMQX's default ACL gives $SYS to localhost
+        clients only) or, configured so, drop the connection for asking; the
+        ordinary subscriptions must not depend on it, and a refusal is asked
+        again only after sys_retry_s, as the bash subscriber did."""
+        flts = self.sys_filters()
+        if not flts or self.sock is None or 2 in self.pending or time.monotonic() < self.sys_held_until:
+            return
+        self._send_subscribe(2, flts)
+
+    def _sys_refused(self, why):
+        self.sys_held_until = time.monotonic() + self.sys_retry_s
+        log(f"$SYS not available ({why}); asked again in {int(self.sys_retry_s)} s")
+        if self.on_sys_refused is not None:
+            try:
+                self.on_sys_refused()
+            except Exception as exc:
+                log(f"could not record the $SYS refusal ({exc})")
 
     def subscribe_all(self):
         """Subscribe to every filter (QoS 0), after each (re)connect: clean session."""
         if not self.subscriptions or self.sock is None:
             return
-        body = struct.pack("!H", 1) + b"".join(_string(flt) + b"\x00" for flt in self.broker_filters())
-        try:
-            self.sock.sendall(bytes([0x82]) + _remaining_length(len(body)) + body)
-        except OSError as exc:
-            self._fail(str(exc) or "send failed")
+        flts = self.broker_filters()
+        if flts:
+            self._send_subscribe(1, flts)  # $SYS follows its SUBACK
+        else:
+            self.subscribe_sys()
 
     def tick(self):
-        """Keepalive: ping when idle, give up when the ping is not answered."""
+        """Keepalive: ping when idle, give up when the ping is not answered.
+        Also asks for $SYS again once a refusal's hold has passed."""
         if self.sock is None:
             return
+        if self.sys_held_until and time.monotonic() >= self.sys_held_until and 1 not in self.pending:
+            self.sys_held_until = 0.0
+            self.subscribe_sys()
         now = time.monotonic()
         if self.ping_sent and now - self.ping_sent > KEEPALIVE_S / 2:
             self._fail("no answer to keepalive")
@@ -668,8 +730,14 @@ def main(argv=None):
     broker = Broker(args.host, args.port, username, password,
                     "wmbus_bridge_pub_" + secrets.token_hex(4))
     broker.subscriptions = [(flt, no_ret, deliver) for flt, no_ret, deliver, _ in books]
+    sys_books = list({id(b[3]): b[3] for b in books if hasattr(b[3], "refused")}.values())
+    broker.on_sys_refused = lambda: [b.refused() for b in sys_books]
+    try:
+        broker.sys_retry_s = float(os.environ.get("BROKER_SYS_DENIED_RETRY_S") or SYS_RETRY_S)
+    except ValueError:
+        pass
     log(f"listening on 127.0.0.1:{srv.getsockname()[1]}"
-        + (f"; subscribed for {', '.join(sorted(b[0].decode() for b in books))}" if books else ""))
+        + (f"; subscribed for {', '.join(sorted({b[0].decode() for b in books}))}" if books else ""))
     try:
         serve(srv, broker, stop, discovery, books)
     finally:

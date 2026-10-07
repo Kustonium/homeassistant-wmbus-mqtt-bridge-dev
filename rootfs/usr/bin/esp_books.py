@@ -398,6 +398,56 @@ class DiagEventsBook:
             os.replace(tmp, path)
 
 
+def _glob_mid(topic: str, prefix: str, suffix: str) -> bool:
+    """bash `[[ $topic == prefix*suffix ]]` (the * may hold slashes or nothing)."""
+    return topic.startswith(prefix) and topic.endswith(suffix) and len(topic) >= len(prefix) + len(suffix)
+
+
+class BrokerInfoBook:
+    """$SYS broker identity -> status_broker_info.txt ("brand<TAB>version<TAB>clients").
+
+    Mosquitto publishes $SYS/broker/version ("mosquitto version X.Y.Z") and
+    $SYS/broker/clients/connected; EMQX $SYS/brokers/<node>/sysdescr ("EMQX"),
+    .../version and .../clients/count. The three values are kept across
+    messages and reconnects, as the bash loop kept them.
+    """
+
+    FILTERS = ("$SYS/broker/version", "$SYS/brokers/+/version", "$SYS/brokers/+/sysdescr",
+               "$SYS/broker/clients/connected", "$SYS/brokers/+/clients/count")
+
+    def __init__(self, path: str) -> None:
+        self.path = path
+        self.brand = self.version = self.clients = ""
+
+    def __call__(self, topic_b: bytes, payload_b: bytes) -> None:
+        if not payload_b:
+            return
+        topic, payload = bl._s(topic_b), bl._s(payload_b)
+        if topic == "$SYS/broker/version":
+            self.brand = "Mosquitto"
+            cut = payload.rfind("version ")
+            self.version = payload[cut + len("version "):] if cut >= 0 else payload
+        elif _glob_mid(topic, "$SYS/brokers/", "/sysdescr"):
+            self.brand = payload
+        elif _glob_mid(topic, "$SYS/brokers/", "/version"):
+            self.version = payload
+        elif topic == "$SYS/broker/clients/connected" or _glob_mid(topic, "$SYS/brokers/", "/clients/count"):
+            # Mosquitto and EMQX count under different paths; digits only.
+            self.clients = re.sub(r"[^0-9]", "", payload)
+        else:
+            return
+        if not (self.brand or self.version or self.clients):
+            return
+        _replace(self.path, bl._b(f"{self.brand}\t{self.version}\t{self.clients}\n"))
+
+    def refused(self) -> None:
+        """The broker refused every $SYS filter (EMQX's default ACL gives $SYS
+        to localhost clients only): recorded for the WebUI unless an answer
+        came earlier."""
+        if not (self.brand or self.version or self.clients):
+            _replace(self.path, b"\t\t\tdenied\n")
+
+
 def _trailing_garbage(text: str) -> bool:
     """True when text holds anything after its JSON values that jq would fail on."""
     i, n = 0, len(text)

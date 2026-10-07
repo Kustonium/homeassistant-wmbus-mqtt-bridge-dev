@@ -296,6 +296,33 @@ class EspBooksTests(unittest.TestCase):
                 self.tmp = tempfile.mkdtemp()
                 self.diag_compare(steps, {"events": b"", "config": seed}, history=False)
 
+    def test_broker_info(self):
+        # One run of the loop each: its three values start empty, like a new book.
+        runs = [
+            [(b"$SYS/broker/version", b"mosquitto version 2.0.18"),
+             (b"$SYS/broker/clients/connected", b"12")],
+            [(b"$SYS/brokers/emqx@127.0.0.1/sysdescr", b"EMQX"),
+             (b"$SYS/brokers/emqx@127.0.0.1/version", b"5.8.6"),
+             (b"$SYS/brokers/emqx@127.0.0.1/clients/count", b"clients: 7")],
+            [(b"$SYS/brokers/emqx@127.0.0.1/clients/count", b"40")],
+            [(b"$SYS/broker/version", b"version 1 version 2")],
+            [(b"$SYS/broker/version", b"no marker")],
+            # Nothing known yet and only a count without digits: no file.
+            [(b"$SYS/broker/clients/connected", b"n/a")],
+            [(b"$SYS/brokers//version", b"x"), (b"$SYS/brokers/version", b"y"),
+             (b"$SYS/brokers/a/b/sysdescr", b"deep"), (b"$SYS/other", b"z"),
+             (b"$SYS/broker/version", b""), (b"$SYS/broker/clients/connected", b"n/a"),
+             (b"\t$SYS/broker/clients/connected", b"\t3\t")],
+            [(b"$SYS/broker/version", b"mosquitto version 2\nsecond line"),
+             (b"$SYS/broker/clients/connected", "zażółć 5".encode())],
+            [(b"$SYS/other", b"only noise")],
+        ]
+        for n, messages in enumerate(runs):
+            with self.subTest(run=n):
+                self.tmp = tempfile.mkdtemp()
+                self.compare_steps("BrokerInfoBook", esp_books.BrokerInfoBook, [messages],
+                                   "STATUS_BROKER_INFO_FILE")
+
     def test_ha_presence(self):
         steps = [
             [(b"homeassistant/status", b"online")],

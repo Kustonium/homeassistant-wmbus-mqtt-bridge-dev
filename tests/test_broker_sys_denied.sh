@@ -23,8 +23,9 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
 
-# The block from its comment to the line that records the subscriber's PID.
-block="$(sed -n '/^# Background subscriber for broker identity (\$SYS)/,/^ESP_SUBSCRIBER_PIDS=/p' "${LIB}")"
+# The block from its comment to the end of its fallback guard (the bash loop
+# runs when the publisher does not book $SYS; MQTT_PUB_BOOKS is unset here).
+block="$(sed -n '/^# Background subscriber for broker identity (\$SYS)/,/^fi$/p' "${LIB}")"
 [[ "${block}" == *'mosquitto_sub'* && "${block}" == *'denied'* ]] || fail "broker identity subscriber not found in 13-esp.sh"
 block="${block//\/usr\/bin\/mosquitto_sub/mosquitto_sub}"
 
