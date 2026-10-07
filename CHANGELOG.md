@@ -1,3 +1,9 @@
+## 1.5.80-dev.390
+
+### Added
+- book the decode pipeline's output in bridge_ledger.py (bd7260a)
+- write the wired M-Bus config and meter files in wmbus_mbus.py (4024586)
+
 ## 1.5.80-dev.389
 
 ### Added
