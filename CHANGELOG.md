@@ -1,3 +1,9 @@
+## 1.5.80-dev.381
+
+### Added
+- book the ESP diagnostic event log in the publisher (aa94d3e)
+- book ESP meter flags, summaries, snapshots and windows in the publisher (cbcaf70)
+
 ## 1.5.80-dev.380
 
 ### Added
