@@ -1,3 +1,9 @@
+## 1.5.80-dev.377
+
+### Added
+- run the rssi, /rx and RAW tracker subscriptions in the publisher (9098ecb)
+- build Discovery and state of decoded telegrams in the publisher (99f24cf)
+
 ## 1.5.80-dev.376
 
 ### Added
