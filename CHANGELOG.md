@@ -1,3 +1,9 @@
+## 1.5.80-dev.392
+
+### Added
+- run SEARCH in bridge_ledger.py (004f88d)
+- book the decode pipeline's output in bridge_ledger.py (bd7260a)
+
 ## 1.5.80-dev.390
 
 ### Added
