@@ -1,3 +1,9 @@
+## 1.5.80-dev.383
+
+### Added
+- feed the decode and LISTEN pipelines from the publisher's RAW stream (b8207e9)
+- book the $SYS broker identity in the publisher (5f07897)
+
 ## 1.5.80-dev.382
 
 ### Added
