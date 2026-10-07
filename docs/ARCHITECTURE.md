@@ -257,8 +257,9 @@ They solve different problems and intentionally see the same physical frame.
 
 ### 4.1 Configured meter path: DECODE
 
-1. `mosquitto_sub` subscribes to `raw_topic` (default
-   `wmbus/+/telegram`) and emits payload only.
+1. The bridge subscribes to `raw_topic` (default `wmbus/+/telegram`) and
+   emits payload only - through `mqtt_publisher.py`'s RAW stream, or its own
+   `mosquitto_sub` when the publisher does not offer one (see below).
 2. The bridge applies the configured input filter and feeds accepted payloads
    to the main `wmbusmeters` instance.
 3. That instance loads the user's generated meter files and emits JSON only for
@@ -386,8 +387,18 @@ bash's own `/dev/tcp`, so no process is started per message - and falls back
 to one `mosquitto_pub` per message when the publisher is not answering, or
 when `MQTT_PERSISTENT_PUBLISHER=false`. Before it, every Discovery config and
 state was a connection of its own: a login and several lines of broker log,
-several times a minute. Subscribers keep their own `mosquitto_sub`
-connections.
+several times a minute.
+
+The subscriptions run on that connection too. The DECODE and the parallel
+LISTEN `wmbusmeters` pipelines read `raw_topic` from the publisher's RAW
+stream: a second loopback port (`raw=<port>` in its port file) where every
+connection receives what `mosquitto_sub -t <raw_topic> -F '%p'` printed - each
+payload and a newline, retained ones dropped when `ignore_retained` is on.
+The pipeline's first stage (`_raw_source`) reads it with `cat`; when the port is
+not announced or does not answer (the publisher is restarting), it runs its
+own `mosquitto_sub` as before. A reader that stops reading gets at most 4 MB
+queued; telegrams beyond that are dropped for it, and logged. With the ESP
+subscriptions below, the bridge then holds one broker connection in all.
 
 The publisher also builds the Discovery configs and the state of every decoded
 telegram of a configured meter (`wmbus_discovery.py`, a port of

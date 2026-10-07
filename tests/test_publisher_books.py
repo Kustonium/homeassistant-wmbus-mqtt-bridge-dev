@@ -224,6 +224,127 @@ class EndToEndTests(unittest.TestCase):
         self.assertNotIn("skipped", err, err)
 
 
+PIPELINE_LIB = ROOT / "rootfs" / "usr" / "bin" / "bridge-lib" / "12-pipeline.sh"
+
+
+class RawFeedTests(unittest.TestCase):
+    """The RAW stream the two wmbusmeters pipelines read instead of a
+    mosquitto_sub -t RAW_TOPIC -F '%p' of their own."""
+
+    def start(self, broker, no_retained=True):
+        tmp = tempfile.mkdtemp()
+        port_file = os.path.join(tmp, "port")
+        spec = {"raw_feed": {"filter": "wmbus/+/telegram", "no_retained": no_retained}}
+        proc = subprocess.Popen([sys.executable, str(PUBLISHER), "--host", "127.0.0.1", "--port", str(broker.port),
+                                 "--port-file", port_file],
+                                env=dict(os.environ, MQTT_PUBLISHER_BOOKS=json.dumps(spec)),
+                                stderr=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: (proc.terminate(), proc.communicate(timeout=10), broker.close()))
+        self.assertTrue(broker.wait_for(lambda b: b.subscribes, timeout=10))
+        words = Path(port_file).read_text().split()
+        raw = next(int(w[4:]) for w in words if w.startswith("raw="))
+        return proc, raw
+
+    def read_lines(self, sock, count, timeout=10):
+        sock.settimeout(timeout)
+        data = b""
+        while data.count(b"\n") < count:
+            chunk = sock.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+        return data
+
+    def test_stream_as_mosquitto_sub_prints_it(self):
+        import socket
+        broker = FakeBroker()
+        broker.publish_to_subscribers("wmbus/old/telegram", b"AABB", retain=True)
+        _, raw = self.start(broker)
+        a = socket.create_connection(("127.0.0.1", raw))
+        b = socket.create_connection(("127.0.0.1", raw))
+        time.sleep(0.3)  # both accepted before the first telegram
+        for payload in (QWATER.encode(), b"zz", b"two\nlines", b"", QWATER.encode()):
+            broker.publish_to_subscribers("wmbus/lilygo/telegram", payload)
+        want = QWATER.encode() + b"\nzz\ntwo\nlines\n\n" + QWATER.encode() + b"\n"
+        for s in (a, b):
+            self.assertEqual(self.read_lines(s, want.count(b"\n")), want,
+                             "every reader gets each payload and a newline; the retained one dropped")
+        a.close()
+        broker.publish_to_subscribers("wmbus/lilygo/telegram", b"after")
+        self.assertEqual(self.read_lines(b, 1), b"after\n", "a reader leaving does not stop the others")
+        b.close()
+        self.assertEqual(broker.subscribes, [b"wmbus/+/telegram"])
+        self.assertEqual(len(broker.connects), 1)
+
+    def test_retained_kept_without_ignore_retained(self):
+        import socket
+        broker = FakeBroker()
+        _, raw = self.start(broker, no_retained=False)
+        s = socket.create_connection(("127.0.0.1", raw))
+        time.sleep(0.3)
+        broker.publish_to_subscribers("wmbus/x/telegram", b"R1", retain=True)
+        self.assertEqual(self.read_lines(s, 1), b"R1\n")
+        s.close()
+
+    def test_backlog_is_bounded_for_a_reader_that_stopped(self):
+        import socket
+        a, b = socket.socketpair()
+        feed = mp.RawFeed()
+        feed.add(a)
+        big = b"A" * 65536
+        for _ in range((mp.RAW_BACKLOG_MAX // len(big)) * 3):
+            feed.deliver(b"t", big)
+        self.assertLessEqual(len(feed.readers[0][1]), mp.RAW_BACKLOG_MAX)
+        self.assertGreater(feed.readers[0][2], 0, "the overflow is counted")
+        b.setblocking(False)
+        try:
+            while b.recv(1 << 20):
+                pass
+        except BlockingIOError:
+            pass
+        feed.flush()
+        feed.deliver(b"t", b"x")
+        self.assertEqual(feed.readers[0][2], 0, "counting stops once it reads again")
+        a.close()
+        b.close()
+
+    def raw_source(self, env_lines, stub_out, read_n=1):
+        """Run 12-pipeline.sh's _raw_source; STDBUF_BIN stands in for the
+        command line of the fallback mosquitto_sub, which it prints."""
+        tmp = tempfile.mkdtemp()
+        stub = os.path.join(tmp, "stub")
+        Path(stub).write_text('#!/usr/bin/env bash\necho "fallback $*"\n' + stub_out)
+        os.chmod(stub, 0o755)
+        script = "\n".join(["set -uo pipefail", f"source '{PIPELINE_LIB}'", f"STDBUF_BIN='{stub}'",
+                            "SUB_ARGS=(-h host)", "SUB_EXTRA=(-R)", "RAW_TOPIC='wmbus/+/telegram'",
+                            *env_lines, "_raw_source"])
+        return subprocess.Popen(["bash", "-c", script], stdout=subprocess.PIPE)
+
+    def test_raw_source_reads_the_publisher(self):
+        import socket
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+        proc = self.raw_source([f"MQTT_PUB_RAW_PORT={srv.getsockname()[1]}"], "")
+        conn, _ = srv.accept()
+        conn.sendall(b"AABB\nCCDD\n")
+        conn.close()
+        out = proc.communicate(timeout=10)[0]
+        srv.close()
+        self.assertEqual(out, b"AABB\nCCDD\n", "the publisher's stream, ended with it")
+
+    def test_raw_source_falls_back_to_mosquitto_sub(self):
+        import socket
+        s = socket.socket()
+        s.bind(("127.0.0.1", 0))
+        closed = s.getsockname()[1]
+        s.close()
+        for env in ([], [f"MQTT_PUB_RAW_PORT={closed}"]):
+            with self.subTest(env=env):
+                out = self.raw_source(env, "").communicate(timeout=10)[0]
+                self.assertEqual(out, b"fallback /usr/bin/mosquitto_sub -h host -R -t wmbus/+/telegram -F %p\n")
+
+
 class SysTests(unittest.TestCase):
     """$SYS on a SUBSCRIBE of its own, after the ordinary filters."""
 

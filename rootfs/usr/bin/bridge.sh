@@ -716,7 +716,7 @@ run_once() {
   local WATCHER_PID=$!
 
   if [[ "${FILTER_HEX_ONLY}" == "true" ]]; then
-  ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" "${SUB_EXTRA[@]}" -t "${RAW_TOPIC}" -F '%p' \
+  _raw_source \
     | awk -v dbg_n="${DEBUG_EVERY_N}" '
         function ishex(s) { return (s ~ /^[0-9A-Fa-f]+$/) }
         BEGIN { n=0 }
@@ -772,7 +772,7 @@ run_once() {
 
 done
 else
-  ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" "${SUB_EXTRA[@]}" -t "${RAW_TOPIC}" -F '%p' \
+  _raw_source \
     | tee >(_raw_counter_stage) \
     | "${QDS_STAGE[@]}" \
     | ${STDBUF_BIN} /usr/bin/wmbusmeters --useconfig="${BASE}" 2>&1 \

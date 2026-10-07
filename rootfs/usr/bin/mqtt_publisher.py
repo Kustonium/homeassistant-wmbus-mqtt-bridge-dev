@@ -38,6 +38,9 @@ QUEUE_MAX = 2000
 RECONNECT_MAX_S = 30
 # A broker that refused $SYS is asked again after this long (BROKER_SYS_DENIED_RETRY_S).
 SYS_RETRY_S = 3600
+# What one RAW reader may have waiting before further telegrams are dropped
+# for it (a reader that stopped reading must not grow this process).
+RAW_BACKLOG_MAX = 4 * 1024 * 1024
 FRAME_MAX = 4 * 1024 * 1024
 
 
@@ -243,6 +246,11 @@ def make_books(spec):
         elif mode == "ha_presence":
             import esp_books
             book = esp_books.HaPresenceBook(cfg["presence_file"])
+        elif mode == "raw_feed":
+            book = RawFeed()
+            deliver = book.deliver
+            out.append((cfg["filter"].encode(), bool(cfg.get("no_retained")), deliver, book))
+            continue
         elif mode == "broker_info":
             import esp_books
             book = esp_books.BrokerInfoBook(cfg["info_file"])
@@ -259,6 +267,75 @@ def make_books(spec):
         for flt in cfg.get("filters") or [cfg["filter"]]:
             out.append((flt.encode(), bool(cfg.get("no_retained")), deliver, book))
     return out
+
+
+class RawFeed:
+    """RAW_TOPIC payloads for the decoder and the parallel LISTEN instance.
+
+    Each connection to the raw port reads what `mosquitto_sub -t RAW_TOPIC
+    -F '%p'` printed (the payload and a newline, retained ones dropped when
+    ignore_retained is on), so the two wmbusmeters pipelines need no broker
+    connection of their own. Nothing is buffered for a reader before it
+    connects, as nothing was before mosquitto_sub subscribed.
+    """
+
+    def __init__(self):
+        self.readers = []  # [socket, pending bytes, dropped count]
+
+    def add(self, conn):
+        conn.setblocking(False)
+        self.readers.append([conn, bytearray(), 0])
+
+    def deliver(self, _topic, payload, _retain=False):
+        line = payload + b"\n"
+        for r in self.readers:
+            if len(r[1]) + len(line) > RAW_BACKLOG_MAX:
+                if not r[2]:
+                    log("a RAW reader is not keeping up; telegrams dropped for it until it does")
+                r[2] += 1
+                continue
+            if r[2]:
+                log(f"a RAW reader caught up; {r[2]} telegram(s) were dropped for it")
+                r[2] = 0
+            r[1] += line
+        self.flush()
+
+    def flush(self):
+        for r in list(self.readers):
+            if not r[1]:
+                continue
+            try:
+                n = r[0].send(r[1])
+            except BlockingIOError:
+                continue
+            except OSError:
+                self.drop(r[0])
+                continue
+            del r[1][:n]
+
+    def waiting(self):
+        return [r[0] for r in self.readers if r[1]]
+
+    def socks(self):
+        return [r[0] for r in self.readers]
+
+    def on_readable(self, conn):
+        """A reader only reads; data or EOF from it means it is gone."""
+        try:
+            data = conn.recv(4096)
+        except BlockingIOError:
+            return
+        except OSError:
+            data = b""
+        if not data:
+            self.drop(conn)
+
+    def drop(self, conn):
+        self.readers = [r for r in self.readers if r[0] is not conn]
+        try:
+            conn.close()
+        except OSError:
+            pass
 
 
 def _deliver_lines(book, mode, payload_only=False, with_retained=False):
@@ -567,30 +644,42 @@ class Broker:
             self.sock = None
 
 
-def listen(port_file, caps=""):
-    """Listen on loopback; reuse the port of a previous run when possible.
-
-    The port file holds "<port>[ <capabilities>]"; "dec" tells bash it may
-    send decoded telegrams (DEC) instead of building their Discovery itself.
-    """
+def _bind_loopback(port):
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    port = 0
-    try:
-        with open(port_file, encoding="ascii") as fh:
-            port = int((fh.read().split() or ["0"])[0])
-    except (OSError, ValueError):
-        pass
     try:
         srv.bind(("127.0.0.1", port))
     except OSError:
         srv.bind(("127.0.0.1", 0))
     srv.listen(128)
+    return srv
+
+
+def listen(port_file, caps="", raw=False):
+    """Listen on loopback; reuse the ports of a previous run when possible.
+
+    The port file holds "<port>[ <capabilities>]"; "dec" tells bash it may
+    send decoded telegrams (DEC) instead of building their Discovery itself,
+    "raw=<port>" where the RAW stream is read (RawFeed). Returns the writers'
+    socket and the RAW one (None without raw).
+    """
+    port = raw_port = 0
+    try:
+        with open(port_file, encoding="ascii") as fh:
+            words = fh.read().split()
+        port = int((words or ["0"])[0])
+        raw_port = int(next((w[4:] for w in words if w.startswith("raw=")), "0"))
+    except (OSError, ValueError):
+        pass
+    srv = _bind_loopback(port)
+    raw_srv = _bind_loopback(raw_port) if raw else None
+    if raw_srv is not None:
+        caps = f"{caps} raw={raw_srv.getsockname()[1]}".strip()
     tmp = f"{port_file}.tmp.{os.getpid()}"
     with open(tmp, "w", encoding="ascii") as fh:
         fh.write(f"{srv.getsockname()[1]}{' ' + caps if caps else ''}\n")
     os.replace(tmp, port_file)
-    return srv
+    return srv, raw_srv
 
 
 def handle(msg, broker, discovery):
@@ -619,15 +708,22 @@ def _deferreds(books):
     return [b[3].deferred for b in books if getattr(b[3], "deferred", None) is not None]
 
 
-def serve(srv, broker, stop, discovery=None, books=()):
+def serve(srv, broker, stop, discovery=None, books=(), raw_srv=None):
     clients = []  # [socket, buffer] in accept order
     deferreds = _deferreds(books)
+    feed = next((b[3] for b in books if isinstance(b[3], RawFeed)), None)
     while not stop["now"]:
         broker.try_connect()
         broker.tick()
         for d in deferreds:
             d.flush_if_due()
         rlist = [srv] + [c[0] for c in clients]
+        wlist = []
+        if raw_srv is not None:
+            rlist.append(raw_srv)
+        if feed is not None:
+            rlist += feed.socks()
+            wlist = feed.waiting()
         if broker.connected():
             rlist.append(broker.sock)
         timeout = 1.0 if broker.connected() else max(0.05, min(1.0, broker.next_attempt - time.monotonic()))
@@ -635,9 +731,24 @@ def serve(srv, broker, stop, discovery=None, books=()):
         if dues:
             timeout = max(0.0, min(timeout, min(dues)))
         try:
-            readable, _, _ = select.select(rlist, [], [], timeout)
+            readable, writable, _ = select.select(rlist, wlist, [], timeout)
         except InterruptedError:
             continue
+        if raw_srv is not None and raw_srv in readable:
+            try:
+                conn, _ = raw_srv.accept()
+                if feed is not None:
+                    feed.add(conn)
+                else:
+                    conn.close()
+            except OSError:
+                pass
+        if feed is not None:
+            for conn in feed.socks():
+                if conn in readable:
+                    feed.on_readable(conn)
+            if writable:
+                feed.flush()
         if srv in readable:
             try:
                 conn, _ = srv.accept()
@@ -726,7 +837,8 @@ def main(argv=None):
             log(f"ESP subscriptions not available ({exc.__class__.__name__}: {exc})")
             books = []
     caps = (["dec"] if discovery is not None else []) + (["books"] if books else [])
-    srv = listen(args.port_file, " ".join(caps))
+    srv, raw_srv = listen(args.port_file, " ".join(caps),
+                          raw=any(isinstance(b[3], RawFeed) for b in books))
     broker = Broker(args.host, args.port, username, password,
                     "wmbus_bridge_pub_" + secrets.token_hex(4))
     broker.subscriptions = [(flt, no_ret, deliver) for flt, no_ret, deliver, _ in books]
@@ -739,7 +851,7 @@ def main(argv=None):
     log(f"listening on 127.0.0.1:{srv.getsockname()[1]}"
         + (f"; subscribed for {', '.join(sorted({b[0].decode() for b in books}))}" if books else ""))
     try:
-        serve(srv, broker, stop, discovery, books)
+        serve(srv, broker, stop, discovery, books, raw_srv)
     finally:
         for d in _deferreds(books):
             try:
@@ -749,6 +861,8 @@ def main(argv=None):
         broker.flush()
         broker.close()
         srv.close()
+        if raw_srv is not None:
+            raw_srv.close()
     return 0
 
 

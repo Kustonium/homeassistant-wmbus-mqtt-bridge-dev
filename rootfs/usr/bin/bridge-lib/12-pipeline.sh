@@ -45,6 +45,7 @@ _mqtt_pub_persistent() {
 MQTT_PUB_PORT=""
 MQTT_PUB_DEC="false"
 MQTT_PUB_BOOKS="false"
+MQTT_PUB_RAW_PORT=""
 MQTT_PUBLISHER_PID=""
 start_mqtt_publisher() {
   if [[ "${MQTT_PERSISTENT_PUBLISHER:-true}" != "true" ]]; then
@@ -97,7 +98,26 @@ start_mqtt_publisher() {
   # topics and keeps their bookkeeping itself; start_esp_subscribers then
   # skips its own mosquitto_sub | bridge_ledger.py loops for them.
   [[ " ${_caps} " == *" books "* ]] && MQTT_PUB_BOOKS="true"
-  log "MQTT: persistent publisher ready (one broker connection for all publishes; Discovery in Python: ${MQTT_PUB_DEC}; ESP subscriptions in it: ${MQTT_PUB_BOOKS})"
+  # "raw=<port>": the RAW stream the two wmbusmeters pipelines read (_raw_source).
+  local _w
+  for _w in ${_caps}; do
+    [[ "${_w}" =~ ^raw=([0-9]+)$ ]] && MQTT_PUB_RAW_PORT="${BASH_REMATCH[1]}"
+  done
+  log "MQTT: persistent publisher ready (one broker connection for all publishes; Discovery in Python: ${MQTT_PUB_DEC}; ESP subscriptions in it: ${MQTT_PUB_BOOKS}; RAW stream from it: $([[ -n "${MQTT_PUB_RAW_PORT}" ]] && echo true || echo false))"
+}
+
+# The RAW stream of the decoder and of the parallel LISTEN instance, as
+# `mosquitto_sub -t RAW_TOPIC -F '%p'` prints it: from the publisher, which
+# subscribes RAW_TOPIC on its own connection, when it announced a raw port;
+# otherwise - or when that port does not answer (the publisher is
+# restarting) - a mosquitto_sub of its own, as before. exec: the stage stays
+# one process of the pipeline, which the soft-reload watcher stops as before.
+_raw_source() {
+  if [[ -n "${MQTT_PUB_RAW_PORT:-}" ]] && { exec 3<"/dev/tcp/127.0.0.1/${MQTT_PUB_RAW_PORT}"; } 2>/dev/null; then
+    exec cat <&3
+  fi
+  # shellcheck disable=SC2086  # STDBUF_BIN is a command with its options
+  exec ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" "${SUB_EXTRA[@]}" -t "${RAW_TOPIC}" -F '%p'
 }
 
 # The ESP subscriptions the publisher takes over, as JSON for
@@ -159,6 +179,7 @@ _mqtt_publisher_books() {
                      history_file: $diag_hist, history_enabled: $diag_hist_on},
        # The $SYS filters are fixed in esp_books.BrokerInfoBook.FILTERS.
        broker_info: {no_retained: false, info_file: $broker_info},
+       raw_feed: {filter: $raw_topic, no_retained: $no_ret},
        rx: {filter: "wmbus/+/rx", no_retained: $no_ret,
             reception_file: $rx_rec, mode_file: $rx_mode, history_file: $rx_hist,
             sequence_file: $rx_seq, boots_file: $rx_boots, clock_file: $rx_clock}}

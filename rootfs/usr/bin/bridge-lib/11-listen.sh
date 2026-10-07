@@ -214,7 +214,7 @@ start_listen_instance() {
       # that polluted LISTEN_METER_DIR with meter-preview-* files.
       rm -f "${LISTEN_METER_DIR}/meter-"* 2>/dev/null || true
       log_verbose "[DIAG] LISTEN supervisor: starting pure-listen pipeline (empty config dir=${LISTEN_METER_DIR})"
-      ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" "${SUB_EXTRA[@]}" -t "${RAW_TOPIC}" -F '%p' \
+      _raw_source \
         | awk '
             function ishex(s) { return (s ~ /^[0-9A-Fa-f]+$/) }
             {
