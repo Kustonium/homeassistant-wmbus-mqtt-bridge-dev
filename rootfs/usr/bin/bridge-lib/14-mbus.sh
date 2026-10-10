@@ -338,10 +338,12 @@ refresh_mbus_meter_files() {
       unset 'MBUS_EXCLUDE_BY_NAME[${name}]'
     fi
 
-    # Primary addresses are p1..p250; 0x00 is the factory "unset" value and
-    # 0xFB-0xFF are reserved or broadcast. Secondary addressing uses 8 hex.
-    if [[ ! "${addr}" =~ ^p([1-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|250)$ && ! "${addr}" =~ ^[0-9A-Fa-f]{8}$ ]]; then
-      warn "M-Bus: invalid address '${addr}' for '${name}' -> skipped (expected p1..p250 or 8 hex)"
+    # Primary addresses are p0..p250; 0xFB-0xFF are reserved or broadcast.
+    # p0 is the factory "unset" address: a meter answers there until it is
+    # given one, which works while it is the only unconfigured meter on the
+    # bus - the WebUI accepts it and says so. Secondary addressing uses 8 hex.
+    if [[ ! "${addr}" =~ ^p([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|250)$ && ! "${addr}" =~ ^[0-9A-Fa-f]{8}$ ]]; then
+      warn "M-Bus: invalid address '${addr}' for '${name}' -> skipped (expected p0..p250 or 8 hex)"
       skipped=$((skipped + 1))
       continue
     fi

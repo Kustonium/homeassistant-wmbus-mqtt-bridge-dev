@@ -274,7 +274,9 @@ def _jq_r_default(obj: object, key: str, default: str) -> str:
     return v if isinstance(v, str) else bl._jq_pretty(v)
 
 
-_PRIMARY = re.compile(r"p([1-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|250)")
+# p0 included: the factory "unset" address, usable while it is the only
+# unconfigured meter on the bus (refresh_mbus_meter_files, the WebUI).
+_PRIMARY = re.compile(r"p([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|250)")
 
 
 class MbusConfig:
@@ -444,7 +446,7 @@ class MbusConfig:
             else:
                 self.emit("unexclude", name)
             if not _PRIMARY.fullmatch(addr) and not re.fullmatch(r"[0-9A-Fa-f]{8}", addr):
-                self.warn(f"M-Bus: invalid address '{addr}' for '{name}' -> skipped (expected p1..p250 or 8 hex)")
+                self.warn(f"M-Bus: invalid address '{addr}' for '{name}' -> skipped (expected p0..p250 or 8 hex)")
                 skipped += 1
                 continue
             # A second entry with a name or an address already taken: skipped.

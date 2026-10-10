@@ -14,9 +14,9 @@
 #      what binds the meter to the bus and marks it pollable; without it the
 #      decoder logs "no bus specified for meter".
 #
-# Also checked: address validation (p0 and p251 are not valid - p0 is the
-# factory "unset" value, valid primaries are p1..p250), and that no meter file
-# is produced for a rejected entry.
+# Also checked: address validation (p251 is not valid; p0, the factory
+# "unset" address, is accepted as the WebUI accepts it - valid primaries are
+# p0..p250), and that no meter file is produced for a rejected entry.
 set -euo pipefail
 
 PASS=0
@@ -65,7 +65,7 @@ cat > "${OPTIONS_JSON}" <<'EOFJSON'
     {"id": "heat", "address": "p1", "type": "piigth"},
     {"id": "water", "address": "68123456", "type": "kamwater", "poll_interval": "1h"},
     {"id": "auto_one", "address": "p250"},
-    {"id": "bad_zero", "address": "p0", "type": "piigth"},
+    {"id": "unset_zero", "address": "p0", "type": "piigth"},
     {"id": "bad_high", "address": "p251", "type": "piigth"},
     {"id": "calc", "address": "p7", "type": "piigth",
      "calculated_fields": "difftemp_c=flow_temperature_c-return_temperature_c"}
@@ -83,10 +83,10 @@ refresh_mbus_meter_files
 # was missing: the brace group returned 1, the `&& mv` never ran and only the
 # temporary files existed.
 mapfile -t files < <(find "${MBUS_METER_DIR}" -maxdepth 1 -name 'meter-[0-9]*' ! -name '*.tmp' | sort)
-if [[ "${#files[@]}" -eq 4 ]]; then
-  pass "4 meter files written (2 invalid addresses rejected)"
+if [[ "${#files[@]}" -eq 5 ]]; then
+  pass "5 meter files written (the invalid address rejected, p0 kept)"
 else
-  fail "expected 4 meter files, got ${#files[@]}"
+  fail "expected 5 meter files, got ${#files[@]}"
 fi
 
 if ! find "${MBUS_METER_DIR}" -maxdepth 1 -name '*.tmp' | grep -q .; then
@@ -137,10 +137,15 @@ if grep -q '^id=p1$' "${files[@]}" && grep -q '^id=68123456$' "${files[@]}"; the
 else
   fail "addresses not written as configured"
 fi
-if ! printf '%s' "${all}" | grep -q 'p0$' && ! printf '%s' "${all}" | grep -q 'p251'; then
-  pass "p0 and p251 rejected"
+if ! printf '%s' "${all}" | grep -q 'p251'; then
+  pass "p251 rejected"
 else
   fail "invalid address reached a meter file"
+fi
+if grep -q '^id=p0$' "${files[@]}"; then
+  pass "p0 (the unset address) accepted"
+else
+  fail "p0 has no meter file"
 fi
 if grep -q 'invalid address' "${WARN_LOG}"; then
   pass "invalid addresses warned about"
@@ -192,8 +197,8 @@ fi
 # reads them out of status_mbus.json; a rejected entry that is only warned
 # about in the log is indistinguishable, in the UI, from a meter that is being
 # polled and stays silent.
-if [[ "${MBUS_METERS_OK}" -eq 4 && "${MBUS_METERS_SKIPPED}" -eq 2 ]]; then
-  pass "meter counts reported (4 written, 2 rejected)"
+if [[ "${MBUS_METERS_OK}" -eq 5 && "${MBUS_METERS_SKIPPED}" -eq 1 ]]; then
+  pass "meter counts reported (5 written, 1 rejected)"
 else
   fail "meter counts wrong: ok=${MBUS_METERS_OK} skipped=${MBUS_METERS_SKIPPED}"
 fi
