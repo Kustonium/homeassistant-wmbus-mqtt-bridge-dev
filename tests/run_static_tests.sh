@@ -27,6 +27,7 @@ bash tests/test_ledger_raw.sh
 bash tests/test_ledger_listen.sh
 bash tests/test_ledger_zero.sh
 bash tests/test_stop_signal.sh
+bash tests/test_mbus_soft_reload.sh
 bash tests/test_broker_sys_denied.sh
 bash tests/test_publish_contract.sh
 CONTRACT_TRANSPORT=publisher bash tests/test_publish_contract.sh

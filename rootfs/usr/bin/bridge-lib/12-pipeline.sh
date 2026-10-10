@@ -421,3 +421,26 @@ wait_for_mqtt() {
   write_status_json
   return 1
 }
+
+# The soft reload's kill: SIGTERM to the direct children of the main shell
+# ($1) - mosquitto_sub, awk, tee, wmbusmeters, the while-read subshells of
+# the foreground pipeline - except the watcher itself ($2), LISTEN_PID,
+# HEARTBEAT_PID, the ESP subscriber PIDs (ESP_SUBSCRIBER_PIDS) and the wired
+# M-Bus supervisor (MBUS_PID), which keep running across pipeline restarts
+# (otherwise a soft reload would silently stop them - e.g. a stale heartbeat
+# falsely flags the dashboard). The M-Bus supervisor is restarted by the
+# restart loop through stop_mbus_instance, which kills its decoder: killed
+# here instead, only the supervisor shell died, its wmbusmeters and consumer
+# were left running with nobody to stop them, and the next start added a
+# second decoder on the same serial port (two readers splitting every reply).
+_soft_reload_kill_children() {
+  local parent="$1" self="$2" child
+  for child in $(pgrep -P "${parent}" 2>/dev/null); do
+    [[ "${child}" == "${self}" ]] && continue
+    [[ -n "${LISTEN_PID:-}" && "${child}" == "${LISTEN_PID}" ]] && continue
+    [[ -n "${HEARTBEAT_PID:-}" && "${child}" == "${HEARTBEAT_PID}" ]] && continue
+    [[ -n "${ESP_SUBSCRIBER_PIDS:-}" && " ${ESP_SUBSCRIBER_PIDS} " == *" ${child} "* ]] && continue
+    [[ -n "${MBUS_PID:-}" && "${child}" == "${MBUS_PID}" ]] && continue
+    kill -TERM "${child}" 2>/dev/null
+  done
+}

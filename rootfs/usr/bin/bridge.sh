@@ -526,6 +526,7 @@ start_esp_subscribers
     sleep "${HEARTBEAT_INTERVAL_SECONDS:-10}"
   done
 ) &
+# shellcheck disable=SC2034  # read by _soft_reload_kill_children (12-pipeline.sh)
 HEARTBEAT_PID=$!
 
 # ------------------------------------------------------------
@@ -690,28 +691,16 @@ run_once() {
   mqtt_reset_discovery
 
   # ─── Soft-reload flag watcher ────────────────────────────────────────
-  # Polls for ${RELOAD_FLAG} every 2 s. When present, removes it and kills
-  # the main shell's direct children (mosquitto_sub, awk, tee, wmbusmeters,
-  # while-read subshell) to bring down the foreground pipeline. The
+  # Polls for ${RELOAD_FLAG} every 2 s. When present, removes it and brings
+  # down the foreground pipeline (_soft_reload_kill_children). The
   # restart_on_exit loop above refreshes meter files and respawns run_once.
-  # Watcher excludes itself (BASHPID), LISTEN_PID, HEARTBEAT_PID and the ESP
-  # subscriber PIDs (ESP_SUBSCRIBER_PIDS) from the kill list so the parallel
-  # listen instance, the liveness heartbeat and the ESP/diag/HA-presence
-  # subscribers keep running across pipeline restarts (otherwise a soft reload
-  # would silently stop them — e.g. a stale heartbeat falsely flags the dashboard).
   (
     watcher_self="${BASHPID}"
     while sleep 2; do
       if [[ -f "${RELOAD_FLAG}" ]]; then
         rm -f "${RELOAD_FLAG}" 2>/dev/null || true
         log "Soft reload: ${RELOAD_FLAG} detected, restarting decode pipeline..."
-        for child in $(pgrep -P "$$" 2>/dev/null); do
-          [[ "${child}" == "${watcher_self}" ]] && continue
-          [[ -n "${LISTEN_PID}" && "${child}" == "${LISTEN_PID}" ]] && continue
-          [[ -n "${HEARTBEAT_PID:-}" && "${child}" == "${HEARTBEAT_PID}" ]] && continue
-          [[ -n "${ESP_SUBSCRIBER_PIDS:-}" && " ${ESP_SUBSCRIBER_PIDS} " == *" ${child} "* ]] && continue
-          kill -TERM "${child}" 2>/dev/null
-        done
+        _soft_reload_kill_children "$$" "${watcher_self}"
         exit 0
       fi
     done

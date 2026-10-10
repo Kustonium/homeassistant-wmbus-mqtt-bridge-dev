@@ -711,7 +711,10 @@ decodes to start. `METER_FILES_IN_PYTHON=false` runs the bash functions
 `prune_official_meter_previews`) instead.
 
 LISTEN, the heartbeat, and ESP/background subscribers survive this operation.
-The watcher explicitly excludes their PIDs. Any new long-lived worker must be
+The watcher explicitly excludes their PIDs. It also excludes the wired M-Bus
+supervisor: the restart loop restarts M-Bus itself through `stop_mbus_instance`,
+which stops its decoder; a supervisor killed by the watcher would leave that
+decoder running beside the next one on the same serial port. Any new long-lived worker must be
 added to the same exclusion model or it will silently disappear after a soft
 reload.
 
