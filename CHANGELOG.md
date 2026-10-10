@@ -1,3 +1,12 @@
+## 1.5.80-dev.395
+
+### Added
+- clean up stale candidates in wmbus_meters.py housekeeping (d4044d3)
+
+### Fixed
+- pick the M-Bus meter driver from a select (b6ecc18)
+- keep the M-Bus decoder single across a soft reload (cac245c)
+
 ## 1.5.80-dev.394
 
 ### Added
