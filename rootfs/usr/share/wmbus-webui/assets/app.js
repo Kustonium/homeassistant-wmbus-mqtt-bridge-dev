@@ -4211,8 +4211,14 @@
           <h2>${escapeHtml(t("mbus_title", "M-Bus (wired)"))}</h2>
           <p>${escapeHtml(t("mbus_subtitle", "Through an M-Bus master converter on a serial port (USB / RS-232 / RS-485)."))}</p>
         </div>
-        <span class="pill ${mbus.enabled ? "ok" : "muted"}"><span class="dot"></span>${escapeHtml(
-          mbus.enabled ? t("mbus_health_ok", "Traffic healthy") : t("mbus_health_disabled", "Polling off"))}</span>
+        ${(() => {
+          // The bus state, the same one the health card shows: this pill said
+          // "Traffic healthy" whenever polling was on, whatever the bus did.
+          const st = String((mbus.runtime || {}).state || "unknown");
+          const meta = mbus.enabled ? (MBUS_HEALTH[st] || MBUS_HEALTH.unknown) : MBUS_HEALTH.disabled;
+          return `<span class="pill ${meta.cls}"><span class="dot"></span>${escapeHtml(
+            t(meta.key, mbus.enabled ? st : "Polling off"))}</span>`;
+        })()}
         <p class="mbus-untested"><strong>${escapeHtml(t("mbus_untested_title", "Not verified on a real bus."))}</strong>
           ${escapeHtml(t("mbus_untested_body", "The author has no wired M-Bus hardware. The protocol was tested against a simulator, your meters were not. If something does not work — or works and you want it to keep working — open an issue. That is the only way this gets fixed."))}
           <a href="https://github.com/Kustonium/homeassistant-wmbus-mqtt-bridge/issues" target="_blank" rel="noopener">${escapeHtml(t("mbus_untested_link", "Report an issue"))}</a>
