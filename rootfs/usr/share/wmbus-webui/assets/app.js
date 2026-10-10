@@ -3816,6 +3816,21 @@
     meters[index][field] = String(value == null ? "" : value);
   };
 
+  // The driver <select>: a pick is stored at once; "Other…" swaps the cell
+  // for a text field (one render, on change - not per keystroke).
+  window.__mbusTypePick = function (index, value) {
+    const meters = asArray(state.mbus && state.mbus.meters);
+    if (!meters[index]) return;
+    if (value === "__other__") {
+      state.mbus.meters = mbusMetersFromForm();
+      state.mbus.meters[index].type = "";
+      state.mbus.meters[index].typeCustom = true;
+      render();
+      return;
+    }
+    meters[index].type = String(value || "auto");
+  };
+
   // The address decides whether "Poll once" and "Detect driver" are enabled, so
   // unlike the other fields it needs a render to take effect. On change, not on
   // input: this file's rule is no render() per keystroke, and change fires when
@@ -3850,13 +3865,60 @@
   // state.mbus.meters are all produced from the same array.
   function mbusMetersFromForm() {
     const loaded = asArray(state.mbus?.meters);
-    return Array.from(document.querySelectorAll(".mbus-m-name")).map((input, index) => ({
-      ...loaded[index],
-      id: input.value.trim(),
-      address: (document.querySelector(`.mbus-m-addr[data-i="${index}"]`)?.value || "").trim(),
-      type: (document.querySelector(`.mbus-m-type[data-i="${index}"]`)?.value || "auto").trim(),
-      poll_interval: (document.querySelector(`.mbus-m-poll[data-i="${index}"]`)?.value || "").trim(),
-    }));
+    return Array.from(document.querySelectorAll(".mbus-m-name")).map((input, index) => {
+      const row = {
+        ...loaded[index],
+        id: input.value.trim(),
+        address: (document.querySelector(`.mbus-m-addr[data-i="${index}"]`)?.value || "").trim(),
+        type: (document.querySelector(`.mbus-m-type[data-i="${index}"]`)?.value || "auto").trim() || "auto",
+        poll_interval: (document.querySelector(`.mbus-m-poll[data-i="${index}"]`)?.value || "").trim(),
+      };
+      delete row.typeCustom;  // a form flag, never saved
+      return row;
+    });
+  }
+
+  // The driver column. A <datalist> did not work here: the browser offers
+  // only the entries that match the text already in the field (with "auto"
+  // in it, nothing else), and a pick from its popup was lost when the 5 s
+  // refresh re-rendered the tab. A <select> holds every driver of the
+  // catalog shipped with this image whatever the field holds; "Other…"
+  // turns the cell into a text field for a driver it does not list, and a
+  // saved name the catalog does not know opens as that text field.
+  function mbusDriverNames() {
+    const names = ["auto"];
+    for (const d of state.drivers || []) {
+      const name = String(d.driver || "").trim();
+      if (name && !names.some(n => n.toLowerCase() === name.toLowerCase())) names.push(name);
+    }
+    return names;
+  }
+
+  function mbusDriverField(index, m) {
+    const value = String(m.type || "auto").trim() || "auto";
+    const names = mbusDriverNames();
+    const known = names.some(n => n.toLowerCase() === value.toLowerCase());
+    const hint = escapeHtml(t("mbus_driver_picker_hint", "Choose a driver shipped with this add-on, leave auto, or type a custom driver name."));
+    if (m.typeCustom || (!known && state.drivers && state.drivers.length)) {
+      return `<input type="text" class="mbus-m-type" data-i="${index}" value="${escapeHtml(m.typeCustom ? (m.type || "") : value)}"
+                placeholder="${escapeHtml(t("mbus_driver_custom_placeholder", "driver name"))}" title="${hint}"
+                oninput="window.__mbusMeterSet(${index}, 'type', this.value)">`;
+    }
+    const types = {};
+    for (const d of state.drivers || []) {
+      const name = String(d.driver || "").trim().toLowerCase();
+      if (name && !(name in types)) types[name] = String(d.type || "");
+    }
+    // Catalog not loaded yet: keep the saved name selectable, never turn it into "auto".
+    if (!known) names.push(value);
+    const options = names.map(n => {
+      const type = types[n.toLowerCase()];
+      return `<option value="${escapeHtml(n)}"${n.toLowerCase() === value.toLowerCase() ? " selected" : ""}>${
+        escapeHtml(type ? `${n} — ${type}` : n)}</option>`;
+    }).join("");
+    return `<select class="mbus-m-type" data-i="${index}" title="${hint}"
+              onchange="window.__mbusTypePick(${index}, this.value)">${options}
+              <option value="__other__">${escapeHtml(t("mbus_driver_other", "Other…"))}</option></select>`;
   }
 
   function mbusAccessBanner(mbus) {
@@ -4191,10 +4253,7 @@
               <td><input type="text" class="mbus-m-addr" data-i="${index}" value="${escapeHtml(m.address || "")}"
                     oninput="window.__mbusMeterSet(${index}, 'address', this.value)"
                     onchange="window.__mbusAddressCommit()"></td>
-              <td><input type="text" class="mbus-m-type" data-i="${index}" list="mbus-driver-options"
-                    value="${escapeHtml(m.type || "auto")}"
-                    title="${escapeHtml(t("mbus_driver_picker_hint", "Choose a driver shipped with this add-on, leave auto, or type a custom driver name."))}"
-                    oninput="window.__mbusMeterSet(${index}, 'type', this.value)"></td>
+              <td>${mbusDriverField(index, m)}</td>
               <td><input type="text" class="mbus-m-poll" data-i="${index}" value="${escapeHtml(m.poll_interval || "")}"
                     placeholder="${escapeHtml(mbus.poll_interval || "15m")}"
                     oninput="window.__mbusMeterSet(${index}, 'poll_interval', this.value)"></td>
@@ -4213,17 +4272,6 @@
                 <button class="btn danger" data-action="mbus-del-meter" data-i="${index}">${escapeHtml(t("remove", "Remove"))}</button></div></td>
             </tr>`).join("")}
         </table></div>
-        <datalist id="mbus-driver-options">
-          <option value="auto"></option>
-          ${(state.drivers || [])
-            .filter((d, index, rows) => {
-              const name = String(d.driver || "").trim().toLowerCase();
-              return name && name !== "auto" && rows.findIndex(
-                other => String(other.driver || "").trim().toLowerCase() === name
-              ) === index;
-            })
-            .map(d => `<option value="${escapeHtml(d.driver || "")}">${escapeHtml(d.type || "")}</option>`).join("")}
-        </datalist>
         <div class="row-actions">
           <button class="btn" data-action="mbus-add-meter">${escapeHtml(t("mbus_add_meter", "Add meter"))}</button>
           <button class="btn primary" data-action="mbus-save-meters">${escapeHtml(t("mbus_save_meters", "Save meters"))}</button>

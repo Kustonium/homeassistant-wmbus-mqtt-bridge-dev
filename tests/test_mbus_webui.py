@@ -139,10 +139,17 @@ class MBusWebUITest(unittest.TestCase):
 
     def test_wired_meter_driver_uses_the_bundled_catalog(self):
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('list="mbus-driver-options"', source)
+        # A <select> of the whole catalog (a <datalist> offered only the
+        # entries matching the text already in the field, and lost a pick on
+        # the 5 s refresh), "Other…" for a driver it does not list, and the
+        # form flag behind it never saved.
+        self.assertNotIn("mbus-driver-options", source)
+        self.assertIn('<select class="mbus-m-type"', source)
+        self.assertIn('window.__mbusTypePick', source)
+        self.assertIn('value="__other__"', source)
+        self.assertIn("delete row.typeCustom;", source)
         self.assertIn('fetch("assets/drivers.json", {cache: "no-store"})', source)
         self.assertIn('postApi("mbus/detect-driver", {address})', source)
-        self.assertIn('name !== "auto"', source)
 
     def test_wired_meter_form_carries_fields_that_have_no_input(self):
         source = APP_JS.read_text(encoding="utf-8")
