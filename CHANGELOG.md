@@ -1,3 +1,11 @@
+## 1.5.80-dev.398
+
+### Fixed
+- show the M-Bus bus state in the tab header (cc6d356)
+- accept the p0 address in the meter files as the WebUI does (5a0e0d7)
+- track each meter's silence, refuse duplicate meters (a2581a6)
+- skip partial, negative and reactive registers as a meter's reading (c985101)
+
 ## 1.5.80-dev.396
 
 ### Fixed
