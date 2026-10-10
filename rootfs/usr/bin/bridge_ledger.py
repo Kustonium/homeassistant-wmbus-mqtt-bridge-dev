@@ -1383,7 +1383,7 @@ _PRIMARY_CANONICAL = ("total_m3", "total_kwh", "total_wh", "total_energy_consump
 _PRIMARY_LIKE = re.compile(r"(^total|_m3$|kwh|wh$|energy|volume)", re.I)
 _PRIMARY_NOT = re.compile(r"(last_month|last_year|previous_month|previous_year|previous|prev|at_history|"
                           r"history|historic|billing|due_date|target|backflow|fraud|leak|tamper|alarm|"
-                          r"production|tariff)", re.I)
+                          r"production|tariff|partial|negative|reactive)", re.I)
 _TARIFF_KWH = re.compile(r"^total_energy_consumption_tariff_[0-9]+_kwh$", re.I)
 _INSTANT = re.compile(r"(_kw$|_w$|_m3h$|_l_h$)", re.I)
 _META_KEYS = ("_", "id", "name", "meter", "media", "timestamp", "device_date_time", "rssi", "lqi",

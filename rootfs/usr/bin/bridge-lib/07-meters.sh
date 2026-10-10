@@ -29,7 +29,7 @@ _select_primary_meter_value() {
         // [ to_entries[]
           | select((.value|type)=="number")
           | select(.key|test("(^total|_m3$|kwh|wh$|energy|volume)";"i"))
-          | select(.key|test("(last_month|last_year|previous_month|previous_year|previous|prev|at_history|history|historic|billing|due_date|target|backflow|fraud|leak|tamper|alarm|production|tariff)";"i")|not)
+          | select(.key|test("(last_month|last_year|previous_month|previous_year|previous|prev|at_history|history|historic|billing|due_date|target|backflow|fraud|leak|tamper|alarm|production|tariff|partial|negative|reactive)";"i")|not)
           | [.key, .value]
         ][0]
       )
@@ -65,7 +65,9 @@ status_meter_seen() {
   # display) as the primary value — total_m3, total_energy_consumption_kwh,
   # etc. Consistent across media: water shows total_m3, electricity shows
   # total_energy_consumption_kwh (not the live kW draw). Exclude production,
-  # raw tariff registers and fault/alarm counters on the first pass; if an
+  # raw tariff registers, partial/negative/reactive energy registers (nemo
+  # lists total_active_partial_3phase_kwh = 0 before the positive total) and
+  # fault/alarm counters on the first pass; if an
   # electricity meter only publishes consumption tariffs, sum them below.
   IFS=$'\t' read -r value_key value < <(_select_primary_meter_value "${json_line}") || true
   if [[ -z "${value_key}" ]]; then
@@ -95,7 +97,7 @@ status_meter_seen() {
     IFS=$'\t' read -r prev_key prev_val prev_parts < <(awk -F '\t' -v id="${id}" '$1==id {print $5 "\t" $6 "\t" $13; exit}' "${STATUS_METERS_FILE}" 2>/dev/null || true)
     if [[ -n "${prev_key}" ]] \
        && printf '%s' "${prev_key}" | grep -qiE '(^total|_m3$|kwh|wh$|energy|volume)' \
-       && ! printf '%s' "${prev_key}" | grep -qiE '(last_month|last_year|previous_month|previous_year|previous|prev|at_history|history|historic|billing|due_date|target|backflow|fraud|leak|tamper|alarm|production|tariff)'; then
+       && ! printf '%s' "${prev_key}" | grep -qiE '(last_month|last_year|previous_month|previous_year|previous|prev|at_history|history|historic|billing|due_date|target|backflow|fraud|leak|tamper|alarm|production|tariff|partial|negative|reactive)'; then
       value_key="${prev_key}"
       value="${prev_val}"
       value_parts="${prev_parts}"

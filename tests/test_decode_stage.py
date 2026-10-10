@@ -66,6 +66,11 @@ CORPUS = golden_lines() + [
     '{"_":"telegram","id":"0x3264950","name":"short","total_m3":1}',
     '{"_":"telegram","id":"zz","total_m3":1}',
     '{"_":"telegram","name":"noid","total_m3":1}',
+    # A partial register (0) listed before the positive total: the total is the reading.
+    '{"_":"telegram","media":"electricity","meter":"nemo","name":"mbus_p9","id":"00067609",'
+    '"active_negative_3phase_kw":0,"active_positive_3phase_kw":97.83,"total_active_partial_3phase_kwh":0,'
+    '"total_active_positive_3phase_kwh":6735835,"total_reactive_partial_3phase_kwh":89,'
+    '"total_reactive_positive_3phase_kwh":1254529,"timestamp":"x","device":"MAIN"}',
     "(wmbus) Permanently ignoring telegrams from id: 12345678 mfct: (APA) no key to decrypt",
     "(wmbus) Permanently ignoring telegrams from id: 87654321 mfct: (APA) wrong key, you need the correct decryption key",
     "(wmbus) Permanently ignoring telegrams from id: 1 something else",
@@ -198,7 +203,9 @@ class DecodeStageTests(unittest.TestCase):
         self.assertIn("00089907\tprad\tamiplus\telectricity\ttotal_energy_consumption_kwh\t", meters)
         self.assertNotIn("12345678", out["status_meter_key_problem.tsv"])
         self.assertIn("87654321\tkey_invalid", out["status_meter_key_problem.tsv"])
-        self.assertEqual(out["status.json"]["pipeline"]["decoded_count"], len(golden_lines()) + 12)
+        self.assertEqual(out["status.json"]["pipeline"]["decoded_count"], len(golden_lines()) + 13)
+        self.assertIn("00067609\tmbus_p9\tnemo\telectricity\ttotal_active_positive_3phase_kwh\t6735835\t",
+                      meters)
         self.assertTrue(any(b"target_*" in f for f in out["frames"]))
 
     def test_zero_meter_listen(self):
