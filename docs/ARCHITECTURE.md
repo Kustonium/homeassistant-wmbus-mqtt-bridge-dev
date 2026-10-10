@@ -612,14 +612,20 @@ the bus-status card.
 
 The decoder's output is read by `wmbus_mbus.py consume`: the stamped console log
 and its trimming, the traffic state, the address-clash check and `status_mbus.json`
-in one process. An accepted telegram (with `rssi_dbm` removed — it is 0 on a wire)
+in one process. The decoder names a silent meter
+(`(meter) <name> <address> did not send a response!`), so `status_mbus.json`
+carries each meter's last answer and last silence, and the traffic state is
+taken over every meter's last event: `ok` while all answer, `partial` while
+some do, `no_reply` when none does - not from the decoder's last line, which
+flipped between `ok` and `no_reply` every poll on a bus with one silent meter. An accepted telegram (with `rssi_dbm` removed — it is 0 on a wire)
 goes back to the bash loop behind it, which publishes it as before: the meter's
 exclude patterns under its learned id, Discovery, state and the meter table.
 `MBUS_CONSUMER_IN_PYTHON=false` reads the output in bash again
 (`_mbus_consume_bash`). The instance's `wmbusmeters.conf` and meter files are
 written by `wmbus_mbus.py config` from `options.json` (the port, alias and
-identity checks, the address and key validation, `pollinterval` in every meter
-file, the `calculate_` and `field_` lines); the values the shell keeps — alias,
+identity checks, the address and key validation, a second entry with a name
+or an address already taken skipped, `pollinterval` in every meter file, the
+`calculate_` and `field_` lines); the values the shell keeps — alias,
 poll default, meter counts and exclude patterns by name — come back on its
 output. `MBUS_CONFIG_IN_PYTHON=false` writes them with the bash functions
 (`write_mbus_conf`, `refresh_mbus_meter_files`).

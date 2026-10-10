@@ -60,6 +60,11 @@ declare -A MBUS_LAST_ID=()
 # across in mbus_consume_line() once both halves are known.
 declare -A MBUS_EXCLUDE_BY_NAME=()
 declare -A MBUS_LAST_OK=()
+# The meter's last silence ("(meter) <name> <address> did not send a
+# response!") and its last event, "ok" or "silent": the bus state is taken
+# over every meter's last event.
+declare -A MBUS_LAST_SILENT=()
+declare -A MBUS_LAST_EVENT=()
 declare -A MBUS_CLASH=()
 
 MBUS_TRAFFIC_STATE="unknown"
@@ -108,14 +113,22 @@ mbus_write_status() {
   # yields nothing while the array holds entries), so the loop silently never
   # ran and every meter vanished from the status file. Meter names come from
   # user configuration and may contain spaces, so the keys stay quoted.
-  if (( ${#MBUS_LAST_ID[@]} > 0 )); then
-    for name in "${!MBUS_LAST_ID[@]}"; do
+  local names=()
+  (( ${#MBUS_LAST_ID[@]} > 0 )) && names+=("${!MBUS_LAST_ID[@]}")
+  if (( ${#MBUS_LAST_SILENT[@]} > 0 )); then
+    for name in "${!MBUS_LAST_SILENT[@]}"; do
+      [[ -n "${MBUS_LAST_ID[${name}]+x}" ]] || names+=("${name}")
+    done
+  fi
+  if (( ${#names[@]} > 0 )); then
+    for name in "${names[@]}"; do
       meters_json="$(printf '%s' "${meters_json}" | jq -c \
         --arg n "${name}" \
         --arg id "${MBUS_LAST_ID[${name}]:-}" \
         --arg clash "${MBUS_CLASH[${name}]:-}" \
         --argjson ts "${MBUS_LAST_OK[${name}]:-0}" \
-        '. + {($n): {id: $id, last_ok_epoch: $ts, clash_with: $clash}}' 2>/dev/null \
+        --argjson silent "${MBUS_LAST_SILENT[${name}]:-0}" \
+        '. + {($n): {id: $id, last_ok_epoch: $ts, last_silent_epoch: $silent, clash_with: $clash}}' 2>/dev/null \
         || printf '%s' "${meters_json}")"
     done
   fi
@@ -294,6 +307,11 @@ write_mbus_conf() {
 refresh_mbus_meter_files() {
   rm -f "${MBUS_METER_DIR}/meter-"* 2>/dev/null || true
   local n=0 skipped=0 meter_json name addr driver driver_other key poll calc stat excl calc_lines stat_lines file
+  # A second entry with a name or an address already taken is skipped: one
+  # name is one meter to the decoder, one address is one meter on the bus
+  # (options.json may come from the add-on's Configuration page, which does
+  # not check this; the WebUI refuses to save such a list).
+  local -A seen_name=() seen_addr=()
 
   MBUS_METERS_OK=0
   MBUS_METERS_SKIPPED=0
@@ -327,6 +345,20 @@ refresh_mbus_meter_files() {
       skipped=$((skipped + 1))
       continue
     fi
+    # An empty name is no key of an associative array (it never was here:
+    # MBUS_EXCLUDE_BY_NAME fails on it too), so it is not checked.
+    if [[ -n "${name}" && -n "${seen_name[${name}]+x}" ]]; then
+      warn "M-Bus: name '${name}' is used twice (also at ${seen_name[${name}]}) -> '${name}' at ${addr} skipped"
+      skipped=$((skipped + 1))
+      continue
+    fi
+    if [[ -n "${seen_addr[${addr,,}]+x}" ]]; then
+      warn "M-Bus: address ${addr} is used twice (also by '${seen_addr[${addr,,}]}') -> '${name}' skipped"
+      skipped=$((skipped + 1))
+      continue
+    fi
+    [[ -n "${name}" ]] && seen_name["${name}"]="${addr}"
+    seen_addr["${addr,,}"]="${name}"
     if [[ -n "${key}" && "${key}" != "null" && ! "${key}" =~ ^[A-Fa-f0-9]{32}$ ]]; then
       warn "M-Bus: invalid key for '${name}' -> skipped"
       skipped=$((skipped + 1))
@@ -406,6 +438,27 @@ mbus_log_console_line() {
 #   "expected checksum 0xNN but got 0xMM"    -> damaged frame / address clash
 #   "did not send a response!"               -> silence (an E5-only meter is
 #                                               indistinguishable from silence)
+# The name in "(meter) <name> <address> did not send a response!": after the
+# first "(meter) ", before the last " did not send a response!", without the
+# last word (the address). Prints nothing for a line without "(meter) ".
+_mbus_silent_meter() {
+  local rest="$1"
+  [[ "${rest}" == *"(meter) "* ]] || return 0
+  rest="${rest#*"(meter) "}"
+  rest="${rest% did not send a response!*}"
+  printf '%s' "${rest% *}"
+}
+
+# True when some meter's last event is $1 ("ok" or "silent").
+_mbus_last_event_is() {
+  local name
+  (( ${#MBUS_LAST_EVENT[@]} > 0 )) || return 1
+  for name in "${!MBUS_LAST_EVENT[@]}"; do
+    [[ "${MBUS_LAST_EVENT[${name}]}" == "$1" ]] && return 0
+  done
+  return 1
+}
+
 mbus_consume_line() {
   local line="$1" id name
 
@@ -432,6 +485,7 @@ mbus_consume_line() {
       # still accepted (measured on the simulator), so "when did we last hear
       # from it" is the only answer that means anything.
       MBUS_LAST_OK["${name}"]="$(epoch_now)"
+      MBUS_LAST_EVENT["${name}"]="ok"
       # The id is only now known, and field_excluded_for_meter() looks the
       # patterns up by id. Set before emit_discovery_from_json() below, or
       # the first telegram of every run would publish the excluded fields.
@@ -462,7 +516,8 @@ mbus_consume_line() {
     # into "ok", because the per-meter timestamps move even when the state does
     # not. At poll intervals measured in minutes this costs nothing.
     MBUS_TRAFFIC_STATE="ok"
-    mbus_write_status "ok"
+    _mbus_last_event_is silent && MBUS_TRAFFIC_STATE="partial"
+    mbus_write_status "${MBUS_TRAFFIC_STATE}"
     echo "${line}"
     return
   fi
@@ -473,10 +528,19 @@ mbus_consume_line() {
     *"expected checksum"*)
       mbus_set_state "damaged_frames" ;;
     *"did not send a response"*)
+      name="$(_mbus_silent_meter "${line}")"
+      if [[ -n "${name}" ]]; then
+        MBUS_LAST_SILENT["${name}"]="$(epoch_now)"
+        MBUS_LAST_EVENT["${name}"]="silent"
+      fi
       # A named cause outranks plain silence: once the bus is known to carry
       # foreign or damaged bytes, "no reply" adds nothing and would hide it.
-      [[ "${MBUS_TRAFFIC_STATE}" == "not_mbus_traffic" || "${MBUS_TRAFFIC_STATE}" == "damaged_frames" ]] \
-        || mbus_set_state "no_reply" ;;
+      if [[ "${MBUS_TRAFFIC_STATE}" != "not_mbus_traffic" && "${MBUS_TRAFFIC_STATE}" != "damaged_frames" ]]; then
+        MBUS_TRAFFIC_STATE="no_reply"
+        _mbus_last_event_is ok && MBUS_TRAFFIC_STATE="partial"
+      fi
+      # Written on every silence: the meter's own timestamp moved.
+      mbus_write_status "${MBUS_TRAFFIC_STATE}" ;;
     *"no bus specified for meter"*|*"SpecifiedDeviceNotFound"*)
       mbus_set_state "bus_down" ;;
   esac

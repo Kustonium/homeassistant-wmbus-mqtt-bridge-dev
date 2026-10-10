@@ -13,7 +13,11 @@
   and is handed back to bash for publishing: Discovery, state and the meter
   table belong to the radio path's code there;
 - the decoder's own words name the failure causes the JSON never carries,
-  and become the traffic state of status_mbus.json (transitions only).
+  and become the traffic state of status_mbus.json (transitions only);
+- "(meter) <name> <address> did not send a response!" names the meter that
+  stayed silent: its last silence goes into status_mbus.json next to its last
+  answer, and the bus state is taken over every meter's last event - "ok"
+  while all answer, "partial" while some do, "no_reply" when none does.
 
 Requests to the bash loop behind it, one per line, four fields separated by
 0x1F (which `read` keeps, so empty fields survive), in the order of the
@@ -97,6 +101,16 @@ def options_value(path: str, key: str, fallback: str) -> str:
     return "\n".join(out).rstrip("\n") if out else fallback
 
 
+def silent_meter(line: str) -> str:
+    """The name in "(meter) <name> <address> did not send a response!" ("" without one),
+    as bash cuts it: after the first "(meter) ", before the last " did not send a
+    response!", without the last word (the address)."""
+    if "(meter) " not in line:
+        return ""
+    rest = line.split("(meter) ", 1)[1].rsplit(" did not send a response!", 1)[0]
+    return rest.rsplit(" ", 1)[0]
+
+
 class MbusBook:
     def __init__(self, a: argparse.Namespace, out=None, err=None) -> None:
         self.a = a
@@ -107,6 +121,8 @@ class MbusBook:
         self.since_trim = 0
         self.last_id: Dict[str, str] = {}
         self.last_ok: Dict[str, int] = {}
+        self.last_silent: Dict[str, int] = {}
+        self.last_event: Dict[str, str] = {}  # name -> "ok" | "silent"
         self.clash: Dict[str, str] = {}
 
     def request(self, *fields: str) -> None:
@@ -164,22 +180,29 @@ class MbusBook:
                     self.clash[name] = prev
                 self.last_id[name] = meter
                 self.last_ok[name] = int(bl.now())
+                self.last_event[name] = "ok"
             if bl._ID8.fullmatch(meter):
                 line = jq_c_del(line, "rssi_dbm")
             # bash publishes it (exclude patterns by name, Discovery, state)
             # and echoes it, as mbus_consume_line did.
             self.request("tg", name, meter, line.replace("\n", NEWLINE))
-            self.state = "ok"
-            self.write_status("ok")
+            self.state = "partial" if "silent" in self.last_event.values() else "ok"
+            self.write_status(self.state)
             return
         if "no 0x68 byte found" in line:
             self.set_state("not_mbus_traffic")
         elif "expected checksum" in line:
             self.set_state("damaged_frames")
         elif "did not send a response" in line:
+            name = silent_meter(line)
+            if name:
+                self.last_silent[name] = int(bl.now())
+                self.last_event[name] = "silent"
             # A named cause outranks plain silence.
             if self.state not in ("not_mbus_traffic", "damaged_frames"):
-                self.set_state("no_reply")
+                self.state = "partial" if "ok" in self.last_event.values() else "no_reply"
+            # Written on every silence: the meter's own timestamp moved.
+            self.write_status(self.state)
         elif "no bus specified for meter" in line or "SpecifiedDeviceNotFound" in line:
             self.set_state("bus_down")
         self.request("log", "", "", line)
@@ -193,8 +216,10 @@ class MbusBook:
 
     def write_status(self, state: str) -> None:
         """mbus_write_status."""
-        meters = {name: {"id": self.last_id[name], "last_ok_epoch": self.last_ok.get(name, 0),
-                         "clash_with": self.clash.get(name, "")} for name in self.last_id}
+        names = list(self.last_id) + [n for n in self.last_silent if n not in self.last_id]
+        meters = {name: {"id": self.last_id.get(name, ""), "last_ok_epoch": self.last_ok.get(name, 0),
+                         "last_silent_epoch": self.last_silent.get(name, 0),
+                         "clash_with": self.clash.get(name, "")} for name in names}
         doc = {"state": state, "device": options_value(self.a.options, "mbus_device", ""),
                "bus_alias": self.a.alias, "meters_configured": int(self.a.configured or 0),
                "meters_skipped": int(self.a.skipped or 0), "meters": meters, "updated": int(bl.now())}
@@ -402,6 +427,8 @@ class MbusConfig:
             self.emit("set", "MBUS_METERS_SKIPPED", "0")
             return
         entries = meters if isinstance(meters, list) else list(meters.values()) if isinstance(meters, dict) else []
+        seen_name: Dict[str, str] = {}
+        seen_addr: Dict[str, str] = {}
         for m in entries:
             name = _jq_r_default(m, "id", "mbus")
             addr = _jq_r_default(m, "address", "")
@@ -420,6 +447,18 @@ class MbusConfig:
                 self.warn(f"M-Bus: invalid address '{addr}' for '{name}' -> skipped (expected p1..p250 or 8 hex)")
                 skipped += 1
                 continue
+            # A second entry with a name or an address already taken: skipped.
+            if name and name in seen_name:  # an empty name is not checked (bash cannot key it)
+                self.warn(f"M-Bus: name '{name}' is used twice (also at {seen_name[name]}) -> '{name}' at {addr} skipped")
+                skipped += 1
+                continue
+            if addr.lower() in seen_addr:
+                self.warn(f"M-Bus: address {addr} is used twice (also by '{seen_addr[addr.lower()]}') -> '{name}' skipped")
+                skipped += 1
+                continue
+            if name:
+                seen_name[name] = addr
+            seen_addr[addr.lower()] = name
             if key and key != "null" and not re.fullmatch(r"[A-Fa-f0-9]{32}", key):
                 self.warn(f"M-Bus: invalid key for '{name}' -> skipped")
                 skipped += 1

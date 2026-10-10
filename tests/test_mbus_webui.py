@@ -162,6 +162,22 @@ class MBusWebUITest(unittest.TestCase):
         self.assertIn("const loaded = asArray(state.mbus?.meters);", source)
         self.assertIn("...loaded[index],", source)
 
+    def test_wired_meter_save_refuses_duplicates(self):
+        saved = []
+        with mock.patch.object(webui, "save_options_patch",
+                               lambda patch: (saved.append(patch), (True, "ok"))[1]):
+            ok, msg = webui.mbus_save_meters([{"id": "mbus_p7", "address": "p2"},
+                                               {"id": "mbus_p7", "address": "p7"}])
+            self.assertFalse(ok)
+            self.assertIn("name is used twice", msg)
+            ok, msg = webui.mbus_save_meters([{"id": "a", "address": "1234ABCD"},
+                                               {"id": "b", "address": "1234abcd"}])
+            self.assertFalse(ok)
+            self.assertIn("address 1234abcd is used twice", msg)
+            ok, _ = webui.mbus_save_meters([{"id": "a", "address": "p2"}, {"id": "b", "address": "p7"}])
+            self.assertTrue(ok)
+        self.assertEqual(len(saved), 1)
+
     def test_wired_meter_save_keeps_key_and_field_lists(self):
         posted = [{
             "id": "water",

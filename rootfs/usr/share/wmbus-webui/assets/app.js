@@ -1381,14 +1381,27 @@
     }
 
     const mbus = (state.data && state.data.mbus) || {};
-    const wiredMeters = Object.values(mbus.meters || {}).filter((m) => m && m.id).length;
-    const wiredPipeline = mbus.state === "ok" ? `
+    // Shown while the engine runs, whatever its last event was: the state
+    // used to be taken from the decoder's last line, so with one silent meter
+    // beside answering ones it flipped every poll and the row came and went.
+    // Counted per meter instead - its last answer against its last silence.
+    const wiredRows = Object.values(mbus.meters || {}).filter((m) => m);
+    const wiredAnswering = wiredRows.filter((m) =>
+      Number(m.last_ok_epoch || 0) > 0 && Number(m.last_ok_epoch || 0) >= Number(m.last_silent_epoch || 0)).length;
+    const wiredTotal = Math.max(Number(mbus.meters_configured || 0), wiredRows.length);
+    const wiredAll = wiredTotal > 0 && wiredAnswering >= wiredTotal;
+    const wiredDot = dot(wiredAll, wiredAnswering > 0, wiredAll);
+    const wiredRunning = ["ok", "partial", "no_reply", "damaged_frames", "not_mbus_traffic", "starting"]
+      .includes(String(mbus.state || ""));
+    const wiredPipeline = wiredRunning ? `
       <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
         <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:8px;">${escapeHtml(t("pipeline_wired_active", "WIRED M-BUS · ACTIVE"))}</div>
         <div class="pipeline">
-          <div class="pipeline-node"><div class="pipeline-icon">🔢</div><div class="pipeline-title">M-Bus</div><div class="pipeline-meta">${dot(true, false, true)} ${wiredMeters} ${escapeHtml(t("pipeline_wired_meters", "meters"))}</div></div>
+          <div class="pipeline-node"><div class="pipeline-icon">🔢</div><div class="pipeline-title">M-Bus</div><div class="pipeline-meta">${wiredDot} ${escapeHtml(
+            t("pipeline_wired_answering", "{x} of {y} answer").replace("{x}", String(wiredAnswering)).replace("{y}", String(wiredTotal)))}</div></div>
           <div class="pipeline-arrow"><span>${escapeHtml(mbus.bus_alias || "M-Bus")}</span></div>
-          <div class="pipeline-node"><div class="pipeline-icon">🔌</div><div class="pipeline-title">${escapeHtml(t("pipeline_serial_master", "serial master"))}</div><div class="pipeline-meta">${dot(true, false, true)} ${escapeHtml(t("pipeline_wired_receiving", "receiving"))}</div></div>
+          <div class="pipeline-node"><div class="pipeline-icon">🔌</div><div class="pipeline-title">${escapeHtml(t("pipeline_serial_master", "serial master"))}</div><div class="pipeline-meta">${dot(wiredAnswering > 0, false, wiredAnswering > 0)} ${escapeHtml(
+            wiredAnswering > 0 ? t("pipeline_wired_receiving", "receiving") : t((MBUS_HEALTH[mbus.state] || MBUS_HEALTH.unknown).key, String(mbus.state || "")))}</div></div>
           <div class="pipeline-arrow"></div>
           <div class="pipeline-node"><div class="pipeline-icon">⚙</div><div class="pipeline-title">wmbusmeters</div><div class="pipeline-meta">${dot(true, false, true)} ${escapeHtml(t("pipeline_wmbus_polling", "polling"))}</div></div>
           <div class="pipeline-arrow"></div>
@@ -3952,6 +3965,7 @@
   // carried out through status_mbus.json rather than inferred here.
   const MBUS_HEALTH = {
     ok:               {cls: "ok",    key: "mbus_health_ok"},
+    partial:          {cls: "warn",  key: "mbus_health_partial"},
     starting:         {cls: "muted", key: "mbus_health_starting"},
     disabled:         {cls: "muted", key: "mbus_health_disabled"},
     unknown:          {cls: "muted", key: "mbus_health_unknown"},
@@ -3976,21 +3990,32 @@
     const rt = mbus.runtime || {};
     const state_ = String(rt.state || "unknown");
     const meta = MBUS_HEALTH[state_] || MBUS_HEALTH.unknown;
-    const names = Object.keys(rt.meters || {});
+    // Every configured meter, not only those that answered: a silent one is
+    // what this card is for. Its last silence comes from the decoder's
+    // "(meter) <name> <address> did not send a response!".
+    const configured = asArray(mbus.meters).map((m) => String((m && m.id) || "").trim()).filter(Boolean);
+    const names = Array.from(new Set([...configured, ...Object.keys(rt.meters || {})]));
     // Only worth showing once the engine is on: with polling off the state is
     // "disabled" and the whole card would be a row of dashes.
     if (!mbus.enabled && state_ !== "identity_changed") return "";
 
     const rows = names.sort().map((name) => {
-      const m = rt.meters[name] || {};
+      const m = (rt.meters || {})[name] || {};
+      const okAt = Number(m.last_ok_epoch || 0);
+      const silentAt = Number(m.last_silent_epoch || 0);
       const clash = m.clash_with
         ? ` <span class="pill bad"><span class="dot"></span>${escapeHtml(
             t("mbus_clash", "answered with two different ids ({other})").replace("{other}", m.clash_with))}</span>`
         : "";
+      const silent = silentAt > okAt
+        ? ` <span class="pill warn"><span class="dot"></span>${escapeHtml(
+            t("mbus_silent_ago", "no answer for {age}").replace(
+              "{age}", fmtInterval(Math.max(0, Math.floor(Date.now() / 1000) - silentAt))))}</span>`
+        : "";
       return `<div class="mbus-meter-state">
         <span class="name">${escapeHtml(name)}</span>
-        <span class="detail">${escapeHtml(m.id ? `id ${m.id} · ` : "")}${escapeHtml(mbusMeterAge(m.last_ok_epoch))}</span>
-        ${clash}
+        <span class="detail">${escapeHtml(m.id ? `id ${m.id} · ` : "")}${escapeHtml(mbusMeterAge(okAt))}</span>
+        ${silent}${clash}
       </div>`;
     }).join("");
 

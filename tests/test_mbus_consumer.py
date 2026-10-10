@@ -133,6 +133,31 @@ class MbusConsumerTests(unittest.TestCase):
         out = self.compare([telegram("sim", "10000284"), telegram("other", "10000285")])
         self.assertIn("other", out["status_mbus.json"]["meters"])
 
+    def test_silent_meters(self):
+        # The decoder's lines as the simulator run on the M-Bus port gave them:
+        # silence names the meter, so the state follows every meter's last
+        # event - some answer: "partial", none: "no_reply", all: "ok".
+        silent = "(meter) {} {} did not send a response!".format
+        steps = [
+            ([telegram("mbus_p1", "10000284"), silent("mbus_p4", "p4")], "partial"),
+            ([silent("mbus_p1", "p1")], "no_reply"),
+            ([telegram("mbus_p1", "10000284")], "partial"),
+            ([telegram("mbus_p4", "10000285")], "ok"),
+            ([silent("two words", "p7"), "(meter) odd did not send a response!",
+              "(mbus) meter sim did not send a response!"], "partial"),
+        ]
+        corpus = []
+        for lines, want in steps:
+            corpus += lines
+            with self.subTest(want=want, upto=len(corpus)):
+                out = self.compare(corpus)
+                self.assertEqual(out["status_mbus.json"]["state"], want)
+        meters = out["status_mbus.json"]["meters"]
+        self.assertEqual(meters["two words"]["id"], "")
+        self.assertEqual(meters["two words"]["last_silent_epoch"], NOW)
+        self.assertEqual(meters["mbus_p4"]["last_ok_epoch"], NOW)
+        self.assertIn("odd", meters)  # a name with no address word
+
     def test_trim(self):
         corpus = [f"poll line {i}" for i in range(2600)] + [telegram("sim", "10000284")]
         out = self.compare(corpus)

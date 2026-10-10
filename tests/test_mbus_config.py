@@ -37,6 +37,10 @@ METERS = [
     {"id": "", "address": "p5", "type": None},
     {"id": "with space", "address": "p250", "exclude_fields": "", "calculated_fields": "nl=a\nb"},
     {"id": 7, "address": "p6", "poll_interval": "1h", "static_fields": None},
+    {"id": "water", "address": "p20"},          # name taken (p1) -> skipped
+    {"id": "dupaddr", "address": "12345678"},   # address taken (sec) -> skipped
+    {"id": "dupcase", "address": "1234ABCD"},
+    {"id": "dupcase2", "address": "1234abcd"},  # same address, other case -> skipped
 ]
 
 
@@ -116,6 +120,7 @@ class MbusConfigTests(unittest.TestCase):
         files = [k for k in out if "/wmbusmeters.d/meter-" in k]
         self.assertGreaterEqual(len(files), 5)
         self.assertIn("calculate_total_l=total_m3 * 1000", "".join(out[k] for k in files))
+        self.assertEqual(sum("is used twice" in ln for ln in out["log"]), 3)
 
     def test_variants(self):
         cases = {
