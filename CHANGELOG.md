@@ -1,3 +1,11 @@
+## 1.5.80-dev.396
+
+### Fixed
+- track each meter's silence, refuse duplicate meters (a2581a6)
+- skip partial, negative and reactive registers as a meter's reading (c985101)
+- pick the M-Bus meter driver from a select (b6ecc18)
+- keep the M-Bus decoder single across a soft reload (cac245c)
+
 ## 1.5.80-dev.395
 
 ### Added
