@@ -2,16 +2,6 @@
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
-## 1.6.1-dev.402
-
-### Fixed
-- cap add-meter modal body height so footer stays reachable on short viewports (8ecca5d)
-
-## 1.6.1-dev.401
-
-### Fixed
-- cap add-meter modal body height so footer stays reachable on short viewports (8ecca5d)
-
 ## 1.6.1-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
