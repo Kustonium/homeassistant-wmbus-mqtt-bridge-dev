@@ -932,6 +932,18 @@ tr:last-child td {
   max-height: calc(100vh - 160px);
 }
 
+/* Non-wide modals (Discovery Doctor, export report) need the same body cap.
+   Discovery Doctor renders one checklist row per meter that has a retained
+   discovery config, so on a fleet (~20+ entities) at Full HD its body grew
+   past the viewport and pushed .modal-actions — including "Force
+   re-discovery" — off-screen with no scrollbar. The more specific
+   .modal.modal-wide rule above still wins for wide modals (same value), so
+   this only changes the non-wide ones. */
+.modal .modal-body {
+  overflow-y: auto;
+  max-height: calc(100vh - 160px);
+}
+
 .compare-table-wrap {
   margin-top: 10px;
   border: 1px solid #1d2f3c;
