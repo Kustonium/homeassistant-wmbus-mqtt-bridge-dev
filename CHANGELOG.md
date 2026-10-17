@@ -7,6 +7,9 @@
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
+### Fixed
+- Add-meter modal now scrolls on short / Full HD screens so the footer buttons stay reachable (#153).
+
 ## 1.6.0-dev
 
 ### Added
