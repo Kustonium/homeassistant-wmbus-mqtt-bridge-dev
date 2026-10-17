@@ -918,7 +918,18 @@ tr:last-child td {
 }
 
 .modal.modal-wide .modal-body {
-  overflow: auto;
+  overflow-y: auto;
+  /* Cap the body directly instead of relying on the flex column to shrink it:
+     max-height on the flex container (.modal.modal-wide) does NOT make its
+     height definite for flex-shrink in Chromium, so the body kept its full
+     content height and pushed .modal-actions below the viewport on short
+     screens (reported on Full HD, where taskbar + browser chrome leave
+     ~900px usable). Bounding the body makes its own scroll engage: the form
+     scrolls internally and the footer buttons stay in view. The 160px budget
+     covers .modal-head (~60), .modal-actions (~70) and the 20px backdrop
+     padding top+bottom. Above ~1040px tall the form fits and never scrolls,
+     so QHD/1080 behaviour is unchanged. */
+  max-height: calc(100vh - 160px);
 }
 
 .compare-table-wrap {
