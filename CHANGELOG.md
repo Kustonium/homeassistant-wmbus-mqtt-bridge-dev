@@ -14,6 +14,7 @@
 
 ### Fixed
 - Add-meter modal now scrolls on short / Full HD screens so the footer buttons stay reachable (#153).
+- Discovery Doctor and other dialogs now scroll on short / Full HD screens so their footer buttons stay reachable even with many meters.
 
 ## 1.6.0-dev
 
