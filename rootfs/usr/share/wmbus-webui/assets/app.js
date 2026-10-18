@@ -2230,7 +2230,7 @@
   function discoverValueFilterBar(rowCount) {
     if (!rowCount) return "";
     return `
-      <section class="section">
+      <section class="section" style="position:sticky;top:0;z-index:20;background:var(--bg);">
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 12px;background:#0e1a23;border:1px solid #1e3040;border-radius:6px;">
           <label for="discover-search-value" style="font-size:12px;color:#9eafba;">${escapeHtml(t("filter_by_value", "Filter by value"))}:</label>
           <input id="discover-search-value" type="text" inputmode="decimal" placeholder="e.g. 23.91"
@@ -2248,6 +2248,11 @@
           <input id="discover-filter-id" type="text" placeholder="e.g. 2373"
             style="background:#0a1217;border:1px solid #2a4555;color:#e8f1f8;border-radius:4px;padding:5px 8px;font-size:12px;width:110px;font-family:monospace;"
             oninput="window.__discoverFilterByValue && window.__discoverFilterByValue()">
+          <label style="font-size:12px;color:#9eafba;display:inline-flex;align-items:center;gap:5px;cursor:pointer;">
+            <input id="discover-include-configured" type="checkbox" style="cursor:pointer;"
+              onchange="window.__discoverFilterByValue && window.__discoverFilterByValue()">
+            ${escapeHtml(t("filter_include_configured", "Include saved meters"))}
+          </label>
           <button type="button" class="btn"
             style="font-size:11px;padding:4px 10px;"
             onclick="window.__discoverClearValueFilter && window.__discoverClearValueFilter();">${escapeHtml(t("filter_clear", "Clear"))}</button>
@@ -2335,7 +2340,7 @@
                       <button class="btn" data-action="open-edit-driver" data-id="${escapeHtml(id)}" data-driver="${escapeHtml(row.driver || "auto")}">${escapeHtml(t("change_driver_btn", "Driver…"))}</button>
                     </div>`;
                 return `
-                  <tr data-value="${escapeHtml(dataVal)}">
+                  <tr data-value="${escapeHtml(dataVal)}" data-id="${escapeHtml(id)}" data-driver="${escapeHtml(row.driver || "")}">
                     <td style="text-align:center;">${selectCell}</td>
                     <td><strong>${escapeHtml(id)}</strong>${aesLockBadge(row)}</td>
                     <td><span style="margin-right:5px;font-size:15px;vertical-align:middle;">${mIcon}</span>${escapeHtml(row.name || id || "-")}</td>
@@ -2380,31 +2385,37 @@
     const valActive = searchStr !== "" && Number.isFinite(searchVal);
     const drvTerm = ((drvInp && drvInp.value) || "").trim().toLowerCase();
     const idTerm  = ((idInp && idInp.value) || "").trim().toLowerCase();
-    const anyActive = valActive || drvTerm !== "" || idTerm !== "";
+    const incInp = document.getElementById("discover-include-configured");
+    const incConfigured = !!(incInp && incInp.checked);
 
     // A group-divider row carries no data-id / data-value, just a colspan cell.
     const isHeader = (r) => !r.hasAttribute("data-id") && !r.hasAttribute("data-value") && !!r.querySelector("td[colspan]");
 
-    // Each active filter ANDs with the others. A row that does not carry an
-    // attribute (e.g. configured meters have no data-driver) passes that filter,
-    // so driver/id filters only narrow the candidates table.
-    const rowMatches = (r) => {
+    // Each active filter ANDs with the others. The value filter applies to both
+    // tables; driver/id apply to the candidates table always, and to the
+    // configured ("saved meters") table only when the checkbox is on. A row that
+    // does not carry an attribute passes that filter.
+    const rowMatches = (r, applyDrvId) => {
       if (valActive) {
         const rowVal = parseFloat(r.dataset.value);
         if (!(Number.isFinite(rowVal) && Math.abs(rowVal - searchVal) <= tolerance)) return false;
       }
-      if (drvTerm !== "" && r.dataset.driver !== undefined &&
-          !String(r.dataset.driver).toLowerCase().includes(drvTerm)) return false;
-      if (idTerm !== "" && r.dataset.id !== undefined &&
-          !String(r.dataset.id).toLowerCase().startsWith(idTerm)) return false;
+      if (applyDrvId) {
+        if (drvTerm !== "" && r.dataset.driver !== undefined &&
+            !String(r.dataset.driver).toLowerCase().includes(drvTerm)) return false;
+        if (idTerm !== "" && r.dataset.id !== undefined &&
+            !String(r.dataset.id).toLowerCase().startsWith(idTerm)) return false;
+      }
       return true;
     };
 
     tables.forEach(({tbody, count, suffix}) => {
+      const applyDrvId  = tbody.id !== "discover-configured-tbody" || incConfigured;
+      const tableActive = valActive || (applyDrvId && (drvTerm !== "" || idTerm !== ""));
       const trs = Array.from(tbody.querySelectorAll("tr"));
       const dataRows = trs.filter(r => !isHeader(r));
       const total = dataRows.length;
-      if (!anyActive) {
+      if (!tableActive) {
         trs.forEach(r => { r.style.display = ""; });
         if (count) count.textContent = count.dataset.default || `${total}${suffix}`;
         return;
@@ -2412,7 +2423,7 @@
 
       let matched = 0;
       dataRows.forEach(r => {
-        const ok = rowMatches(r);
+        const ok = rowMatches(r, applyDrvId);
         r.style.display = ok ? "" : "none";
         if (ok) matched++;
       });

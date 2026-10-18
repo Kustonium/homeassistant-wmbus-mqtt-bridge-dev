@@ -8,7 +8,7 @@
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
 ### Added
-- Received/Search: filter detected candidates by driver (contains) and by serial-number prefix, alongside the existing media and value filters — helps large fleet deployments with hundreds of candidates (#151).
+- Received/Search: filter detected candidates by driver (contains) and by serial-number prefix, alongside the existing media and value filters — helps large fleet deployments with hundreds of candidates. The filter bar stays pinned while the tables scroll, and an optional "include saved meters" toggle extends the driver/ID filter to the configured-meters table too (#151).
 
 ## 1.6.1-dev
 
