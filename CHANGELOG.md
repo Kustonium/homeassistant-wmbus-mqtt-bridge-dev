@@ -1,3 +1,9 @@
+## 1.6.2-dev.408
+
+### Fixed
+- stick the Received/Search filter bar below the topbar, not over it (117ab22)
+- clean up the sticky Received/Search filter bar edge (849a1e7)
+
 ## 1.6.2-dev.407
 
 ### Added
