@@ -1,3 +1,9 @@
+## 1.6.2-dev.406
+
+### Added
+- sticky filter bar + "include saved meters" toggle in Received/Search (fd0ac97)
+- generic driver + ID-prefix filtering in the Received/Search candidates table (0031c98)
+
 ## 1.6.2-dev.404
 
 ### Added
