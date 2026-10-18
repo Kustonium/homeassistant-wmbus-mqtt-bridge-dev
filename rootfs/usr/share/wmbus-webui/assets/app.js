@@ -2230,7 +2230,7 @@
   function discoverValueFilterBar(rowCount) {
     if (!rowCount) return "";
     return `
-      <section class="section" style="position:sticky;top:0;z-index:20;background:var(--bg);">
+      <section class="section" style="position:sticky;top:0;z-index:20;background:var(--bg);margin-top:0;padding-top:10px;padding-bottom:8px;box-shadow:0 8px 12px -6px rgba(0,0,0,0.55);">
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 12px;background:#0e1a23;border:1px solid #1e3040;border-radius:6px;">
           <label for="discover-search-value" style="font-size:12px;color:#9eafba;">${escapeHtml(t("filter_by_value", "Filter by value"))}:</label>
           <input id="discover-search-value" type="text" inputmode="decimal" placeholder="e.g. 23.91"
