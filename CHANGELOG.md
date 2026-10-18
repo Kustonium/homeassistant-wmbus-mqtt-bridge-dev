@@ -7,6 +7,9 @@
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
+### Added
+- Received/Search: filter detected candidates by driver (contains) and by serial-number prefix, alongside the existing media and value filters — helps large fleet deployments with hundreds of candidates (#151).
+
 ## 1.6.1-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
