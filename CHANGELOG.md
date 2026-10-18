@@ -1,3 +1,8 @@
+## 1.6.2-dev.404
+
+### Added
+- generic driver + ID-prefix filtering in the Received/Search candidates table (0031c98)
+
 ## 1.6.2-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
