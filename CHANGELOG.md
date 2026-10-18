@@ -1,3 +1,11 @@
+## 1.6.2-dev.407
+
+### Added
+- sticky filter bar + "include saved meters" toggle in Received/Search (fd0ac97)
+
+### Fixed
+- clean up the sticky Received/Search filter bar edge (849a1e7)
+
 ## 1.6.2-dev.406
 
 ### Added
