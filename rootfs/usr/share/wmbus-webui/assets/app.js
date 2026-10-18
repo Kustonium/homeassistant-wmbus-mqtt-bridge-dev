@@ -2125,7 +2125,7 @@
                   ? `<span style="font-size:12px;color:#9eafba;" title="${escapeHtml(mfrRaw)}">${escapeHtml(mfrCompact)}</span>`
                   : `<span style="color:var(--muted);">—</span>`;
                 return groupDivider(_arr[_i - 1], row) + `
-                  <tr data-value="${escapeHtml(previewVal)}">
+                  <tr data-value="${escapeHtml(previewVal)}" data-id="${escapeHtml(id)}" data-driver="${escapeHtml(driver)}" data-media="${escapeHtml(mc)}" data-manufacturer="${escapeHtml(mfrRaw)}">
                     <td><strong>${escapeHtml(id)}</strong></td>
                     <td>${escapeHtml(driver)}</td>
                     <td style="color:#9eafba;font-size:12px;">${escapeHtml(row.type || "-")}</td>
@@ -2239,6 +2239,14 @@
           <span style="font-size:12px;color:var(--muted);">±</span>
           <input id="discover-search-tolerance" type="text" inputmode="decimal" value="0.05"
             style="background:#0a1217;border:1px solid #2a4555;color:#e8f1f8;border-radius:4px;padding:5px 8px;font-size:12px;width:70px;font-family:monospace;"
+            oninput="window.__discoverFilterByValue && window.__discoverFilterByValue()">
+          <label for="discover-filter-driver" style="font-size:12px;color:#9eafba;">${escapeHtml(t("filter_by_driver", "Driver contains"))}:</label>
+          <input id="discover-filter-driver" type="text" placeholder="e.g. izar"
+            style="background:#0a1217;border:1px solid #2a4555;color:#e8f1f8;border-radius:4px;padding:5px 8px;font-size:12px;width:110px;font-family:monospace;"
+            oninput="window.__discoverFilterByValue && window.__discoverFilterByValue()">
+          <label for="discover-filter-id" style="font-size:12px;color:#9eafba;">${escapeHtml(t("filter_by_id_prefix", "ID starts with"))}:</label>
+          <input id="discover-filter-id" type="text" placeholder="e.g. 2373"
+            style="background:#0a1217;border:1px solid #2a4555;color:#e8f1f8;border-radius:4px;padding:5px 8px;font-size:12px;width:110px;font-family:monospace;"
             oninput="window.__discoverFilterByValue && window.__discoverFilterByValue()">
           <button type="button" class="btn"
             style="font-size:11px;padding:4px 10px;"
@@ -2359,6 +2367,8 @@
   window.__discoverFilterByValue = function () {
     const valInp = document.getElementById("discover-search-value");
     const tolInp = document.getElementById("discover-search-tolerance");
+    const drvInp = document.getElementById("discover-filter-driver");
+    const idInp  = document.getElementById("discover-filter-id");
     const tables = [
       {tbody: document.getElementById("discover-configured-tbody"), count: document.getElementById("discover-configured-count"), suffix: ""},
       {tbody: document.getElementById("discover-candidates-tbody"), count: document.getElementById("discover-candidate-count"), suffix: ` ${t("webui_visible", "visible")}`},
@@ -2367,31 +2377,63 @@
     const searchStr = ((valInp && valInp.value) || "").trim();
     const searchVal = parseFloat(searchStr.replace(",", "."));
     const tolerance = parseFloat(((tolInp && tolInp.value) || "0.05").replace(",", ".")) || 0.05;
-    const active = searchStr !== "" && Number.isFinite(searchVal);
+    const valActive = searchStr !== "" && Number.isFinite(searchVal);
+    const drvTerm = ((drvInp && drvInp.value) || "").trim().toLowerCase();
+    const idTerm  = ((idInp && idInp.value) || "").trim().toLowerCase();
+    const anyActive = valActive || drvTerm !== "" || idTerm !== "";
+
+    // A group-divider row carries no data-id / data-value, just a colspan cell.
+    const isHeader = (r) => !r.hasAttribute("data-id") && !r.hasAttribute("data-value") && !!r.querySelector("td[colspan]");
+
+    // Each active filter ANDs with the others. A row that does not carry an
+    // attribute (e.g. configured meters have no data-driver) passes that filter,
+    // so driver/id filters only narrow the candidates table.
+    const rowMatches = (r) => {
+      if (valActive) {
+        const rowVal = parseFloat(r.dataset.value);
+        if (!(Number.isFinite(rowVal) && Math.abs(rowVal - searchVal) <= tolerance)) return false;
+      }
+      if (drvTerm !== "" && r.dataset.driver !== undefined &&
+          !String(r.dataset.driver).toLowerCase().includes(drvTerm)) return false;
+      if (idTerm !== "" && r.dataset.id !== undefined &&
+          !String(r.dataset.id).toLowerCase().startsWith(idTerm)) return false;
+      return true;
+    };
 
     tables.forEach(({tbody, count, suffix}) => {
       const trs = Array.from(tbody.querySelectorAll("tr"));
-      const total = trs.length;
-      if (!active) {
+      const dataRows = trs.filter(r => !isHeader(r));
+      const total = dataRows.length;
+      if (!anyActive) {
         trs.forEach(r => { r.style.display = ""; });
         if (count) count.textContent = count.dataset.default || `${total}${suffix}`;
         return;
       }
 
       let matched = 0;
-      trs.forEach(r => {
-        const rowVal = parseFloat(r.dataset.value);
-        const match  = Number.isFinite(rowVal) && Math.abs(rowVal - searchVal) <= tolerance;
-        r.style.display = match ? "" : "none";
-        if (match) matched++;
+      dataRows.forEach(r => {
+        const ok = rowMatches(r);
+        r.style.display = ok ? "" : "none";
+        if (ok) matched++;
+      });
+      // Hide a group header when every data row until the next header is hidden.
+      trs.forEach((r, i) => {
+        if (!isHeader(r)) return;
+        let anyVisible = false;
+        for (let j = i + 1; j < trs.length && !isHeader(trs[j]); j++) {
+          if (trs[j].style.display !== "none") { anyVisible = true; break; }
+        }
+        r.style.display = anyVisible ? "" : "none";
       });
       if (count) count.textContent = `${matched} / ${total}${suffix}`;
     });
   };
 
   window.__discoverClearValueFilter = function () {
-    const valInp = document.getElementById("discover-search-value");
-    if (valInp) valInp.value = "";
+    ["discover-search-value", "discover-filter-driver", "discover-filter-id"].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = "";
+    });
     window.__discoverFilterByValue && window.__discoverFilterByValue();
   };
 
