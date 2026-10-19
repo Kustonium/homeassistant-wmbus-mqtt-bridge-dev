@@ -1,3 +1,8 @@
+## 1.6.3-dev.410
+
+### Fixed
+- read the driver name from "meter" or "driver" in wmbusmeters JSON (c6a5860)
+
 ## 1.6.3-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
