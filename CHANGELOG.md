@@ -1,3 +1,8 @@
+## 1.6.4-dev.413
+
+### Fixed
+- hand RAW telegrams to the decoder at once with a single meter (fa7659e)
+
 ## 1.6.4-dev.412
 
 ### Fixed
