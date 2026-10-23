@@ -7,6 +7,9 @@
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
+### Fixed
+- With a single meter (or a few that transmit rarely), decoded telegrams arrived late and in pairs: each one waited inside the add-on for the next one, sometimes for minutes, and two were then decoded at the same moment (#157, reported by @kajak4u). A regression since 1.6.0: the decoder reads the publisher's RAW stream through `cat`, which copies with `splice`, and a splice from a TCP socket hands data on only once more arrives. Installations with many meters were not affected in practice, as their traffic kept pushing the data through. The stream is now read with `dd`, and `tests/test_raw_source_latency.sh` checks that every RAW line reaches the decoder at once.
+
 ## 1.6.3-dev.410
 
 ### Fixed
