@@ -720,19 +720,21 @@
       if (plain + aes + mfr + other === 0) return "";
       const clear = plain + (decoded ? mfr : 0);
       let cls, label;
+      // Short labels: the band and the colour carry most of it, and a pill
+      // that wraps over three lines made the row three times as tall.
       if (aes && (plain || mfr)) {
-        cls = "warn"; label = t("enc_partial", "Partly AES");
+        cls = "warn"; label = t("enc_band_partial", "partly AES");
       } else if (aes) {
-        cls = "bad"; label = t("enc_aes_req", "AES req.");
+        cls = "bad"; label = "AES";
       } else if (clear) {
-        cls = "ok"; label = t("enc_no_aes", "no AES");
+        cls = "ok"; label = t("enc_band_no_aes", "no AES");
       } else if (mfr) {
         cls = "muted"; label = t("enc_mfr_format", "own format");
       } else {
         cls = "muted"; label = "?";
       }
       const title = `${b.band}: ${t("enc_band_counts", "frames plain / AES / own format / other")} ${plain} / ${aes} / ${mfr} / ${other}`;
-      return `<span class="pill ${cls}" title="${escapeHtml(title)}">${escapeHtml(b.band)} · ${escapeHtml(label)}</span>`;
+      return `<span class="pill ${cls}" style="white-space:nowrap;" title="${escapeHtml(title)}">${escapeHtml(b.band)} · ${escapeHtml(label)}</span>`;
     }).filter(Boolean);
     if (!pills.length) return "";
     return `<div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;">${pills.join("")}</div>`;
