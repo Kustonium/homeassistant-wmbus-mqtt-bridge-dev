@@ -1,3 +1,8 @@
+## 1.6.5-dev.422
+
+### Fixed
+- signal and listen band on each board pill, no separate signal badge (97eebac)
+
 ## 1.6.5-dev.421
 
 ### Fixed
