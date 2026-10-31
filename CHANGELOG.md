@@ -1,3 +1,9 @@
+## 1.6.6-dev.426
+
+### Fixed
+- recover from an add-on restart or an expired ingress session without F5 (3e06161)
+- no gap above the sticky filter on narrow screens, labels in cards (f76682d)
+
 ## 1.6.6-dev.425
 
 ### Fixed
