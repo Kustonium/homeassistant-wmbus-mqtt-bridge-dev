@@ -569,8 +569,11 @@
           outOfOrder: Number(e.out_of_order) || 0,
           bootId: String(e.boot_id || ""),
           esp: String(e.esp || ""),
+          listen: String(e.listen || ""),
         });
       });
+      // What the board listens to (T1, C1, S1, T1+C1), from its health topic.
+      const boardListen = (v) => v.listen ? ` · ${escapeHtml(v.listen)}` : "";
       const fmtTel = (n) => n >= 1000 ? `${Math.round(n / 100) / 10}k` : String(n);
       // The board's own average signal for this meter, coloured like the
       // badge; each value is in that board's scale (boards differ by dB).
@@ -579,7 +582,7 @@
         const dbm = Number(rssiByEsp[v.esp]);
         if (!(v.esp in rssiByEsp) || !Number.isFinite(dbm)) return "";
         const cls = dbm >= -80 ? "good" : dbm >= -92 ? "mid" : "weak";
-        return ` · <span class="board-rssi ${cls}">${Math.round(dbm)}</span>`;
+        return ` · <span class="board-rssi ${cls}">${Math.round(dbm)} dBm</span>`;
       };
       // Compact by default: the board that heard the meter most, and "+N"
       // that unfolds the others. Five stacked boards made every row ~200 px
@@ -601,9 +604,9 @@
             ? `\nseq: ${v.lastSeq} · ${t("missing_rx_events", "missing RX events")}: ${v.missing} · ${t("out_of_order_rx_events", "out of order")}: ${v.outOfOrder}\nboot_id: ${v.bootId}`
             : "";
           const title = `${countLabel}: ${v.count}\n${t("first_received", "first received")}: ${first}\n${t("last_received", "last received")}: ${last}${continuity}`;
-          return `<span title="${escapeHtml(title)}" style="${pill}background:#12354a;color:#65c7f2;cursor:help;">📶 ${escapeHtml(label)} · ${fmtTel(v.count)}${boardRssi(v)}</span>`;
+          return `<span title="${escapeHtml(title)}" style="${pill}background:#12354a;color:#65c7f2;cursor:help;">📶 ${escapeHtml(label)}${boardListen(v)} · ${fmtTel(v.count)}${boardRssi(v)}</span>`;
         }
-        return `<span title="${escapeHtml(t("reception_pct_per_esp", "reception % on this ESP"))}: ${escapeHtml(label)}" style="${pill}${rxPctStyle(v.pct)}">📶 ${escapeHtml(label)} ${v.pct}%${v.count > 0 ? ` · ${fmtTel(v.count)}` : ""}${boardRssi(v)}</span>`;
+        return `<span title="${escapeHtml(t("reception_pct_per_esp", "reception % on this ESP"))}: ${escapeHtml(label)}" style="${pill}${rxPctStyle(v.pct)}">📶 ${escapeHtml(label)}${boardListen(v)} ${v.pct}%${v.count > 0 ? ` · ${fmtTel(v.count)}` : ""}${boardRssi(v)}</span>`;
       }).join("") + moreChip;
     } else if (bestPct >= 0) {
       rxHtml = `<span title="${escapeHtml(t("reception_pct_title", "reception % over the diagnostic window"))}" style="${pill}${rxPctStyle(bestPct)}">📶 ${bestPct}%</span>`;
@@ -638,22 +641,10 @@
         : t("band_exact", "link mode the ESP decoded this meter's telegram with");
       bandHtml = `<span title="${escapeHtml(bandTitle)}" style="${pill}background:#2b3550;color:#9fb4e6;cursor:help;">📻 ${escapeHtml(band)}${approx ? "?" : ""}</span>`;
     }
-    const rssiHtml = rssiBadge(row);
-    if (!flagBadge && !rxHtml && !bandHtml && !rssiHtml) return "";
-    return `<div class="rx-badges" style="margin-top:5px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;">${rssiHtml}${flagBadge}${bandHtml}${rxHtml}</div>`;
-  }
-
-  // Signal of the meter on the board that hears it most often (running
-  // average of /rx rssi_dbm). Green / amber / red at -80 and -92 dBm: above
-  // -80 the meter has margin, below -92 it is at the edge and comes and goes.
-  // The value is in that board's own scale; boards differ by several dB.
-  function rssiBadge(row) {
-    const best = row.rssi_best;
-    if (!best || !Number.isFinite(Number(best.dbm))) return "";
-    const dbm = Math.round(Number(best.dbm));
-    const cls = dbm >= -80 ? "good" : dbm >= -92 ? "mid" : "weak";
-    const title = `${t("rssi_badge_title", "Average signal on the board that hears this meter most often")}: ${best.esp} · ${dbm} dBm`;
-    return `<span class="rssi-badge ${cls}" title="${escapeHtml(title)}">${dbm} dBm</span>`;
+    // The signal is shown on each board's pill (boardRssi), not as a separate
+    // badge: one value from one board said less than the per-board list.
+    if (!flagBadge && !rxHtml && !bandHtml) return "";
+    return `<div class="rx-badges" style="margin-top:5px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;">${flagBadge}${bandHtml}${rxHtml}</div>`;
   }
 
   // Legend for the reception column, attached to the column HEADER as an "ⓘ"

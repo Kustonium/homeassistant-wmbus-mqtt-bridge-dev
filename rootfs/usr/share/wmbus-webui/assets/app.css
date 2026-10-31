@@ -1852,32 +1852,6 @@ tr:last-child td {
   }
 }
 
-/* ───── Signal badge (average RSSI on the board that hears the meter most) ───── */
-.rssi-badge {
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 9px;
-  white-space: nowrap;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-}
-
-.rssi-badge.good {
-  background: #0e3a1e;
-  color: #4df08d;
-}
-
-.rssi-badge.mid {
-  background: #3a330e;
-  color: #f3c84b;
-}
-
-.rssi-badge.weak {
-  background: #3a0e0e;
-  color: #ff646b;
-}
-
 /* ───── Candidate actions: "Add" and "⋯" in one row ───── */
 .actions.actions-compact {
   flex-wrap: wrap;
