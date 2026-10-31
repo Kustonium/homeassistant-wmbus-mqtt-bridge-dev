@@ -125,11 +125,11 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
-            base_image: ghcr.io/home-assistant/amd64-base:3.20
+            base_image: ghcr.io/home-assistant/amd64-base:3.24
             runs_on: ubuntu-latest
           - arch: aarch64
             platform: linux/arm64
-            base_image: ghcr.io/home-assistant/aarch64-base:3.20
+            base_image: ghcr.io/home-assistant/aarch64-base:3.24
             runs_on: ubuntu-24.04-arm
 
     steps:
