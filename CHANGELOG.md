@@ -1,3 +1,9 @@
+## 1.6.5-dev.420
+
+### Fixed
+- short per-band encryption labels that do not wrap (6e97dea)
+- encryption per band in the candidate table (609b7a1)
+
 ## 1.6.5-dev.419
 
 ### Added
