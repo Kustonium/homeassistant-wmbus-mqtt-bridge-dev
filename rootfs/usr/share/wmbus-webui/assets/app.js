@@ -572,7 +572,8 @@
           listen: String(e.listen || ""),
         });
       });
-      // What the board listens to (T1, C1, S1, T1+C1), from its health topic.
+      // The bands this board received this meter on (T1, C1, T1+C1), from the
+      // frames' /rx mode - not the board's listen_mode.
       const boardListen = (v) => v.listen ? ` · ${escapeHtml(v.listen)}` : "";
       const fmtTel = (n) => n >= 1000 ? `${Math.round(n / 100) / 10}k` : String(n);
       // The board's own average signal for this meter, coloured like the

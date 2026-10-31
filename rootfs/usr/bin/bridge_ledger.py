@@ -855,12 +855,15 @@ class RxBook:
     """_esp_rx_handle_message: structured /rx metadata into six files."""
 
     TRIM_EVERY = 1000
-    # Signal per meter for the WebUI (rssi_file): a running average of the
-    # rssi_dbm of each meter on each board, kept here in memory. The file holds
-    # a row per meter and board (id, board, dBm, last seen, frames), written
-    # with the deferred batch but at most every RSSI_WRITE_EVERY_S: a row per
-    # pair is ~5x the rows of one per meter, and a signal level needs no
-    # 5 s freshness. Pairs not heard for RSSI_MAX_AGE_S are dropped.
+    # Per meter and board for the WebUI (rssi_file): a running average of the
+    # rssi_dbm, and the bands the board received this meter's frames on (from
+    # the frame's own /rx mode - not the board's listen_mode, which says T1+C1
+    # for a board in both mode even when the meter sends only T1). Kept here in
+    # memory; the file holds a row per meter and board (id, board, dBm or
+    # empty, last seen, frames, "T1:10,C1:2"), written with the deferred batch
+    # but at most every RSSI_WRITE_EVERY_S: a row per pair is ~5x the rows of
+    # one per meter, and none of it needs 5 s freshness. Pairs not heard for
+    # RSSI_MAX_AGE_S are dropped.
     RSSI_ALPHA = 0.2
     RSSI_MAX_AGE_S = 3600
     RSSI_WRITE_EVERY_S = 30
@@ -870,7 +873,8 @@ class RxBook:
         self.reception, self.mode, self.history = reception, mode, history
         self.sequence, self.boots, self.clock = sequence, boots, clock
         self.rssi_file = rssi_file
-        self.rssi_stats: Dict[Tuple[str, str], List[float]] = {}  # (meter, board) -> [count, avg, last ts]
+        # (meter, board) -> [frames, average dBm or None, last ts, {band: frames}]
+        self.rssi_stats: Dict[Tuple[str, str], List[Any]] = {}
         self.rssi_written = 0.0
         self.since_trim = 0
         self.deferred = Deferred()
@@ -878,17 +882,19 @@ class RxBook:
         # to the raw feed); None without a band_enc_file.
         self.band_security = BandSecurity(band_enc_file, self.deferred) if band_enc_file else None
 
-    def _note_rssi(self, meter: str, device: str, rssi: Any, ts: int) -> None:
-        if not self.rssi_file or not meter or rssi is None or not _is_number(rssi):
+    def _note_rssi(self, meter: str, device: str, rssi: Any, mode: str, ts: int) -> None:
+        if not self.rssi_file or not meter:
             return
-        value = float(_num(rssi))
+        value = float(_num(rssi)) if rssi is not None and _is_number(rssi) else None
         st = self.rssi_stats.get((meter, device))
         if st is None:
-            self.rssi_stats[(meter, device)] = [1, value, ts]
-        else:
-            st[0] += 1
-            st[1] += self.RSSI_ALPHA * (value - st[1])
-            st[2] = ts
+            st = self.rssi_stats[(meter, device)] = [0, value, ts, {}]
+        elif value is not None:
+            st[1] = value if st[1] is None else st[1] + self.RSSI_ALPHA * (value - st[1])
+        st[0] += 1
+        st[2] = ts
+        if mode:
+            st[3][mode] = st[3].get(mode, 0) + 1
         if now() - self.rssi_written >= self.RSSI_WRITE_EVERY_S:
             self.deferred.task("rx_rssi", self._write_rssi)
 
@@ -898,7 +904,8 @@ class RxBook:
         for pair in [p for p, st in self.rssi_stats.items() if st[2] < cutoff]:
             del self.rssi_stats[pair]
         _write_replace(self.rssi_file, "".join(
-            f"{meter}\t{device}\t{round(st[1])}\t{int(st[2])}\t{int(st[0])}\n"
+            f"{meter}\t{device}\t{'' if st[1] is None else round(st[1])}\t{int(st[2])}\t{int(st[0])}\t"
+            + ",".join(f"{b}:{n}" for b, n in sorted(st[3].items())) + "\n"
             for (meter, device), st in sorted(self.rssi_stats.items())).encode())
 
     def __call__(self, topic_b: bytes, payload_b: bytes) -> None:
@@ -925,7 +932,7 @@ class RxBook:
         d = self.deferred
         upsert_meter_reception(self.reception, meter, device, ts, topic, d)
         upsert_meter_mode(self.mode, meter, mode, ts, d)
-        self._note_rssi(meter, device, first.get("rssi_dbm"), ts)
+        self._note_rssi(meter, device, first.get("rssi_dbm"), mode, ts)
         lines = []
         for n in normalized:
             if self.band_security is not None:

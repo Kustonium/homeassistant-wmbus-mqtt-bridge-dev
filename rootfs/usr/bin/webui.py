@@ -2929,9 +2929,6 @@ def state(include_ignored: bool = False) -> dict:
 
     # Approximate: meter -> device -> that device's listen_mode.
     _listen_by_dev: dict[str, str] = {}
-    # What each board listens to, for its pill in the reception column:
-    # "T1", "C1", "S1" or "T1+C1" (listen_mode both).
-    _listen_label_by_dev: dict[str, str] = {}
     _health_for_band = read_json(STATUS_ESP_HEALTH_JSON)
     if isinstance(_health_for_band, dict):
         for _hdev, _hrow in _health_for_band.items():
@@ -2940,13 +2937,6 @@ def state(include_ignored: bool = False) -> dict:
             # "T1 only" / "S1 only" / "T1+C1 (both, 3:1 bias)" -> first token.
             _lm = str(_hrow.get("listen_mode") or "").strip().upper()
             _lm_band = _band_norm(_lm.split()[0]) if _lm else ""
-            _lm_first = _lm.split()[0] if _lm else ""
-            if "+" in _lm_first:
-                _listen_label_by_dev[_hdev] = _lm_first
-            elif "BOTH" in _lm:
-                _listen_label_by_dev[_hdev] = "T1+C1"
-            elif _lm_band:
-                _listen_label_by_dev[_hdev] = _lm_band
             # A node listening to more than one band cannot attribute a frame,
             # so it contributes nothing rather than a coin flip.
             if _lm_band and "+" not in _lm and "BOTH" not in _lm:
@@ -2979,25 +2969,31 @@ def state(include_ignored: bool = False) -> dict:
                 for k, v in sorted(_modes_by_id.get(mid, {}).items(),
                                    key=lambda kv: (-kv[1], kv[0]))]
 
-    # Signal of each meter per board: a running average of /rx rssi_dbm
-    # (bridge_ledger.RxBook rssi_file), each in that board's own scale.
-    # rssi_best is the board that received the meter most often; rssi_by_esp
-    # maps every board to its value for the unfolded reception list. Rows
-    # older than 15 minutes are not shown.
+    # Per meter and board (bridge_ledger.RxBook rssi_file): a running average
+    # of /rx rssi_dbm in that board's own scale, and the bands THIS board
+    # received THIS meter on, from each frame's /rx mode. rssi_best is the
+    # board that received the meter most often; rssi_by_esp and
+    # _rx_bands_by_pair feed the per-board pills. Rows older than 15 minutes
+    # are not shown.
     _rssi_by_id: dict[str, dict] = {}
     _rssi_esp_by_id: dict[str, dict] = {}
     _rssi_count: dict[str, int] = {}
+    _rx_bands_by_pair: dict[tuple, str] = {}
     _rssi_now = int(time.time())
-    for _rrow in read_tsv(STATUS_ESP_RX_RSSI_FILE, ["id", "esp", "dbm", "ts", "count"]):
+    for _rrow in read_tsv(STATUS_ESP_RX_RSSI_FILE, ["id", "esp", "dbm", "ts", "count", "bands"]):
         _rmid = normalize_meter_id(_rrow.get("id"))
         _rts = safe_int(_rrow.get("ts", 0))
         if not (_rmid and _rts and _rssi_now - _rts <= 900):
             continue
+        _resp = _rrow.get("esp", "")
+        _rb = [p.split(":", 1)[0] for p in str(_rrow.get("bands") or "").split(",") if ":" in p]
+        _rb = sorted({_band_norm(b) for b in _rb} - {""}, key=lambda b: {"T1": 0, "C1": 1, "S1": 2}[b])
+        if _rb:
+            _rx_bands_by_pair[(_rmid, _resp)] = "+".join(_rb)
         try:
             _rdbm = int(_rrow.get("dbm", ""))
         except ValueError:
             continue
-        _resp = _rrow.get("esp", "")
         _rcount = safe_int(_rrow.get("count", 0))
         _rssi_esp_by_id.setdefault(_rmid, {})[_resp] = _rdbm
         if _rcount > _rssi_count.get(_rmid, -1):
@@ -3029,7 +3025,9 @@ def state(include_ignored: bool = False) -> dict:
         if not _per:
             return []
         # Sort most-reading first: by telegram count, then %, then name.
-        return [{"esp": k, **v, "listen": _listen_label_by_dev.get(k, "")}
+        # "listen": the bands this board received this meter on ("T1", "C1",
+        # "T1+C1"), from the frames - not the board's listen_mode.
+        return [{"esp": k, **v, "listen": _rx_bands_by_pair.get((mid, k), "")}
                 for k, v in sorted(_per.items(),
                                    key=lambda kv: (-kv[1]["count"], kv[0]))]
 
