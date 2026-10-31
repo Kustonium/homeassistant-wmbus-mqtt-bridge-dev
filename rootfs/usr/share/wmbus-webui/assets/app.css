@@ -1934,3 +1934,32 @@ th.sortable:hover,
 th.sortable.sorted {
   color: var(--text);
 }
+
+th.sortable .sort-mark {
+  color: var(--quiet);
+  opacity: 0.6;
+  font-size: 10px;
+}
+
+th.sortable:hover .sort-mark {
+  opacity: 1;
+}
+
+th.sortable.sorted .sort-mark {
+  color: #4dd0e1;
+  opacity: 1;
+}
+
+th.sortable:hover {
+  text-decoration: underline dotted;
+}
+
+/* "Add" and "⋯" stay on one line; the unfolded actions wrap below them. */
+.actions.actions-compact {
+  min-width: 170px;
+}
+
+.actions.actions-compact > .btn.primary,
+.actions.actions-compact > .btn-more {
+  white-space: nowrap;
+}

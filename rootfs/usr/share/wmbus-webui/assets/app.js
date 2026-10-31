@@ -2159,8 +2159,10 @@
       return String(a.id || "").localeCompare(String(b.id || "")) * (sort.key === "id" ? sort.dir : 1);
     });
     const sortTh = (key, label, extra = "") => {
-      const arrow = sort.key === key ? (sort.dir === 1 ? " ▲" : " ▼") : "";
-      return `<th class="sortable${sort.key === key ? " sorted" : ""}" data-action="candidate-sort" data-key="${key}" title="${escapeHtml(t("sort_by_column", "Sort by this column"))}">${escapeHtml(label)}${arrow}${extra}</th>`;
+      // Every sortable header carries a mark, so it is visible that the
+      // column can be clicked: a dim "⇅", or ▲/▼ on the active one.
+      const mark = sort.key === key ? (sort.dir === 1 ? "▲" : "▼") : "⇅";
+      return `<th class="sortable${sort.key === key ? " sorted" : ""}" data-action="candidate-sort" data-key="${key}" title="${escapeHtml(t("sort_by_column", "Sort by this column"))}">${escapeHtml(label)} <span class="sort-mark">${mark}</span>${extra}</th>`;
     };
     const groupDivider = (prev, cur) => {
       if (_silent(cur)) {
