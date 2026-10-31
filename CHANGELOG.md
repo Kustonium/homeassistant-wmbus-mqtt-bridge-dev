@@ -1,3 +1,11 @@
+## 1.6.6-dev.427
+
+### Added
+- horizontal scrollbar above wide tables (36cf74c)
+
+### Fixed
+- recover from an add-on restart or an expired ingress session without F5 (3e06161)
+
 ## 1.6.6-dev.426
 
 ### Fixed
