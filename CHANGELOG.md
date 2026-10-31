@@ -1,3 +1,11 @@
+## 1.6.5-dev.419
+
+### Added
+- signal of every board in the unfolded reception list (dc86ac1)
+
+### Fixed
+- encryption per band in the candidate table (609b7a1)
+
 ## 1.6.5-dev.418
 
 ### Added
