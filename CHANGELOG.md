@@ -1,3 +1,8 @@
+## 1.6.5-dev.421
+
+### Fixed
+- short per-band encryption labels that do not wrap (6e97dea)
+
 ## 1.6.5-dev.420
 
 ### Fixed
