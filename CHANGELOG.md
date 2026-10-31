@@ -1,3 +1,9 @@
+## 1.6.5-dev.415
+
+### Added
+- signal badge per meter, compact candidate actions, readable wmbusmeters log (a406e1f)
+- live ESPHome and wmbusmeters logs, compact reception column, cards on narrow screens (636428c)
+
 ## 1.6.5-dev.414
 
 ### Added
