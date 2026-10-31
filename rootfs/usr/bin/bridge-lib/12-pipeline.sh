@@ -174,6 +174,7 @@ _mqtt_publisher_books() {
     --arg rx_hist "${ESP_RF_RX_HISTORY_FILE}" --arg rx_seq "${STATUS_ESP_RX_SEQUENCE_FILE}" \
     --arg rx_boots "${STATUS_ESP_RX_BOOTS_FILE}" --arg rx_clock "${STATUS_ESP_RX_CLOCK_FILE}" \
     --arg rx_rssi "${RUNTIME:-${BASE}}/status_esp_rx_rssi.tsv" \
+    --arg rx_band_enc "${RUNTIME:-${BASE}}/status_esp_band_security.tsv" \
     --arg raw_topic "${RAW_TOPIC}" --argjson dev_pos "${_dev_pos}" \
     --arg tg_dev "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" --arg tg_md "${STATUS_ESP_METER_DEVICE_FILE}" \
     --arg tg_rec "${STATUS_ESP_METER_RECEPTION_FILE}" --arg tg_hist "${ESP_RX_HISTORY_FILE}" \
@@ -214,7 +215,7 @@ _mqtt_publisher_books() {
        rx: {filter: "wmbus/+/rx", no_retained: $no_ret,
             reception_file: $rx_rec, mode_file: $rx_mode, history_file: $rx_hist,
             sequence_file: $rx_seq, boots_file: $rx_boots, clock_file: $rx_clock,
-            rssi_file: $rx_rssi}}
+            rssi_file: $rx_rssi, band_enc_file: $rx_band_enc}}
       + (if $dev_pos >= 0 then
            {tracker: {filter: $raw_topic, no_retained: $no_ret, dev_pos: $dev_pos,
                       devices_file: $tg_dev, meter_device_file: $tg_md,

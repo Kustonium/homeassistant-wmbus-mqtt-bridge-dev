@@ -1052,5 +1052,49 @@ class StorageMediumTest(unittest.TestCase):
         self.assertEqual((info["kind"], info["disk"], info["model"]), ("hdd", "sda", "WDC WD5000"))
 
 
+class BandSecurityTest(unittest.TestCase):
+    """frame_security and BandSecurity: protection per band, a RAW telegram
+    matched to its /rx metadata by the frame's CRC-32."""
+
+    HEAD = "2E44685081078390" + "7443"          # L C M, ID, version, type (Techem 90830781)
+    MFR = HEAD + "A2" + "00" * 20                # Techem's own format (T1)
+    AES = HEAD + "7A" + "1100" + "0005" + "00" * 16   # OMS short header, security mode 5 (C1)
+    PLAIN = HEAD + "7A" + "1100" + "0000" + "00" * 16
+
+    @staticmethod
+    def crc(raw: str) -> str:
+        import zlib
+        return f"{zlib.crc32(bytes.fromhex(raw)) & 0xFFFFFFFF:08X}"
+
+    def test_frame_security(self) -> None:
+        self.assertEqual(bl.frame_security(self.AES), "aes")
+        self.assertEqual(bl.frame_security(self.PLAIN), "plain")
+        self.assertEqual(bl.frame_security(self.MFR), "mfr")
+        self.assertEqual(bl.frame_security(self.AES.lower()), "aes")
+        long_aes = self.HEAD + "72" + "78563412" + "6850" + "01" + "07" + "11" + "00" + "0005" + "00" * 8
+        self.assertEqual(bl.frame_security(long_aes), "aes")
+        self.assertEqual(bl.frame_security("2E44"), "other")
+
+    def test_matched_per_band_once(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "band.tsv")
+            bs = bl.BandSecurity(path, bl.Deferred())
+            # T1 frame: RAW first, then /rx; then the same frame from two more boards.
+            bs.note_raw(self.MFR)
+            bs.note_rx(self.crc(self.MFR), "90830781", "T1")
+            bs.note_raw(self.MFR)
+            bs.note_rx(self.crc(self.MFR).lower(), "90830781", "T1")
+            # C1 frame: /rx first, then RAW (with whitespace, as a payload can carry).
+            bs.note_rx(self.crc(self.AES), "90830781", "C1")
+            bs.note_raw(" " + self.AES + "\n")
+            # A /rx without its RAW and a RAW without its /rx count nothing.
+            bs.note_rx("DEADBEEF", "90830781", "T1")
+            bs.note_raw(self.PLAIN)
+            bs._write()
+            rows = sorted(line.split("\t")[:6] for line in Path(path).read_text().splitlines())
+        self.assertEqual(rows, [["90830781", "C1", "0", "1", "0", "0"],
+                                ["90830781", "T1", "0", "0", "1", "0"]])
+
+
 if __name__ == "__main__":
     unittest.main()

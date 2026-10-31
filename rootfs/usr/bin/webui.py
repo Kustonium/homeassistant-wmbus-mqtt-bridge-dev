@@ -161,6 +161,7 @@ STATUS_ESP_METER_RECEPTION_FILE = RUNTIME / "status_esp_meter_reception.tsv"
 # for a meter, these replace /telegram-derived counts for that meter.
 STATUS_ESP_RX_RECEPTION_FILE = RUNTIME / "status_esp_rx_reception.tsv"
 STATUS_ESP_RX_RSSI_FILE = RUNTIME / "status_esp_rx_rssi.tsv"
+STATUS_ESP_BAND_SECURITY_FILE = RUNTIME / "status_esp_band_security.tsv"
 STATUS_ESP_RX_MODE_FILE = RUNTIME / "status_esp_rx_mode.tsv"
 STATUS_ESP_RX_SEQUENCE_FILE = RUNTIME / "status_esp_rx_sequence.tsv"
 STATUS_ESP_RX_BOOTS_FILE = RUNTIME / "status_esp_rx_boots.tsv"
@@ -2993,6 +2994,26 @@ def state(include_ignored: bool = False) -> dict:
             _rssi_count[_rmid] = _rcount
             _rssi_by_id[_rmid] = {"esp": _resp, "dbm": _rdbm, "ts": _rts}
 
+    # Protection of a meter's frames per band (bridge_ledger.BandSecurity):
+    # counts of plain / AES / manufacturer-format / other frames, matched to
+    # their band through the /rx metadata. Lets the encryption column say
+    # "T1 plain, C1 AES" for a meter like Techem instead of one verdict.
+    _band_sec_by_id: dict[str, list] = {}
+    _band_order = {"T1": 0, "C1": 1, "S1": 2}
+    for _brow in read_tsv(STATUS_ESP_BAND_SECURITY_FILE,
+                          ["id", "band", "plain", "aes", "mfr", "other", "ts"]):
+        _bmid = normalize_meter_id(_brow.get("id"))
+        _bband = _band_norm(_brow.get("band"))
+        if not (_bmid and _bband):
+            continue
+        _band_sec_by_id.setdefault(_bmid, []).append({
+            "band": _bband,
+            "plain": safe_int(_brow.get("plain", 0)), "aes": safe_int(_brow.get("aes", 0)),
+            "mfr": safe_int(_brow.get("mfr", 0)), "other": safe_int(_brow.get("other", 0)),
+        })
+    for _blist in _band_sec_by_id.values():
+        _blist.sort(key=lambda b: _band_order.get(b["band"], 9))
+
     def _rx_esps(mid: str) -> list:
         _per = reception_by_esp.get(mid)
         if not _per:
@@ -3011,6 +3032,7 @@ def state(include_ignored: bool = False) -> dict:
         c["reception_esps"] = _rx_esps(normalize_meter_id(c.get("id")))
         c["rssi_best"] = _rssi_by_id.get(normalize_meter_id(c.get("id")))
         c["rssi_by_esp"] = _rssi_esp_by_id.get(normalize_meter_id(c.get("id")), {})
+        c["band_security"] = _band_sec_by_id.get(normalize_meter_id(c.get("id")), [])
         # wM-Bus band the telegrams arrived on; "" when nothing can say so.
         c["band"] = band_by_id.get(normalize_meter_id(c.get("id")), "")
         c["band_source"] = band_source_by_id.get(normalize_meter_id(c.get("id")), "")
@@ -3038,6 +3060,7 @@ def state(include_ignored: bool = False) -> dict:
         m["reception_esps"] = _rx_esps(normalize_meter_id(m.get("id") or m.get("meter_id")))
         m["rssi_best"] = _rssi_by_id.get(normalize_meter_id(m.get("id") or m.get("meter_id")))
         m["rssi_by_esp"] = _rssi_esp_by_id.get(normalize_meter_id(m.get("id") or m.get("meter_id")), {})
+        m["band_security"] = _band_sec_by_id.get(normalize_meter_id(m.get("id") or m.get("meter_id")), [])
         m["band"] = band_by_id.get(normalize_meter_id(m.get("id") or m.get("meter_id")), "")
         m["band_source"] = band_source_by_id.get(normalize_meter_id(m.get("id") or m.get("meter_id")), "")
         m["bands"] = _bands(normalize_meter_id(m.get("id") or m.get("meter_id")))
@@ -3057,6 +3080,7 @@ def state(include_ignored: bool = False) -> dict:
             m["reception_esps"] = []
             m["rssi_best"] = None
             m["rssi_by_esp"] = {}
+            m["band_security"] = []
             m["band"] = ""
             m["band_source"] = ""
             m["bands"] = []

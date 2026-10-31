@@ -705,6 +705,39 @@
     return `<span class="pill ${cls}"${title}>${escapeHtml(label)}</span>`;
   }
 
+  // Protection per band, from the frames matched to their band through the
+  // /rx metadata (row.band_security). One pill per band the meter was heard
+  // on: "T1 · no AES", "C1 · AES", "T1 · partly AES" when one band carries
+  // both. A manufacturer-specific format counts as no AES once the meter
+  // decoded without a key, otherwise it says so ("own format"), as some of
+  // them (Apator NA-1) need a key anyway. "" when nothing was matched, and
+  // the caller falls back to the single verdict.
+  function bandSecurityBadges(row, decoded) {
+    const bands = asArray(row.band_security);
+    const pills = bands.map((b) => {
+      const plain = Number(b.plain) || 0, aes = Number(b.aes) || 0;
+      const mfr = Number(b.mfr) || 0, other = Number(b.other) || 0;
+      if (plain + aes + mfr + other === 0) return "";
+      const clear = plain + (decoded ? mfr : 0);
+      let cls, label;
+      if (aes && (plain || mfr)) {
+        cls = "warn"; label = t("enc_partial", "Partly AES");
+      } else if (aes) {
+        cls = "bad"; label = t("enc_aes_req", "AES req.");
+      } else if (clear) {
+        cls = "ok"; label = t("enc_no_aes", "no AES");
+      } else if (mfr) {
+        cls = "muted"; label = t("enc_mfr_format", "own format");
+      } else {
+        cls = "muted"; label = "?";
+      }
+      const title = `${b.band}: ${t("enc_band_counts", "frames plain / AES / own format / other")} ${plain} / ${aes} / ${mfr} / ${other}`;
+      return `<span class="pill ${cls}" title="${escapeHtml(title)}">${escapeHtml(b.band)} · ${escapeHtml(label)}</span>`;
+    }).filter(Boolean);
+    if (!pills.length) return "";
+    return `<div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;">${pills.join("")}</div>`;
+  }
+
   // ── #6 Manufacturer compact formatter ────────────────────────────────────
   // "(MAD) Maddalena, Italy (0x3424)" → "MAD · Maddalena"
   // Returns empty string for missing/empty input (caller shows "—").
@@ -2235,8 +2268,11 @@
                 // Parallel LISTEN decoded a valid JSON telegram without an AES key →
                 // encryption is resolved as no_aes. Override "unknown" for display only;
                 // status_candidate_analysis.tsv is updated asynchronously by bridge.sh.
+                // A shown preview value is a decode as well: the state row can be
+                // missing (e.g. lost over a restart) while the value is still there.
                 const previewDecoded = previewState === "decoded_value" ||
-                                       previewState === "decoded_without_numeric_value";
+                                       previewState === "decoded_without_numeric_value" ||
+                                       previewVal !== "";
                 // A telegram decoded without a key settles "unknown" as no AES; if
                 // the analysed telegram was encrypted, the meter sends both kinds.
                 const effectiveEnc  = (enc === "unknown" && previewDecoded) ? "no_aes"
@@ -2264,7 +2300,7 @@
                     <td style="color:#9eafba;font-size:12px;">${escapeHtml(row.type || "-")}</td>
                     <td>${mediaIconHtml(row.type || "", driver)} ${escapeHtml(mediaLabel)}</td>
                     <td>${mfrCell}</td>
-                    <td>${encBadge(effectiveEnc, note)}</td>
+                    <td>${bandSecurityBadges(row, previewDecoded) || encBadge(effectiveEnc, note)}</td>
                     <td>${previewCell}</td>
                     <td>${fmtTime(row.last_seen)}</td>
                     <td>${escapeHtml(String(seen15mAdj))}</td>
