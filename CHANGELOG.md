@@ -1,3 +1,8 @@
+## 1.6.6-dev.425
+
+### Fixed
+- no gap above the sticky filter on narrow screens, labels in cards (f76682d)
+
 ## 1.6.6-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
