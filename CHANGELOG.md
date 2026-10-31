@@ -1,3 +1,9 @@
+## 1.6.5-dev.417
+
+### Fixed
+- mark sortable headers, keep candidate actions on one line (8075fd4)
+- candidate table sorted by ID by default, sortable columns (d4171d1)
+
 ## 1.6.5-dev.416
 
 ### Added
