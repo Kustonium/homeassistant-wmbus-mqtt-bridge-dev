@@ -1,3 +1,8 @@
+## 1.6.5-dev.414
+
+### Added
+- live ESPHome and wmbusmeters logs, compact reception column, cards on narrow screens (636428c)
+
 ## 1.6.5-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
