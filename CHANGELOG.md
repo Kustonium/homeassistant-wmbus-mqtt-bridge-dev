@@ -1,3 +1,11 @@
+## 1.6.5-dev.418
+
+### Added
+- signal of every board in the unfolded reception list (dc86ac1)
+
+### Fixed
+- mark sortable headers, keep candidate actions on one line (8075fd4)
+
 ## 1.6.5-dev.417
 
 ### Fixed
