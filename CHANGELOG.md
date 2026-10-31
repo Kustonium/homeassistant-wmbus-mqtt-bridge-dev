@@ -1,3 +1,11 @@
+## 1.6.5-dev.416
+
+### Added
+- signal badge per meter, compact candidate actions, readable wmbusmeters log (a406e1f)
+
+### Fixed
+- candidate table sorted by ID by default, sortable columns (d4171d1)
+
 ## 1.6.5-dev.415
 
 ### Added
