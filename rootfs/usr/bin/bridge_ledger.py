@@ -753,11 +753,14 @@ class RxBook:
 
     TRIM_EVERY = 1000
     # Signal per meter for the WebUI (rssi_file): a running average of the
-    # rssi_dbm of each meter on each board, kept here in memory; the file holds
-    # one row per meter, the board that received it most often, written with
-    # the deferred batch. Pairs not heard for RSSI_MAX_AGE_S are dropped.
+    # rssi_dbm of each meter on each board, kept here in memory. The file holds
+    # a row per meter and board (id, board, dBm, last seen, frames), written
+    # with the deferred batch but at most every RSSI_WRITE_EVERY_S: a row per
+    # pair is ~5x the rows of one per meter, and a signal level needs no
+    # 5 s freshness. Pairs not heard for RSSI_MAX_AGE_S are dropped.
     RSSI_ALPHA = 0.2
     RSSI_MAX_AGE_S = 3600
+    RSSI_WRITE_EVERY_S = 30
 
     def __init__(self, reception: str, mode: str, history: str, sequence: str,
                  boots: str, clock: str, rssi_file: str = "") -> None:
@@ -765,6 +768,7 @@ class RxBook:
         self.sequence, self.boots, self.clock = sequence, boots, clock
         self.rssi_file = rssi_file
         self.rssi_stats: Dict[Tuple[str, str], List[float]] = {}  # (meter, board) -> [count, avg, last ts]
+        self.rssi_written = 0.0
         self.since_trim = 0
         self.deferred = Deferred()
 
@@ -779,21 +783,17 @@ class RxBook:
             st[0] += 1
             st[1] += self.RSSI_ALPHA * (value - st[1])
             st[2] = ts
-        self.deferred.task("rx_rssi", self._write_rssi)
+        if now() - self.rssi_written >= self.RSSI_WRITE_EVERY_S:
+            self.deferred.task("rx_rssi", self._write_rssi)
 
     def _write_rssi(self) -> None:
-        cutoff = now() - self.RSSI_MAX_AGE_S
-        best: Dict[str, Tuple[str, List[float]]] = {}
-        for (meter, device), st in list(self.rssi_stats.items()):
-            if st[2] < cutoff:
-                del self.rssi_stats[(meter, device)]
-                continue
-            cur = best.get(meter)
-            if cur is None or st[0] > cur[1][0]:
-                best[meter] = (device, st)
+        self.rssi_written = now()
+        cutoff = self.rssi_written - self.RSSI_MAX_AGE_S
+        for pair in [p for p, st in self.rssi_stats.items() if st[2] < cutoff]:
+            del self.rssi_stats[pair]
         _write_replace(self.rssi_file, "".join(
-            f"{meter}\t{device}\t{round(st[1])}\t{int(st[2])}\n"
-            for meter, (device, st) in sorted(best.items())).encode())
+            f"{meter}\t{device}\t{round(st[1])}\t{int(st[2])}\t{int(st[0])}\n"
+            for (meter, device), st in sorted(self.rssi_stats.items())).encode())
 
     def __call__(self, topic_b: bytes, payload_b: bytes) -> None:
         if not topic_b or not payload_b:

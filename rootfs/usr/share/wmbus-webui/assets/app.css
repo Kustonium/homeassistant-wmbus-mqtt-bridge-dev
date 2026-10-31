@@ -1963,3 +1963,20 @@ th.sortable:hover {
 .actions.actions-compact > .btn-more {
   white-space: nowrap;
 }
+
+/* Per-board signal inside a reception pill (unfolded "+N" list). */
+.board-rssi {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+.board-rssi.good {
+  color: #4df08d;
+}
+
+.board-rssi.mid {
+  color: #f3c84b;
+}
+
+.board-rssi.weak {
+  color: #ff646b;
+}

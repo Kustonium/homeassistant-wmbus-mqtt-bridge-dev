@@ -2968,19 +2968,30 @@ def state(include_ignored: bool = False) -> dict:
                 for k, v in sorted(_modes_by_id.get(mid, {}).items(),
                                    key=lambda kv: (-kv[1], kv[0]))]
 
-    # Signal of each meter on the board that receives it most often: a running
-    # average of /rx rssi_dbm (bridge_ledger.RxBook rssi_file), in that board's
-    # own scale. Rows older than 15 minutes are not shown.
+    # Signal of each meter per board: a running average of /rx rssi_dbm
+    # (bridge_ledger.RxBook rssi_file), each in that board's own scale.
+    # rssi_best is the board that received the meter most often; rssi_by_esp
+    # maps every board to its value for the unfolded reception list. Rows
+    # older than 15 minutes are not shown.
     _rssi_by_id: dict[str, dict] = {}
+    _rssi_esp_by_id: dict[str, dict] = {}
+    _rssi_count: dict[str, int] = {}
     _rssi_now = int(time.time())
-    for _rrow in read_tsv(STATUS_ESP_RX_RSSI_FILE, ["id", "esp", "dbm", "ts"]):
+    for _rrow in read_tsv(STATUS_ESP_RX_RSSI_FILE, ["id", "esp", "dbm", "ts", "count"]):
         _rmid = normalize_meter_id(_rrow.get("id"))
         _rts = safe_int(_rrow.get("ts", 0))
-        if _rmid and _rts and _rssi_now - _rts <= 900:
-            try:
-                _rssi_by_id[_rmid] = {"esp": _rrow.get("esp", ""), "dbm": int(_rrow.get("dbm", "")), "ts": _rts}
-            except ValueError:
-                continue
+        if not (_rmid and _rts and _rssi_now - _rts <= 900):
+            continue
+        try:
+            _rdbm = int(_rrow.get("dbm", ""))
+        except ValueError:
+            continue
+        _resp = _rrow.get("esp", "")
+        _rcount = safe_int(_rrow.get("count", 0))
+        _rssi_esp_by_id.setdefault(_rmid, {})[_resp] = _rdbm
+        if _rcount > _rssi_count.get(_rmid, -1):
+            _rssi_count[_rmid] = _rcount
+            _rssi_by_id[_rmid] = {"esp": _resp, "dbm": _rdbm, "ts": _rts}
 
     def _rx_esps(mid: str) -> list:
         _per = reception_by_esp.get(mid)
@@ -2999,6 +3010,7 @@ def state(include_ignored: bool = False) -> dict:
         c["reception_pct"] = reception_by_id.get(normalize_meter_id(c.get("id")), -1)
         c["reception_esps"] = _rx_esps(normalize_meter_id(c.get("id")))
         c["rssi_best"] = _rssi_by_id.get(normalize_meter_id(c.get("id")))
+        c["rssi_by_esp"] = _rssi_esp_by_id.get(normalize_meter_id(c.get("id")), {})
         # wM-Bus band the telegrams arrived on; "" when nothing can say so.
         c["band"] = band_by_id.get(normalize_meter_id(c.get("id")), "")
         c["band_source"] = band_source_by_id.get(normalize_meter_id(c.get("id")), "")
@@ -3025,6 +3037,7 @@ def state(include_ignored: bool = False) -> dict:
         m["reception_pct"] = reception_by_id.get(normalize_meter_id(m.get("id") or m.get("meter_id")), -1)
         m["reception_esps"] = _rx_esps(normalize_meter_id(m.get("id") or m.get("meter_id")))
         m["rssi_best"] = _rssi_by_id.get(normalize_meter_id(m.get("id") or m.get("meter_id")))
+        m["rssi_by_esp"] = _rssi_esp_by_id.get(normalize_meter_id(m.get("id") or m.get("meter_id")), {})
         m["band"] = band_by_id.get(normalize_meter_id(m.get("id") or m.get("meter_id")), "")
         m["band_source"] = band_source_by_id.get(normalize_meter_id(m.get("id") or m.get("meter_id")), "")
         m["bands"] = _bands(normalize_meter_id(m.get("id") or m.get("meter_id")))
@@ -3043,6 +3056,7 @@ def state(include_ignored: bool = False) -> dict:
             m["reception_pct"] = -1
             m["reception_esps"] = []
             m["rssi_best"] = None
+            m["rssi_by_esp"] = {}
             m["band"] = ""
             m["band_source"] = ""
             m["bands"] = []

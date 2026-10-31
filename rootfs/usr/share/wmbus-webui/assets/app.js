@@ -568,9 +568,19 @@
           missing: Number(e.missing) || 0,
           outOfOrder: Number(e.out_of_order) || 0,
           bootId: String(e.boot_id || ""),
+          esp: String(e.esp || ""),
         });
       });
       const fmtTel = (n) => n >= 1000 ? `${Math.round(n / 100) / 10}k` : String(n);
+      // The board's own average signal for this meter, coloured like the
+      // badge; each value is in that board's scale (boards differ by dB).
+      const rssiByEsp = row.rssi_by_esp || {};
+      const boardRssi = (v) => {
+        const dbm = Number(rssiByEsp[v.esp]);
+        if (!(v.esp in rssiByEsp) || !Number.isFinite(dbm)) return "";
+        const cls = dbm >= -80 ? "good" : dbm >= -92 ? "mid" : "weak";
+        return ` · <span class="board-rssi ${cls}">${Math.round(dbm)}</span>`;
+      };
       // Compact by default: the board that heard the meter most, and "+N"
       // that unfolds the others. Five stacked boards made every row ~200 px
       // tall; most users have one board and never see the "+N" at all.
@@ -591,9 +601,9 @@
             ? `\nseq: ${v.lastSeq} · ${t("missing_rx_events", "missing RX events")}: ${v.missing} · ${t("out_of_order_rx_events", "out of order")}: ${v.outOfOrder}\nboot_id: ${v.bootId}`
             : "";
           const title = `${countLabel}: ${v.count}\n${t("first_received", "first received")}: ${first}\n${t("last_received", "last received")}: ${last}${continuity}`;
-          return `<span title="${escapeHtml(title)}" style="${pill}background:#12354a;color:#65c7f2;cursor:help;">📶 ${escapeHtml(label)} · ${fmtTel(v.count)}</span>`;
+          return `<span title="${escapeHtml(title)}" style="${pill}background:#12354a;color:#65c7f2;cursor:help;">📶 ${escapeHtml(label)} · ${fmtTel(v.count)}${boardRssi(v)}</span>`;
         }
-        return `<span title="${escapeHtml(t("reception_pct_per_esp", "reception % on this ESP"))}: ${escapeHtml(label)}" style="${pill}${rxPctStyle(v.pct)}">📶 ${escapeHtml(label)} ${v.pct}%${v.count > 0 ? ` · ${fmtTel(v.count)}` : ""}</span>`;
+        return `<span title="${escapeHtml(t("reception_pct_per_esp", "reception % on this ESP"))}: ${escapeHtml(label)}" style="${pill}${rxPctStyle(v.pct)}">📶 ${escapeHtml(label)} ${v.pct}%${v.count > 0 ? ` · ${fmtTel(v.count)}` : ""}${boardRssi(v)}</span>`;
       }).join("") + moreChip;
     } else if (bestPct >= 0) {
       rxHtml = `<span title="${escapeHtml(t("reception_pct_title", "reception % over the diagnostic window"))}" style="${pill}${rxPctStyle(bestPct)}">📶 ${bestPct}%</span>`;
