@@ -2296,9 +2296,9 @@
                     <td>${mfrCell}</td>
                     <td>${bandSecurityBadges(row, previewDecoded) || encBadge(effectiveEnc, note)}</td>
                     <td>${previewCell}</td>
-                    <td>${fmtTime(row.last_seen)}</td>
-                    <td>${escapeHtml(String(seen15mAdj))}</td>
-                    <td>${escapeHtml(String(seen60mAdj))}</td>
+                    <td data-label="${escapeHtml(t("card_last_seen", "last:"))}">${fmtTime(row.last_seen)}</td>
+                    <td data-label="15 min:">${escapeHtml(String(seen15mAdj))}</td>
+                    <td data-label="60 min:">${escapeHtml(String(seen60mAdj))}</td>
                     <td style="color:var(--muted);font-size:12px;">${escapeHtml(fmtInterval(row.avg_interval_s))}${espReceptionBadges(row)}</td>
                     ${
                       withActions
@@ -2395,7 +2395,7 @@
   function discoverValueFilterBar(rowCount) {
     if (!rowCount) return "";
     return `
-      <section class="section" style="position:sticky;top:64px;z-index:4;background:var(--bg);margin-top:0;padding-top:16px;padding-bottom:8px;box-shadow:0 8px 12px -6px rgba(0,0,0,0.55);">
+      <section class="section filter-sticky" style="position:sticky;z-index:4;background:var(--bg);margin-top:0;padding-top:16px;padding-bottom:8px;box-shadow:0 8px 12px -6px rgba(0,0,0,0.55);">
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 12px;background:#0e1a23;border:1px solid #1e3040;border-radius:6px;">
           <label for="discover-search-value" style="font-size:12px;color:#9eafba;">${escapeHtml(t("filter_by_value", "Filter by value"))}:</label>
           <input id="discover-search-value" type="text" inputmode="decimal" placeholder="e.g. 23.91"
@@ -2515,9 +2515,9 @@
                     <td>
                       ${meterValueCell(row)}
                     </td>
-                    <td>${fmtTime(row.last_seen)}</td>
-                    <td>${escapeHtml(String(seen15mAdj))}</td>
-                    <td>${escapeHtml(String(seen60mAdj))}</td>
+                    <td data-label="${escapeHtml(t("card_last_seen", "last:"))}">${fmtTime(row.last_seen)}</td>
+                    <td data-label="15 min:">${escapeHtml(String(seen15mAdj))}</td>
+                    <td data-label="60 min:">${escapeHtml(String(seen60mAdj))}</td>
                     <td style="color:var(--muted);font-size:12px;">${escapeHtml(fmtInterval(row.avg_interval_s))}${espReceptionBadges(row)}</td>
                     <td>${actionCell}</td>
                   </tr>`;
