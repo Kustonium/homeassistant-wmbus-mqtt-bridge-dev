@@ -127,7 +127,57 @@
     selectedRemoval: new Set(),
     // Meter ids with the "published fields" row expanded on the meters view.
     expandedMeterFields: new Set(),
+    // Live logs from api/live-log, polled only while their page is open:
+    // esp = the boards' ESPHome log, wmbusmeters = the decoder's output.
+    liveLog: {esp: {rows: []}, wmbusmeters: {rows: []}},
+    liveLogNode: "all",      // ESPHome log: node filter
+    liveLogLevel: "all",     // ESPHome log: "all" | "warn" (W and E only)
+    logsTab: "events",       // LOGS page: "events" | "wmbusmeters"
+    // Meter ids whose per-board reception list is expanded (compact column).
+    expandedReception: new Set(),
   };
+
+  let liveLogTimer = null;
+
+  function liveLogSourceForRoute() {
+    if (state.route === "esp-logs") return "esp";
+    if (state.route === "logs" && state.logsTab === "wmbusmeters") return "wmbusmeters";
+    return "";
+  }
+
+  async function loadLiveLog(source) {
+    const log = state.liveLog[source];
+    if (log.busy) return;
+    log.busy = true;
+    try {
+      const response = await fetch(`api/live-log?source=${source}&limit=400`, {cache: "no-store"});
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      state.liveLog[source] = {rows: asArray(payload.rows), available: payload.available !== false, loaded: true};
+    } catch (error) {
+      state.liveLog[source] = {rows: log.rows || [], available: true, loaded: true, error: String(error.message || error)};
+    }
+    scheduleRender();
+  }
+
+  // Called from renderRoute: starts a 3 s poll for the log of the open page
+  // and stops it once no log page is open.
+  function ensureLiveLogPolling() {
+    const source = liveLogSourceForRoute();
+    if (!source) {
+      if (liveLogTimer) window.clearInterval(liveLogTimer);
+      liveLogTimer = null;
+      return;
+    }
+    if (!state.liveLog[source].loaded) loadLiveLog(source);
+    if (!liveLogTimer) {
+      liveLogTimer = window.setInterval(() => {
+        const current = liveLogSourceForRoute();
+        if (current) loadLiveLog(current);
+        else ensureLiveLogPolling();
+      }, 3000);
+    }
+  }
 
   let liveSource = null;
   let liveLang = "";
@@ -499,7 +549,16 @@
         });
       });
       const fmtTel = (n) => n >= 1000 ? `${Math.round(n / 100) / 10}k` : String(n);
-      rxHtml = Array.from(byLabel.entries()).map(([label, v]) => {
+      // Compact by default: the board that heard the meter most, and "+N"
+      // that unfolds the others. Five stacked boards made every row ~200 px
+      // tall; most users have one board and never see the "+N" at all.
+      const rowId = String(row.id || row.meter_id || "");
+      const entries = Array.from(byLabel.entries()).sort((a, b) => b[1].count - a[1].count);
+      const expanded = entries.length < 2 || state.expandedReception.has(rowId);
+      const shown = expanded ? entries : entries.slice(0, 1);
+      const moreChip = entries.length < 2 ? ""
+        : `<span data-action="reception-toggle" data-id="${escapeHtml(rowId)}" title="${escapeHtml(t("reception_toggle_hint", "Show or hide the other boards"))}" style="${pill}background:#1e2a33;color:#9eafba;cursor:pointer;">${expanded ? "▴" : `+${entries.length - 1} ▾`}</span>`;
+      rxHtml = shown.map(([label, v]) => {
         if (v.countSource === "bridge_session" || v.countSource === "esp_rx") {
           const first = v.firstSeen ? new Date(v.firstSeen * 1000).toLocaleString() : "-";
           const last = v.lastSeen ? new Date(v.lastSeen * 1000).toLocaleString() : "-";
@@ -513,7 +572,7 @@
           return `<span title="${escapeHtml(title)}" style="${pill}background:#12354a;color:#65c7f2;cursor:help;">📶 ${escapeHtml(label)} · ${fmtTel(v.count)}</span>`;
         }
         return `<span title="${escapeHtml(t("reception_pct_per_esp", "reception % on this ESP"))}: ${escapeHtml(label)}" style="${pill}${rxPctStyle(v.pct)}">📶 ${escapeHtml(label)} ${v.pct}%${v.count > 0 ? ` · ${fmtTel(v.count)}` : ""}</span>`;
-      }).join("");
+      }).join("") + moreChip;
     } else if (bestPct >= 0) {
       rxHtml = `<span title="${escapeHtml(t("reception_pct_title", "reception % over the diagnostic window"))}" style="${pill}${rxPctStyle(bestPct)}">📶 ${bestPct}%</span>`;
     }
@@ -548,7 +607,7 @@
       bandHtml = `<span title="${escapeHtml(bandTitle)}" style="${pill}background:#2b3550;color:#9fb4e6;cursor:help;">📻 ${escapeHtml(band)}${approx ? "?" : ""}</span>`;
     }
     if (!flagBadge && !rxHtml && !bandHtml) return "";
-    return `<div style="margin-top:5px;display:flex;flex-direction:column;align-items:flex-start;gap:4px;">${flagBadge}${bandHtml}${rxHtml}</div>`;
+    return `<div class="rx-badges" style="margin-top:5px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;">${flagBadge}${bandHtml}${rxHtml}</div>`;
   }
 
   // Legend for the reception column, attached to the column HEADER as an "ⓘ"
@@ -1961,7 +2020,7 @@
   function meterTable(rows, withActions = true) {
     if (!rows.length) return `<div class="empty">${escapeHtml(t("webui_no_meters", "No meters yet."))}</div>`;
     return `
-      <div class="table-wrap">
+      <div class="table-wrap cards-sm">
         <table>
           <thead>
             <tr>
@@ -2054,7 +2113,7 @@
       return "";
     };
     return `
-      <div class="table-wrap">
+      <div class="table-wrap cards-sm">
         <table>
           <thead>
             <tr>
@@ -2284,7 +2343,7 @@
             style="${selCount ? "" : "opacity:.5;cursor:not-allowed;"}white-space:nowrap;">🗑 ${escapeHtml(t("remove_selected", "Remove selected"))}${selCount ? ` (${selCount})` : ""}</button>
           <span style="font-size:11px;color:var(--muted);">${escapeHtml(t("remove_selected_hint", "Tick the meters you want to remove from the configuration."))}</span>
         </div>
-        <div class="table-wrap">
+        <div class="table-wrap cards-sm">
           <table>
             <thead>
               <tr>
@@ -2457,7 +2516,10 @@
     const pending = pendingMeters();
     const rxDownloadEnabled = Boolean(data.options?.esp_rx_api_enabled);
     const candidateCountLabel = `${filteredCandidates.length}${filteredCandidates.length !== allCandidates.length ? `/${allCandidates.length}` : ""} ${t("webui_visible", "visible")}`;
+    // The RX history download sits above everything: it is what one comes to
+    // this page for when exporting, and the candidate list below runs long.
     return `
+      ${rxDownloadEnabled ? `<div class="page-actions"><a class="btn" href="api/esp-rx?limit=100000&amp;download=1" download>${escapeHtml(t("download_rx_history", "Download RX history"))}</a></div>` : ""}
       ${discoverValueFilterBar(filteredMeters.length + filteredCandidates.length)}
       ${discoverConfiguredPanel(filteredMeters)}
       ${pending.length ? pendingMetersSection(pending, data.analysis || {}) : ""}
@@ -2466,7 +2528,6 @@
           <h2>${escapeHtml(t("detected_candidates", "Detected candidates"))}</h2>
           <div class="actions">
             <span id="discover-candidate-count" data-default="${escapeHtml(candidateCountLabel)}">${escapeHtml(candidateCountLabel)}</span>
-            ${rxDownloadEnabled ? `<a class="btn" href="api/esp-rx?limit=100000&amp;download=1" download>${escapeHtml(t("download_rx_history", "Download RX history"))}</a>` : ""}
           </div>
         </div>
         ${filterChips()}
@@ -2686,14 +2747,57 @@
     `;
   }
 
+  // Notice above a live log: no RAM directory (the log is off), a failed
+  // fetch, or nothing logged yet.
+  function liveLogNotice(log, emptyText) {
+    const box = (text) => `<div class="empty">${escapeHtml(text)}</div>`;
+    if (log.available === false) {
+      return box(t("live_log_unavailable", "Live logs are kept only in the add-on's RAM directory (/tmp on tmpfs). This system has none, so they are off to spare the data disk."));
+    }
+    if (log.error) return box(`${t("live_log_error", "Cannot load the log")}: ${log.error}`);
+    if (!log.loaded) return box(t("webui_loading", "Loading..."));
+    if (!asArray(log.rows).length) return box(emptyText);
+    return "";
+  }
+
+  function logsTabs() {
+    const tabs = [
+      ["events", t("live_log_events_tab", "Add-on events")],
+      ["wmbusmeters", t("live_log_wmbusmeters_tab", "wmbusmeters")],
+    ];
+    return `<div class="filters">${tabs.map(([key, label]) =>
+      `<span class="filter${state.logsTab === key ? " active" : ""}" data-action="logs-tab" data-tab="${key}" style="cursor:pointer;">${escapeHtml(label)}</span>`
+    ).join("")}</div>`;
+  }
+
+  // The decoding wmbusmeters' own output, newest first.
+  function wmbusmetersLogSection() {
+    const log = state.liveLog.wmbusmeters;
+    const rows = asArray(log.rows).slice().reverse();
+    const notice = liveLogNotice(log, t("live_log_wmbusmeters_empty", "Nothing from wmbusmeters yet. Its output appears here line by line as it decodes."));
+    return `
+      <section class="section">
+        <div class="section-head"><h2>${escapeHtml(t("live_log_wmbusmeters_title", "wmbusmeters output"))}</h2><span>${rows.length} ${escapeHtml(t("webui_rows", "rows"))}</span></div>
+        ${logsTabs()}
+        ${notice || `<div class="live-log">${rows.map((row) => `
+          <div class="live-log-row${row.text.startsWith("{") ? " json" : ""}">
+            <span class="live-log-time">${escapeHtml(row.time.slice(11))}</span>
+            <span class="live-log-msg">${escapeHtml(row.text)}</span>
+          </div>`).join("")}</div>`}
+      </section>
+    `;
+  }
+
   function logsPage() {
     const data = state.data || {};
+    if (state.logsTab === "wmbusmeters") return wmbusmetersLogSection();
     // Legend ported from old webui page_logs: explains what "RAW" and
     // "candidate" entries mean in the event stream, plus a color key
     // matching the new event-level CSS classes (ok / warn / candidate /
     // error). Helps users read the log without having to learn the
     // colour code by trial and error.
     return `
+      ${logsTabs()}
       <section class="section">
         <div class="section-head"><h2>${escapeHtml(t("webui_runtime_events", "Runtime events"))}</h2><span>${asArray(data.events).length} ${escapeHtml(t("webui_rows", "rows"))}</span></div>
         <div style="margin-bottom:12px;padding:10px 14px;border:1px dashed #2c4555;border-radius:8px;color:#9eafba;font-size:12px;display:grid;gap:6px;">
@@ -2959,18 +3063,58 @@
         </div>
       </div>`;
 
+    // The diagnostic events are folded under the real log; the open state
+    // lives in `state`, as a <details> would close on every live re-render.
+    const diagOpen = Boolean(state.espDiagOpen);
     return `
+      ${espLiveLogSection()}
       <section class="section">
-        <div class="section-head">
-          <h2>${escapeHtml(t("webui_esp_events", "ESP events"))}</h2>
+        <div class="section-head" data-action="esp-diag-toggle" style="cursor:pointer;">
+          <h2>${diagOpen ? "▾" : "▸"} ${escapeHtml(t("webui_esp_events", "ESP events"))}</h2>
           <span>${visibleEvents.length} ${escapeHtml(t("webui_rows", "rows"))}${activeDeviceBadges}</span>
         </div>
-        ${helpNotice}
-        ${espEventsTable(events, activeDevices)}
+        ${diagOpen ? `
+          ${helpNotice}
+          ${espEventsTable(events, activeDevices)}
+          <div class="section-head" style="margin-top:14px;"><h2>${escapeHtml(t("webui_suggestion", "Suggestion"))}</h2></div>
+          ${Object.keys(suggestion).length ? objectKv(suggestion) : `<div class="empty">${escapeHtml(t("webui_no_suggestion", "No tuning suggestion."))}</div>`}
+        ` : ""}
       </section>
+    `;
+  }
+
+  // The boards' own ESPHome log (what `esphome logs` shows), from the
+  // <node>/debug topic ESPHome's mqtt: component publishes. Newest first,
+  // filterable by node and to warnings/errors.
+  function espLiveLogSection() {
+    const log = state.liveLog.esp;
+    const all = asArray(log.rows);
+    const nodes = [...new Set(all.map((row) => row.node))].sort();
+    if (state.liveLogNode !== "all" && !nodes.includes(state.liveLogNode)) state.liveLogNode = "all";
+    const rows = all
+      .filter((row) => state.liveLogNode === "all" || row.node === state.liveLogNode)
+      .filter((row) => state.liveLogLevel !== "warn" || row.level === "W" || row.level === "E")
+      .reverse();
+    const chip = (action, key, value, label) =>
+      `<span class="filter${value === key ? " active" : ""}" data-action="${action}" data-value="${escapeHtml(key)}" style="cursor:pointer;">${escapeHtml(label)}</span>`;
+    const notice = liveLogNotice(log, t("live_log_esp_empty", "No ESPHome log yet. The boards publish it on <node name>/debug when the mqtt: component keeps its default log_topic; a board that set log_topic: null sends none."));
+    const levelName = {E: "error", W: "warn", I: "info", D: "debug", V: "verbose", C: "config"};
+    return `
       <section class="section">
-        <div class="section-head"><h2>${escapeHtml(t("webui_suggestion", "Suggestion"))}</h2></div>
-        ${Object.keys(suggestion).length ? objectKv(suggestion) : `<div class="empty">${escapeHtml(t("webui_no_suggestion", "No tuning suggestion."))}</div>`}
+        <div class="section-head"><h2>${escapeHtml(t("live_log_esp_title", "ESPHome log"))}</h2><span>${rows.length} ${escapeHtml(t("webui_rows", "rows"))}</span></div>
+        ${nodes.length ? `<div class="filters">
+          ${chip("live-log-node", "all", state.liveLogNode, t("filter_all", "All"))}
+          ${nodes.map((node) => chip("live-log-node", node, state.liveLogNode, node)).join("")}
+          <span style="flex:1"></span>
+          ${chip("live-log-level", "warn", state.liveLogLevel, t("live_log_warn_only", "Warnings and errors only"))}
+        </div>` : ""}
+        ${notice || `<div class="live-log">${rows.map((row) => `
+          <div class="live-log-row lvl-${escapeHtml(row.level || "I")}">
+            <span class="live-log-time">${escapeHtml(fmtClock(new Date(row.epoch * 1000).toISOString()))}</span>
+            <span class="live-log-node">${escapeHtml(row.node)}</span>
+            <span class="live-log-level">${escapeHtml(levelName[row.level] || row.level || "")}</span>
+            <span class="live-log-msg"><span class="live-log-tag">[${escapeHtml(row.tag)}]</span> ${escapeHtml(row.message)}</span>
+          </div>`).join("")}</div>`}
       </section>
     `;
   }
@@ -4399,6 +4543,7 @@
         </div>
       `;
     }
+    ensureLiveLogPolling();
     switch (state.route) {
       case "meters":
         return shell(metersPage());
@@ -4486,6 +4631,34 @@
 
     if (action === "media-filter") {
       state.mediaFilter = target.dataset.filter || "all";
+      render();
+      return;
+    }
+
+    if (action === "logs-tab") {
+      state.logsTab = target.dataset.tab === "wmbusmeters" ? "wmbusmeters" : "events";
+      render();
+      return;
+    }
+    if (action === "live-log-node") {
+      state.liveLogNode = target.dataset.value || "all";
+      render();
+      return;
+    }
+    if (action === "live-log-level") {
+      state.liveLogLevel = state.liveLogLevel === "warn" ? "all" : "warn";
+      render();
+      return;
+    }
+    if (action === "esp-diag-toggle") {
+      state.espDiagOpen = !state.espDiagOpen;
+      render();
+      return;
+    }
+    if (action === "reception-toggle") {
+      const id = target.dataset.id || "";
+      if (state.expandedReception.has(id)) state.expandedReception.delete(id);
+      else state.expandedReception.add(id);
       render();
       return;
     }

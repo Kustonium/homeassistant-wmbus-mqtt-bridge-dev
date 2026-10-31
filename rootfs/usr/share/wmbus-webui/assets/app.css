@@ -1704,3 +1704,138 @@ tr:last-child td {
 .mbus-console-line.bad {
   color: var(--bad);
 }
+
+/* ───── Page-level actions (above the first section) ───── */
+.page-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+/* ───── Live logs (ESPHome log, wmbusmeters output) ───── */
+.live-log {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.live-log-row {
+  display: grid;
+  grid-template-columns: 70px 150px 56px minmax(0, 1fr);
+  gap: 10px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.live-log-row:last-child {
+  border-bottom: 0;
+}
+
+.live-log-row.json,
+.live-log-row:not(.lvl-I):not(.lvl-W):not(.lvl-E):not(.lvl-D):not(.lvl-V):not(.lvl-C) {
+  grid-template-columns: 70px minmax(0, 1fr);
+}
+
+.live-log-msg {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.live-log-row.json .live-log-msg {
+  color: var(--muted);
+}
+
+.live-log-node,
+.live-log-time,
+.live-log-tag {
+  color: var(--quiet);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-log-row.lvl-W .live-log-level,
+.live-log-row.lvl-W .live-log-msg {
+  color: #f3c84b;
+}
+
+.live-log-row.lvl-E .live-log-level,
+.live-log-row.lvl-E .live-log-msg {
+  color: #ff646b;
+}
+
+.live-log-row.lvl-I .live-log-level {
+  color: #2de36f;
+}
+
+/* ───── Narrow screens: meter tables become cards ─────
+   The same markup as the desktop table; under 680 px (a phone, or the HA
+   app) each row is a card and the header row is dropped. */
+@media (max-width: 680px) {
+  .table-wrap.cards-sm {
+    border: 0;
+    background: transparent;
+    overflow: visible;
+  }
+
+  .table-wrap.cards-sm table {
+    min-width: 0;
+  }
+
+  .table-wrap.cards-sm thead {
+    display: none;
+  }
+
+  .table-wrap.cards-sm table,
+  .table-wrap.cards-sm tbody,
+  .table-wrap.cards-sm tr,
+  .table-wrap.cards-sm td {
+    display: block;
+    width: 100%;
+  }
+
+  .table-wrap.cards-sm tr {
+    margin: 0 0 10px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel);
+    padding: 6px 4px;
+  }
+
+  .table-wrap.cards-sm td {
+    border-bottom: 0;
+    padding: 4px 10px;
+  }
+
+  .table-wrap.cards-sm td:empty {
+    display: none;
+  }
+
+  .live-log-row {
+    grid-template-columns: 62px minmax(0, 1fr);
+  }
+
+  .live-log-level {
+    display: none;
+  }
+
+  .live-log-node,
+  .live-log-msg {
+    grid-column: 2;
+  }
+
+  .page-actions {
+    justify-content: stretch;
+  }
+
+  .page-actions .btn {
+    flex: 1;
+    text-align: center;
+  }
+}

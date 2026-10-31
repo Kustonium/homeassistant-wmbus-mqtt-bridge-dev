@@ -126,6 +126,26 @@ _raw_source() {
   exec ${STDBUF_BIN} /usr/bin/mosquitto_sub "${SUB_ARGS[@]}" "${SUB_EXTRA[@]}" -t "${RAW_TOPIC}" -F '%p'
 }
 
+# What the decoding wmbusmeters prints, for the WebUI's wmbusmeters log: every
+# line goes on unchanged at once and a copy (time, at most 400 characters) is
+# appended to ${WEBUI_LOG_DIR}/wmbusmeters.log, cut to the last 500 lines every
+# 500 lines. Without a RAM WEBUI_LOG_DIR the stage only passes the stream on
+# (dd, for the reason in _raw_source). No fork per line: read, printf and the
+# append are builtins; tail and mv run once per 500 lines.
+_wmbusmeters_log_stage() {
+  local file="${WEBUI_LOG_DIR:+${WEBUI_LOG_DIR}/wmbusmeters.log}" line n=0
+  [[ -n "${file}" ]] || exec dd bs=65536 status=none
+  : >> "${file}" 2>/dev/null || exec dd bs=65536 status=none
+  while IFS= read -r line; do
+    printf '%s\n' "${line}"
+    printf '%(%Y-%m-%d %H:%M:%S)T %s\n' -1 "${line:0:400}" >> "${file}" 2>/dev/null
+    if (( ++n >= 500 )); then
+      n=0
+      tail -n 500 "${file}" > "${file}.tmp" 2>/dev/null && mv -f "${file}.tmp" "${file}" 2>/dev/null
+    fi
+  done
+}
+
 # The ESP subscriptions the publisher takes over, as JSON for
 # MQTT_PUBLISHER_BOOKS: per bridge_ledger.py mode its topic filter, whether
 # retained messages are dropped (SUB_EXTRA's -R, as the bash loops pass it to
@@ -164,6 +184,7 @@ _mqtt_publisher_books() {
     --arg events_file "${RUNTIME:-${BASE}}/status_esp_events.tsv" \
     --arg suggestion_file "${RUNTIME:-${BASE}}/status_esp_suggestion.json" \
     --arg boot_file "${RUNTIME:-${BASE}}/status_esp_boot.json" \
+    --arg esp_log_file "${WEBUI_LOG_DIR:+${WEBUI_LOG_DIR}/status_esp_log.tsv}" \
     --arg config_file "${STATUS_ESP_CONFIG_FILE}" --arg diag_hist "${ESP_DIAG_HISTORY_FILE}" \
     --arg broker_info "${STATUS_BROKER_INFO_FILE}" \
     --argjson diag_hist_on "$([[ "${ESP_DIAG_HISTORY_ENABLED:-false}" == "true" ]] && echo true || echo false)" \
@@ -175,6 +196,8 @@ _mqtt_publisher_books() {
        summary: {filter: "wmbus/+/diag/summary", no_retained: false, file: $summary_file},
        meter_window: {filter: "wmbus/+/diag/meter/+/+/window/+", no_retained: false, file: $window_file},
        meter_snapshot: {filter: "wmbus/+/diag/meter_snapshot", no_retained: false, file: $snapshot_file},
+       # ESPHome log_topic default: <node name>/debug (esp_books.EspLogBook).
+       esp_log: {filter: "+/debug", file: $esp_log_file},
        ha_presence: {filter: $ha_topic, no_retained: false, format: "payload",
                      presence_file: $presence_file},
        # One filter for both of the loop: wmbus/+/diag/# matches the bare

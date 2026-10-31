@@ -173,6 +173,11 @@ ESP_DIAG_HISTORY_FILE = BASE / "esp_diag_history.jsonl"
 STATUS_ESP_EVENTS_FILE = RUNTIME / "status_esp_events.tsv"
 STATUS_ESP_SUGGESTION_FILE = RUNTIME / "status_esp_suggestion.json"
 STATUS_ESP_BOOT_FILE = RUNTIME / "status_esp_boot.json"
+# Live logs (bridge.sh WEBUI_LOG_DIR): the boards' ESPHome log from
+# <node>/debug and the decoding wmbusmeters' output. Kept only when RUNTIME is
+# a RAM directory, never on the data disk.
+STATUS_ESP_LOG_FILE = RUNTIME / "status_esp_log.tsv"
+WMBUSMETERS_LOG_FILE = RUNTIME / "wmbusmeters.log"
 # Per-candidate preview values written by short-lived one-shot decoders
 # using PREVIEW_BASE/etc/wmbusmeters.d/.
 STATUS_CANDIDATE_VALUES_FILE = RUNTIME / "status_candidate_values.tsv"
@@ -683,6 +688,40 @@ def read_tsv(path: Path, fields: list[str], limit: int | None = None, reverse: b
         if limit and len(rows) >= limit:
             break
     return rows
+
+
+def live_log_payload(source: str, limit: int = 300) -> dict:
+    """GET /api/live-log: the last `limit` lines of one live log, newest last.
+
+    source "esp": rows of status_esp_log.tsv (epoch, node, level, tag,
+    message); source "wmbusmeters": lines of wmbusmeters.log ("date time
+    text"). `available` is false without a RAM runtime directory, where
+    bridge.sh keeps no live log at all.
+    """
+    limit = max(1, min(int(limit), 1000))
+    available = RUNTIME != BASE
+    path = STATUS_ESP_LOG_FILE if source == "esp" else WMBUSMETERS_LOG_FILE
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()[-limit:]
+    except OSError:
+        lines = []
+    rows = []
+    if source == "esp":
+        for line in lines:
+            parts = line.split("\t", 4)
+            if len(parts) != 5:
+                continue
+            try:
+                epoch = int(parts[0])
+            except ValueError:
+                continue
+            rows.append({"epoch": epoch, "node": parts[1], "level": parts[2],
+                         "tag": parts[3], "message": parts[4]})
+    else:
+        for line in lines:
+            stamp, text = line[:19], line[20:]
+            rows.append({"time": stamp, "text": text})
+    return {"ok": True, "source": source, "available": available, "rows": rows}
 
 
 def esp_rx_api_payload(limit: int = 1000, since: int = 0, until: int = 0,
@@ -4200,7 +4239,7 @@ class Handler(BaseHTTPRequestHandler):
             '/api/preview-candidate', '/api/cancel-preview',
             '/api/ignore', '/api/unignore', '/api/factory-reset',
             '/api/compare-driver', '/api/save-config', '/api/driver-fields',
-            '/api/esp-rx',
+            '/api/esp-rx', '/api/live-log',
             '/api/mbus', '/api/mbus/device', '/api/mbus/meters', '/api/mbus/probe',
             '/api/mbus/meter-fields',
             '/api/mbus/console', '/api/mbus/scan', '/api/mbus/poll-one',
@@ -4647,6 +4686,17 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json_download(200, payload, f'esp-rx-{stamp}Z.json')
             else:
                 self._send_json(200, payload)
+            return
+        if path.endswith('/api/live-log'):
+            source = (params.get('source') or ['esp'])[0].strip().lower()
+            if source not in ('esp', 'wmbusmeters'):
+                self._send_json(400, {"ok": False, "message": "source must be esp or wmbusmeters."})
+                return
+            try:
+                limit = int((params.get('limit') or ['300'])[0])
+            except ValueError:
+                limit = 300
+            self._send_json(200, live_log_payload(source, limit))
             return
         if path.endswith('/api/candidate-report'):
             meter_id = (params.get('meter_id') or [''])[0].strip()

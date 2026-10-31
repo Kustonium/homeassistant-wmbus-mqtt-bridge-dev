@@ -3145,6 +3145,9 @@ RUNTIME_RESTORED = ".restored"
 # status files that stay in the data directory: a user's decision, and the
 # error run.sh writes before the bridge starts
 RUNTIME_KEEP_ON_DISK = ("status_ignored_candidates.tsv", "status_run_error.txt")
+# live logs for the WebUI: written only to a RAM runtime directory, rewritten
+# every second, worthless after a restart, so never saved in the snapshot
+RUNTIME_LOGS = ("status_esp_log.tsv", "wmbusmeters.log")
 
 
 def tmp_is_tmpfs(mounts: str = "/proc/mounts") -> bool:
@@ -3176,7 +3179,8 @@ def _runtime_names(directory: str) -> List[str]:
     for name in sorted(os.listdir(directory)):
         path = os.path.join(directory, name)
         if (not os.path.isfile(path) or os.path.islink(path) or name.endswith(".lock")
-                or ".tmp." in name or name.endswith(".tmp") or name == RUNTIME_RESTORED):
+                or ".tmp." in name or name.endswith(".tmp") or name == RUNTIME_RESTORED
+                or name in RUNTIME_LOGS):
             continue
         out.append(name)
     return out

@@ -251,6 +251,13 @@ def make_books(spec):
             deliver = book.deliver
             out.append((cfg["filter"].encode(), bool(cfg.get("no_retained")), deliver, book))
             continue
+        elif mode == "esp_log":
+            if not cfg.get("file"):
+                continue  # no RAM runtime directory: no live log (start_mqtt_publisher)
+            import esp_books
+            book = esp_books.EspLogBook(cfg["file"])
+            out.append((cfg["filter"].encode(), True, book.deliver, book))
+            continue
         elif mode == "broker_info":
             import esp_books
             book = esp_books.BrokerInfoBook(cfg["info_file"])
