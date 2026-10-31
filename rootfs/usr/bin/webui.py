@@ -160,6 +160,7 @@ STATUS_ESP_METER_RECEPTION_FILE = RUNTIME / "status_esp_meter_reception.tsv"
 # Same session view populated from structured ESP RF metadata. When rows exist
 # for a meter, these replace /telegram-derived counts for that meter.
 STATUS_ESP_RX_RECEPTION_FILE = RUNTIME / "status_esp_rx_reception.tsv"
+STATUS_ESP_RX_RSSI_FILE = RUNTIME / "status_esp_rx_rssi.tsv"
 STATUS_ESP_RX_MODE_FILE = RUNTIME / "status_esp_rx_mode.tsv"
 STATUS_ESP_RX_SEQUENCE_FILE = RUNTIME / "status_esp_rx_sequence.tsv"
 STATUS_ESP_RX_BOOTS_FILE = RUNTIME / "status_esp_rx_boots.tsv"
@@ -2967,6 +2968,20 @@ def state(include_ignored: bool = False) -> dict:
                 for k, v in sorted(_modes_by_id.get(mid, {}).items(),
                                    key=lambda kv: (-kv[1], kv[0]))]
 
+    # Signal of each meter on the board that receives it most often: a running
+    # average of /rx rssi_dbm (bridge_ledger.RxBook rssi_file), in that board's
+    # own scale. Rows older than 15 minutes are not shown.
+    _rssi_by_id: dict[str, dict] = {}
+    _rssi_now = int(time.time())
+    for _rrow in read_tsv(STATUS_ESP_RX_RSSI_FILE, ["id", "esp", "dbm", "ts"]):
+        _rmid = normalize_meter_id(_rrow.get("id"))
+        _rts = safe_int(_rrow.get("ts", 0))
+        if _rmid and _rts and _rssi_now - _rts <= 900:
+            try:
+                _rssi_by_id[_rmid] = {"esp": _rrow.get("esp", ""), "dbm": int(_rrow.get("dbm", "")), "ts": _rts}
+            except ValueError:
+                continue
+
     def _rx_esps(mid: str) -> list:
         _per = reception_by_esp.get(mid)
         if not _per:
@@ -2983,6 +2998,7 @@ def state(include_ignored: bool = False) -> dict:
         # Per-meter reception % (#15); -1 = no data (diag off / not highlighted / stale).
         c["reception_pct"] = reception_by_id.get(normalize_meter_id(c.get("id")), -1)
         c["reception_esps"] = _rx_esps(normalize_meter_id(c.get("id")))
+        c["rssi_best"] = _rssi_by_id.get(normalize_meter_id(c.get("id")))
         # wM-Bus band the telegrams arrived on; "" when nothing can say so.
         c["band"] = band_by_id.get(normalize_meter_id(c.get("id")), "")
         c["band_source"] = band_source_by_id.get(normalize_meter_id(c.get("id")), "")
@@ -3008,6 +3024,7 @@ def state(include_ignored: bool = False) -> dict:
         m["esp_flagged"] = "true" if normalize_meter_id(m.get("id") or m.get("meter_id")) in esp_flagged_ids else "false"
         m["reception_pct"] = reception_by_id.get(normalize_meter_id(m.get("id") or m.get("meter_id")), -1)
         m["reception_esps"] = _rx_esps(normalize_meter_id(m.get("id") or m.get("meter_id")))
+        m["rssi_best"] = _rssi_by_id.get(normalize_meter_id(m.get("id") or m.get("meter_id")))
         m["band"] = band_by_id.get(normalize_meter_id(m.get("id") or m.get("meter_id")), "")
         m["band_source"] = band_source_by_id.get(normalize_meter_id(m.get("id") or m.get("meter_id")), "")
         m["bands"] = _bands(normalize_meter_id(m.get("id") or m.get("meter_id")))
@@ -3025,6 +3042,7 @@ def state(include_ignored: bool = False) -> dict:
             m["esp_flagged"] = "false"
             m["reception_pct"] = -1
             m["reception_esps"] = []
+            m["rssi_best"] = None
             m["band"] = ""
             m["band_source"] = ""
             m["bands"] = []

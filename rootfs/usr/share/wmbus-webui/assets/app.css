@@ -1794,10 +1794,22 @@ tr:last-child td {
 
   .table-wrap.cards-sm table,
   .table-wrap.cards-sm tbody,
-  .table-wrap.cards-sm tr,
-  .table-wrap.cards-sm td {
+  .table-wrap.cards-sm tr {
     display: block;
     width: 100%;
+  }
+
+  /* Cells flow side by side and wrap, so short ones (driver, medium,
+     15M/60M) share a line instead of each taking a row of the card. */
+  .table-wrap.cards-sm td {
+    display: inline-block;
+    width: auto;
+    max-width: 100%;
+    vertical-align: top;
+  }
+
+  .table-wrap.cards-sm td[colspan] {
+    display: block;
   }
 
   .table-wrap.cards-sm tr {
@@ -1838,4 +1850,75 @@ tr:last-child td {
     flex: 1;
     text-align: center;
   }
+}
+
+/* ───── Signal badge (average RSSI on the board that hears the meter most) ───── */
+.rssi-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 9px;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+.rssi-badge.good {
+  background: #0e3a1e;
+  color: #4df08d;
+}
+
+.rssi-badge.mid {
+  background: #3a330e;
+  color: #f3c84b;
+}
+
+.rssi-badge.weak {
+  background: #3a0e0e;
+  color: #ff646b;
+}
+
+/* ───── Candidate actions: "Add" and "⋯" in one row ───── */
+.actions.actions-compact {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.actions.actions-compact .btn-more {
+  min-width: 36px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+/* ───── wmbusmeters log: decoded telegram as one row, JSON on click ───── */
+.live-log-head {
+  color: var(--text);
+  margin-right: 10px;
+}
+
+.live-log-preview {
+  color: var(--quiet);
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.live-log-row.json .live-log-msg {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.live-log-json {
+  margin: 6px 0 2px;
+  white-space: pre-wrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.live-log-row.json .live-log-msg:has(.live-log-json) {
+  white-space: normal;
 }

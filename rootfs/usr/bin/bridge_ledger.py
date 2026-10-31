@@ -752,13 +752,48 @@ class RxBook:
     """_esp_rx_handle_message: structured /rx metadata into six files."""
 
     TRIM_EVERY = 1000
+    # Signal per meter for the WebUI (rssi_file): a running average of the
+    # rssi_dbm of each meter on each board, kept here in memory; the file holds
+    # one row per meter, the board that received it most often, written with
+    # the deferred batch. Pairs not heard for RSSI_MAX_AGE_S are dropped.
+    RSSI_ALPHA = 0.2
+    RSSI_MAX_AGE_S = 3600
 
     def __init__(self, reception: str, mode: str, history: str, sequence: str,
-                 boots: str, clock: str) -> None:
+                 boots: str, clock: str, rssi_file: str = "") -> None:
         self.reception, self.mode, self.history = reception, mode, history
         self.sequence, self.boots, self.clock = sequence, boots, clock
+        self.rssi_file = rssi_file
+        self.rssi_stats: Dict[Tuple[str, str], List[float]] = {}  # (meter, board) -> [count, avg, last ts]
         self.since_trim = 0
         self.deferred = Deferred()
+
+    def _note_rssi(self, meter: str, device: str, rssi: Any, ts: int) -> None:
+        if not self.rssi_file or not meter or rssi is None or not _is_number(rssi):
+            return
+        value = float(_num(rssi))
+        st = self.rssi_stats.get((meter, device))
+        if st is None:
+            self.rssi_stats[(meter, device)] = [1, value, ts]
+        else:
+            st[0] += 1
+            st[1] += self.RSSI_ALPHA * (value - st[1])
+            st[2] = ts
+        self.deferred.task("rx_rssi", self._write_rssi)
+
+    def _write_rssi(self) -> None:
+        cutoff = now() - self.RSSI_MAX_AGE_S
+        best: Dict[str, Tuple[str, List[float]]] = {}
+        for (meter, device), st in list(self.rssi_stats.items()):
+            if st[2] < cutoff:
+                del self.rssi_stats[(meter, device)]
+                continue
+            cur = best.get(meter)
+            if cur is None or st[0] > cur[1][0]:
+                best[meter] = (device, st)
+        _write_replace(self.rssi_file, "".join(
+            f"{meter}\t{device}\t{round(st[1])}\t{int(st[2])}\n"
+            for meter, (device, st) in sorted(best.items())).encode())
 
     def __call__(self, topic_b: bytes, payload_b: bytes) -> None:
         if not topic_b or not payload_b:
@@ -784,6 +819,7 @@ class RxBook:
         d = self.deferred
         upsert_meter_reception(self.reception, meter, device, ts, topic, d)
         upsert_meter_mode(self.mode, meter, mode, ts, d)
+        self._note_rssi(meter, device, first.get("rssi_dbm"), ts)
         lines = []
         for n in normalized:
             merged = dict(n)

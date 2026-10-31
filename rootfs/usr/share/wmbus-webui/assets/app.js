@@ -135,6 +135,11 @@
     logsTab: "events",       // LOGS page: "events" | "wmbusmeters"
     // Meter ids whose per-board reception list is expanded (compact column).
     expandedReception: new Set(),
+    // Candidate ids with the secondary actions (Ignore, Report, Cancel
+    // preview) unfolded behind "⋯".
+    expandedActions: new Set(),
+    // wmbusmeters log: keys of the JSON lines shown in full.
+    expandedLogLines: new Set(),
   };
 
   let liveLogTimer = null;
@@ -606,8 +611,22 @@
         : t("band_exact", "link mode the ESP decoded this meter's telegram with");
       bandHtml = `<span title="${escapeHtml(bandTitle)}" style="${pill}background:#2b3550;color:#9fb4e6;cursor:help;">📻 ${escapeHtml(band)}${approx ? "?" : ""}</span>`;
     }
-    if (!flagBadge && !rxHtml && !bandHtml) return "";
-    return `<div class="rx-badges" style="margin-top:5px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;">${flagBadge}${bandHtml}${rxHtml}</div>`;
+    const rssiHtml = rssiBadge(row);
+    if (!flagBadge && !rxHtml && !bandHtml && !rssiHtml) return "";
+    return `<div class="rx-badges" style="margin-top:5px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;">${rssiHtml}${flagBadge}${bandHtml}${rxHtml}</div>`;
+  }
+
+  // Signal of the meter on the board that hears it most often (running
+  // average of /rx rssi_dbm). Green / amber / red at -80 and -92 dBm: above
+  // -80 the meter has margin, below -92 it is at the edge and comes and goes.
+  // The value is in that board's own scale; boards differ by several dB.
+  function rssiBadge(row) {
+    const best = row.rssi_best;
+    if (!best || !Number.isFinite(Number(best.dbm))) return "";
+    const dbm = Math.round(Number(best.dbm));
+    const cls = dbm >= -80 ? "good" : dbm >= -92 ? "mid" : "weak";
+    const title = `${t("rssi_badge_title", "Average signal on the board that hears this meter most often")}: ${best.esp} · ${dbm} dBm`;
+    return `<span class="rssi-badge ${cls}" title="${escapeHtml(title)}">${dbm} dBm</span>`;
   }
 
   // Legend for the reception column, attached to the column HEADER as an "ⓘ"
@@ -2198,11 +2217,13 @@
                     <td style="color:var(--muted);font-size:12px;">${escapeHtml(fmtInterval(row.avg_interval_s))}${espReceptionBadges(row)}</td>
                     ${
                       withActions
-                        ? `<td><div class="actions">
+                        ? `<td><div class="actions actions-compact">
                             <button class="btn primary" data-action="open-add" data-id="${escapeHtml(id)}" data-driver="${escapeHtml(driver)}" data-enc="${escapeHtml(effectiveEnc)}">${escapeHtml(t("webui_add", "Add"))}</button>
+                            <button class="btn btn-more" data-action="candidate-more" data-id="${escapeHtml(id)}" title="${escapeHtml(t("more_actions", "More actions"))}" aria-expanded="${state.expandedActions.has(id) ? "true" : "false"}">⋯</button>
+                            ${state.expandedActions.has(id) ? `
                             <button class="btn" data-action="ignore" data-id="${escapeHtml(id)}">${escapeHtml(t("ignore", "Ignore"))}</button>
                             <button class="btn" data-action="export-report" data-id="${escapeHtml(id)}" title="${escapeHtml(t("export_report_title", "wmbusmeters issue report"))}">${escapeHtml(t("export_report_btn", "Report…"))}</button>
-                            ${row.preview_active === "true" ? `<button class="btn" data-action="cancel-preview" data-id="${escapeHtml(id)}">${escapeHtml(t("cancel_preview", "Cancel preview"))}</button>` : ""}
+                            ${row.preview_active === "true" ? `<button class="btn" data-action="cancel-preview" data-id="${escapeHtml(id)}">${escapeHtml(t("cancel_preview", "Cancel preview"))}</button>` : ""}` : ""}
                           </div></td>`
                         : ""
                     }
@@ -2770,6 +2791,33 @@
     ).join("")}</div>`;
   }
 
+  // One line of the wmbusmeters log. A decoded telegram (a JSON line) is one
+  // row "name · id · driver" with the start of the JSON; a click shows the
+  // whole JSON formatted. Other lines (warnings, key errors, start-up) as is.
+  function wmbusmetersLogRow(row) {
+    const time = `<span class="live-log-time">${escapeHtml(row.time.slice(11))}</span>`;
+    if (!row.text.startsWith("{")) {
+      return `<div class="live-log-row">${time}<span class="live-log-msg">${escapeHtml(row.text)}</span></div>`;
+    }
+    let parsed = null;
+    try { parsed = JSON.parse(row.text); } catch (error) { parsed = null; }
+    const key = `${row.time}|${row.text.length}|${row.text.slice(0, 80)}`;
+    const open = state.expandedLogLines.has(key);
+    const head = parsed
+      ? [parsed.name, parsed.id, parsed.meter || parsed.driver].filter(Boolean).join(" · ")
+      : t("live_log_json_cut", "JSON (cut)");
+    return `
+      <div class="live-log-row json" data-action="log-line-toggle" data-key="${escapeHtml(key)}" style="cursor:pointer;">
+        ${time}
+        <span class="live-log-msg">
+          <span class="live-log-head">${open ? "▾" : "▸"} ${escapeHtml(head)}</span>
+          ${open
+            ? `<pre class="live-log-json">${escapeHtml(parsed ? JSON.stringify(parsed, null, 2) : row.text)}</pre>`
+            : `<span class="live-log-preview">${escapeHtml(row.text)}</span>`}
+        </span>
+      </div>`;
+  }
+
   // The decoding wmbusmeters' own output, newest first.
   function wmbusmetersLogSection() {
     const log = state.liveLog.wmbusmeters;
@@ -2779,11 +2827,7 @@
       <section class="section">
         <div class="section-head"><h2>${escapeHtml(t("live_log_wmbusmeters_title", "wmbusmeters output"))}</h2><span>${rows.length} ${escapeHtml(t("webui_rows", "rows"))}</span></div>
         ${logsTabs()}
-        ${notice || `<div class="live-log">${rows.map((row) => `
-          <div class="live-log-row${row.text.startsWith("{") ? " json" : ""}">
-            <span class="live-log-time">${escapeHtml(row.time.slice(11))}</span>
-            <span class="live-log-msg">${escapeHtml(row.text)}</span>
-          </div>`).join("")}</div>`}
+        ${notice || `<div class="live-log">${rows.map((row) => wmbusmetersLogRow(row)).join("")}</div>`}
       </section>
     `;
   }
@@ -4652,6 +4696,20 @@
     }
     if (action === "esp-diag-toggle") {
       state.espDiagOpen = !state.espDiagOpen;
+      render();
+      return;
+    }
+    if (action === "candidate-more") {
+      const id = target.dataset.id || "";
+      if (state.expandedActions.has(id)) state.expandedActions.delete(id);
+      else state.expandedActions.add(id);
+      render();
+      return;
+    }
+    if (action === "log-line-toggle") {
+      const key = target.dataset.key || "";
+      if (state.expandedLogLines.has(key)) state.expandedLogLines.delete(key);
+      else state.expandedLogLines.add(key);
       render();
       return;
     }

@@ -228,7 +228,8 @@ def make_books(spec):
             book = bl.RssiBook(cfg["meter_dir"], cfg["rssi_file"])
         elif mode == "rx":
             book = bl.RxBook(cfg["reception_file"], cfg["mode_file"], cfg["history_file"],
-                             cfg["sequence_file"], cfg["boots_file"], cfg["clock_file"])
+                             cfg["sequence_file"], cfg["boots_file"], cfg["clock_file"],
+                             cfg.get("rssi_file", ""))
         elif mode == "tracker":
             book = bl.TrackerBook(int(cfg["dev_pos"]), cfg["devices_file"], cfg["meter_device_file"],
                                   cfg["reception_file"], cfg["history_file"])

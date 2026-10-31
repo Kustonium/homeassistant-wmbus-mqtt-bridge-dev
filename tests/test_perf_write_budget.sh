@@ -43,7 +43,7 @@ command -v python3 >/dev/null 2>&1 || fail "missing python3"
 # 57330 for the tracker and 36573 for the RAW counter; a LISTEN block was
 # 233230, and 83230 with status_seen.tsv appended to)
 BUDGET_RSSI=90         #  72: status_rssi.tsv, 10 configured meters
-BUDGET_RX=1200         # 954: six /rx tables and the JSONL history
+BUDGET_RX=1200         # 1011: six /rx tables, the JSONL history and the signal table (954 without it)
 BUDGET_TRACKER=1070    # 852: three tracker tables and the JSONL history
 BUDGET_RAW=670         # 536: counter, ring, rate, status.json, events
 BUDGET_LISTEN=7000     # 5576: per LISTEN block of a known candidate: status_seen.tsv,
@@ -117,7 +117,7 @@ def make_rssi(d):
     return bl.RssiBook(f"{d}/meters", f"{d}/rssi")
 
 def make_rx(d):
-    return bl.RxBook(*(f"{d}/{n}" for n in ("reception", "mode", "history", "sequence", "boots", "clock")))
+    return bl.RxBook(*(f"{d}/{n}" for n in ("reception", "mode", "history", "sequence", "boots", "clock", "rssi")))
 
 def make_tracker(d):
     touch(d, "devices", "meter_device")  # created by bridge.sh at start

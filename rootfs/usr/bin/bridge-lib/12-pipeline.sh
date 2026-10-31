@@ -127,7 +127,8 @@ _raw_source() {
 }
 
 # What the decoding wmbusmeters prints, for the WebUI's wmbusmeters log: every
-# line goes on unchanged at once and a copy (time, at most 400 characters) is
+# line goes on unchanged at once and a copy (time, at most 4000 characters: a
+# decoded telegram's JSON whole, so the WebUI can show it field by field) is
 # appended to ${WEBUI_LOG_DIR}/wmbusmeters.log, cut to the last 500 lines every
 # 500 lines. Without a RAM WEBUI_LOG_DIR the stage only passes the stream on
 # (dd, for the reason in _raw_source). No fork per line: read, printf and the
@@ -138,7 +139,7 @@ _wmbusmeters_log_stage() {
   : >> "${file}" 2>/dev/null || exec dd bs=65536 status=none
   while IFS= read -r line; do
     printf '%s\n' "${line}"
-    printf '%(%Y-%m-%d %H:%M:%S)T %s\n' -1 "${line:0:400}" >> "${file}" 2>/dev/null
+    printf '%(%Y-%m-%d %H:%M:%S)T %s\n' -1 "${line:0:4000}" >> "${file}" 2>/dev/null
     if (( ++n >= 500 )); then
       n=0
       tail -n 500 "${file}" > "${file}.tmp" 2>/dev/null && mv -f "${file}.tmp" "${file}" 2>/dev/null
@@ -172,6 +173,7 @@ _mqtt_publisher_books() {
     --arg rx_rec "${STATUS_ESP_RX_RECEPTION_FILE}" --arg rx_mode "${STATUS_ESP_RX_MODE_FILE}" \
     --arg rx_hist "${ESP_RF_RX_HISTORY_FILE}" --arg rx_seq "${STATUS_ESP_RX_SEQUENCE_FILE}" \
     --arg rx_boots "${STATUS_ESP_RX_BOOTS_FILE}" --arg rx_clock "${STATUS_ESP_RX_CLOCK_FILE}" \
+    --arg rx_rssi "${RUNTIME:-${BASE}}/status_esp_rx_rssi.tsv" \
     --arg raw_topic "${RAW_TOPIC}" --argjson dev_pos "${_dev_pos}" \
     --arg tg_dev "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" --arg tg_md "${STATUS_ESP_METER_DEVICE_FILE}" \
     --arg tg_rec "${STATUS_ESP_METER_RECEPTION_FILE}" --arg tg_hist "${ESP_RX_HISTORY_FILE}" \
@@ -211,7 +213,8 @@ _mqtt_publisher_books() {
        raw_feed: {filter: $raw_topic, no_retained: $no_ret},
        rx: {filter: "wmbus/+/rx", no_retained: $no_ret,
             reception_file: $rx_rec, mode_file: $rx_mode, history_file: $rx_hist,
-            sequence_file: $rx_seq, boots_file: $rx_boots, clock_file: $rx_clock}}
+            sequence_file: $rx_seq, boots_file: $rx_boots, clock_file: $rx_clock,
+            rssi_file: $rx_rssi}}
       + (if $dev_pos >= 0 then
            {tracker: {filter: $raw_topic, no_retained: $no_ret, dev_pos: $dev_pos,
                       devices_file: $tg_dev, meter_device_file: $tg_md,
