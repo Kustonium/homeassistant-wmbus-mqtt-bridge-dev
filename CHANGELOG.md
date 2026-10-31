@@ -1,3 +1,9 @@
+## 1.6.5-dev.423
+
+### Fixed
+- board pill shows the band the board received the meter on (ab6de49)
+- signal and listen band on each board pill, no separate signal badge (97eebac)
+
 ## 1.6.5-dev.422
 
 ### Fixed
