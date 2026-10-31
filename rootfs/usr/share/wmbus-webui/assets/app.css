@@ -1922,3 +1922,15 @@ tr:last-child td {
 .live-log-row.json .live-log-msg:has(.live-log-json) {
   white-space: normal;
 }
+
+/* ───── Sortable column headers (candidate table) ───── */
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+th.sortable:hover,
+th.sortable.sorted {
+  color: var(--text);
+}

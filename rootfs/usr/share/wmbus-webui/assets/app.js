@@ -91,6 +91,22 @@
     try { window.localStorage.setItem(LS_VIEW_KEY, v); } catch (_) {}
   }
 
+  // Candidate table order, clickable column headers like a spreadsheet. The
+  // default is by ID: the backend order follows the newest telegram, so with
+  // live updates the rows kept moving under the reader. Persisted per browser.
+  const LS_CAND_SORT_KEY = "wmbus.candidateSort";
+  const CAND_SORT_KEYS = ["id", "last_seen", "seen_15m", "seen_60m", "rssi"];
+  function loadCandidateSort() {
+    try {
+      const v = JSON.parse(window.localStorage.getItem(LS_CAND_SORT_KEY) || "null");
+      if (v && CAND_SORT_KEYS.includes(v.key) && (v.dir === 1 || v.dir === -1)) return v;
+    } catch (_) {}
+    return {key: "id", dir: 1};
+  }
+  function saveCandidateSort(v) {
+    try { window.localStorage.setItem(LS_CAND_SORT_KEY, JSON.stringify(v)); } catch (_) {}
+  }
+
   const state = {
     route: currentRoute(),
     data: null,
@@ -140,6 +156,7 @@
     expandedActions: new Set(),
     // wmbusmeters log: keys of the JSON lines shown in full.
     expandedLogLines: new Set(),
+    candidateSort: loadCandidateSort(),
   };
 
   let liveLogTimer = null;
@@ -2119,6 +2136,32 @@
     const colspan = withActions ? 12 : 11;
     const _mc = (r) => mediaIcon(r.type || "", r.driver || "auto").mc;
     const _silent = (r) => r.recent_silent === "true";
+    // Re-order inside the groups the backend made (media, silent block last),
+    // by the column the user picked; ties fall back to the ID.
+    const sort = state.candidateSort;
+    const groupRank = new Map();
+    rows.forEach((r) => {
+      const g = _silent(r) ? "~silent" : _mc(r);
+      if (!groupRank.has(g)) groupRank.set(g, groupRank.size);
+    });
+    const sortValue = (r) => {
+      if (sort.key === "last_seen") return Date.parse(r.last_seen || "") || 0;
+      if (sort.key === "seen_15m" || sort.key === "seen_60m") return Number(r[sort.key]) || 0;
+      if (sort.key === "rssi") return r.rssi_best ? Number(r.rssi_best.dbm) : -999;
+      return 0;
+    };
+    rows = rows.slice().sort((a, b) => {
+      const ga = groupRank.get(_silent(a) ? "~silent" : _mc(a));
+      const gb = groupRank.get(_silent(b) ? "~silent" : _mc(b));
+      if (ga !== gb) return ga - gb;
+      const d = sort.key === "id" ? 0 : (sortValue(a) - sortValue(b)) * sort.dir;
+      if (d) return d;
+      return String(a.id || "").localeCompare(String(b.id || "")) * (sort.key === "id" ? sort.dir : 1);
+    });
+    const sortTh = (key, label, extra = "") => {
+      const arrow = sort.key === key ? (sort.dir === 1 ? " ▲" : " ▼") : "";
+      return `<th class="sortable${sort.key === key ? " sorted" : ""}" data-action="candidate-sort" data-key="${key}" title="${escapeHtml(t("sort_by_column", "Sort by this column"))}">${escapeHtml(label)}${arrow}${extra}</th>`;
+    };
     const groupDivider = (prev, cur) => {
       if (_silent(cur)) {
         if (!prev || !_silent(prev)) {
@@ -2136,17 +2179,17 @@
         <table>
           <thead>
             <tr>
-              <th>${escapeHtml(t("webui_id", "ID"))}</th>
+              ${sortTh("id", t("webui_id", "ID"))}
               <th>${escapeHtml(t("driver", "Driver"))}</th>
               <th>${escapeHtml(t("webui_type", "Type"))}</th>
               <th>${escapeHtml(t("media", "Medium"))}</th>
               <th>${escapeHtml(t("manufacturer_col", "Manufacturer"))}</th>
               <th>${escapeHtml(t("encryption_label", "Encryption"))}</th>
               <th>${escapeHtml(t("preview_value_col", "Preview value"))}</th>
-              <th>${escapeHtml(t("webui_last_seen", "Last seen"))}</th>
-              <th>15m</th>
-              <th>60m</th>
-              <th>${escapeHtml(t("reception", "Interval"))}${receptionLegendInfo()}</th>
+              ${sortTh("last_seen", t("webui_last_seen", "Last seen"))}
+              ${sortTh("seen_15m", "15m")}
+              ${sortTh("seen_60m", "60m")}
+              ${sortTh("rssi", t("reception", "Interval"), receptionLegendInfo())}
               ${withActions ? "<th></th>" : ""}
             </tr>
           </thead>
@@ -4696,6 +4739,18 @@
     }
     if (action === "esp-diag-toggle") {
       state.espDiagOpen = !state.espDiagOpen;
+      render();
+      return;
+    }
+    if (action === "candidate-sort") {
+      const key = target.dataset.key || "id";
+      const cur = state.candidateSort;
+      // A second click on the same column reverses it; a new column starts
+      // ascending for the ID and descending (newest, most, strongest) otherwise.
+      state.candidateSort = cur.key === key
+        ? {key, dir: -cur.dir}
+        : {key, dir: key === "id" ? 1 : -1};
+      saveCandidateSort(state.candidateSort);
       render();
       return;
     }
