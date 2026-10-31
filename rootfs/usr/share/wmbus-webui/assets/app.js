@@ -944,15 +944,41 @@
     state.error = "";
   }
 
+  // A failed refresh used to replace the page with its error until a manual
+  // reload, even after later fetches worked. The usual cause is the HA ingress
+  // session lapsing while the tab sat in the background (the browser throttles
+  // or freezes it, so HA does not renew the session): the first fetch after
+  // the tab comes back gets 401/404, a few seconds later HA has renewed it.
+  // So: keep the data already shown, retry, clear the error on success, and
+  // reload the panel only if the session stays refused.
+  let fetchFailures = 0;
+  const LS_RELOAD_KEY = "wmbus.sessionReloadAt";
   async function fetchData(lang = "") {
+    let status = 0;
     try {
       const url = lang ? `api/app?lang=${encodeURIComponent(lang)}` : "api/app";
       const response = await fetch(url, {cache: "no-store"});
+      status = response.status;
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       applyData(await response.json());
+      fetchFailures = 0;
+      state.error = "";
       startLiveUpdates(state.data?.i18n?.lang || lang || currentLang());
     } catch (error) {
-      state.error = `Cannot load dashboard data: ${error.message}`;
+      fetchFailures += 1;
+      if (!state.data || fetchFailures >= 3) state.error = `Cannot load dashboard data: ${error.message}`;
+      if (fetchFailures < 3) {
+        window.setTimeout(() => { if (!document.hidden) fetchData(currentLang()); }, 3000);
+      } else if ([401, 403, 404].includes(status)) {
+        // Still refused: reload the panel document, which picks up the session
+        // HA has renewed by now. At most once a minute, so it cannot loop.
+        let last = 0;
+        try { last = Number(window.sessionStorage.getItem(LS_RELOAD_KEY)) || 0; } catch (_) {}
+        if (Date.now() - last > 60000) {
+          try { window.sessionStorage.setItem(LS_RELOAD_KEY, String(Date.now())); } catch (_) {}
+          window.location.reload();
+        }
+      }
     } finally {
       state.loading = false;
       render();
@@ -1003,7 +1029,9 @@
       return;
     }
     const nextLang = lang || currentLang();
-    if (liveSource && liveLang === nextLang) return;
+    // A stream the browser gave up on (CLOSED) is replaced, not kept: it used
+    // to block every later start and leave the page on POLL for good.
+    if (liveSource && liveLang === nextLang && liveSource.readyState !== EventSource.CLOSED) return;
     if (liveSource) {
       liveSource.close();
       liveSource = null;
@@ -1013,6 +1041,9 @@
     liveSource = new EventSource(url);
     liveSource.onopen = () => {
       state.liveConnected = true;
+      liveRetryDelay = 5000;
+      fetchFailures = 0;
+      state.error = "";
       scheduleRender();
     };
     // Server sends named SSE events: "event: state\ndata: ...\n\n"
@@ -1021,6 +1052,7 @@
       try {
         applyData(JSON.parse(event.data));
         state.loading = false;
+        state.error = "";
         state.liveConnected = true;
         scheduleRender();
       } catch (error) {
@@ -1029,8 +1061,46 @@
     });
     liveSource.onerror = () => {
       state.liveConnected = false;
+      // A dropped connection is retried by the browser itself; an HTTP error
+      // (502 while the add-on restarts, 401/404 for an expired ingress
+      // session) closes the stream for good. Start it again ourselves.
+      if (liveSource && liveSource.readyState === EventSource.CLOSED) {
+        liveSource = null;
+        scheduleLiveRetry();
+      }
+      scheduleRender();
     };
   }
+
+  // 5 s, then doubling up to a minute, until a stream opens; nothing while the
+  // tab is hidden (the visibility handler restarts it on return).
+  let liveRetryDelay = 5000;
+  let liveRetryTimer = null;
+  function scheduleLiveRetry() {
+    if (liveRetryTimer) return;
+    const delay = liveRetryDelay;
+    liveRetryDelay = Math.min(liveRetryDelay * 2, 60000);
+    liveRetryTimer = window.setTimeout(() => {
+      liveRetryTimer = null;
+      if (!document.hidden) fetchData(currentLang());
+    }, delay);
+  }
+
+  // A hidden tab keeps no stream open: the server would build the whole
+  // payload twice a second for nobody, and HA lets the ingress session lapse
+  // in a throttled background tab anyway. On return, give HA a moment to
+  // renew the session, then load fresh data and reopen the stream.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      if (liveSource) {
+        liveSource.close();
+        liveSource = null;
+      }
+      state.liveConnected = false;
+      return;
+    }
+    window.setTimeout(() => fetchData(currentLang()), 1500);
+  });
 
   function routeTitle(route) {
     const item = visibleNavItems().find(([id]) => id === route);
