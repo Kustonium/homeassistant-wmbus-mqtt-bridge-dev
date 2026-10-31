@@ -220,7 +220,7 @@
     if (liveRenderTimer) return;
     liveRenderTimer = window.setTimeout(() => {
       liveRenderTimer = null;
-      if (document.querySelector(".table-wrap:hover")
+      if (document.querySelector(".table-wrap:hover, .table-scroll-top:hover")
           && !state.modal && !state.reportModal && !state.editModal) {
         liveRenderDeferred = true;
         return;
@@ -231,7 +231,7 @@
   }
 
   document.addEventListener("mouseover", () => {
-    if (liveRenderDeferred && !document.querySelector(".table-wrap:hover")) {
+    if (liveRenderDeferred && !document.querySelector(".table-wrap:hover, .table-scroll-top:hover")) {
       liveRenderDeferred = false;
       scheduleRender();
     }
@@ -4780,8 +4780,47 @@
     }
   }
 
+  // A second horizontal scrollbar above every wide table: the table's own one
+  // sits under its last row, so with many rows one had to scroll down to the
+  // end to move sideways. The bar is added to the HTML here (one place for
+  // every table-wrap); syncTopScrollbars sizes it, shows it only when the
+  // table is wider than its box, and keeps both scroll positions together.
+  function withTopScrollbars(html) {
+    return html.replace(/<div class="table-wrap/g,
+      '<div class="table-scroll-top" aria-hidden="true"><div></div></div><div class="table-wrap');
+  }
+
+  function syncTopScrollbars() {
+    document.querySelectorAll(".table-scroll-top").forEach((top) => {
+      const wrap = top.nextElementSibling;
+      if (!wrap || !wrap.classList.contains("table-wrap")) return;
+      const over = wrap.scrollWidth > wrap.clientWidth + 1;
+      top.style.display = over ? "block" : "none";
+      if (!over) return;
+      top.firstElementChild.style.width = `${wrap.scrollWidth}px`;
+      if (!top.__synced) {
+        top.__synced = true;
+        top.scrollLeft = wrap.scrollLeft;
+        top.addEventListener("scroll", () => {
+          const w = top.nextElementSibling;
+          if (w && w.scrollLeft !== top.scrollLeft) w.scrollLeft = top.scrollLeft;
+        });
+      }
+      if (!wrap.__synced) {
+        wrap.__synced = true;
+        wrap.addEventListener("scroll", () => {
+          const t = wrap.previousElementSibling;
+          if (t && t.classList.contains("table-scroll-top") && t.scrollLeft !== wrap.scrollLeft) {
+            t.scrollLeft = wrap.scrollLeft;
+          }
+        });
+      }
+    });
+  }
+  window.addEventListener("resize", () => syncTopScrollbars());
+
   function render() {
-    const newHtml = renderRoute();
+    const newHtml = withTopScrollbars(renderRoute());
     if (typeof morphdom !== "undefined") {
       // morphdom patches only the DOM nodes that actually changed —
       // no flicker, no scroll reset, no lost input focus.
@@ -4799,6 +4838,9 @@
           // page updated. Restrict the skip to editable controls.
           if (from === document.activeElement &&
               /^(INPUT|TEXTAREA|SELECT)$/.test(from.tagName)) return false;
+          // The top scrollbar is sized and scrolled by syncTopScrollbars; a patch
+          // would clear its width and snap it back to the left edge.
+          if (from.classList && from.classList.contains("table-scroll-top")) return false;
           // Skip identical nodes (morphdom checks attrs, this adds textContent check).
           if (from.isEqualNode(to)) return false;
           return true;
@@ -4808,6 +4850,7 @@
       // Fallback when morphdom.min.js failed to load.
       app.innerHTML = newHtml;
     }
+    syncTopScrollbars();
     if (state.route === "discover" && window.__discoverFilterByValue) {
       window.__discoverFilterByValue();
     }

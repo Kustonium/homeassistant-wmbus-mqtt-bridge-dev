@@ -1976,3 +1976,17 @@ th.sortable:hover {
     font-size: 11px;
   }
 }
+
+/* Second horizontal scrollbar above wide tables (syncTopScrollbars). Hidden
+   until the table overflows; the inner div only gives it the table's width. */
+.table-scroll-top {
+  display: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: 14px;
+  margin-bottom: 2px;
+}
+
+.table-scroll-top > div {
+  height: 1px;
+}
