@@ -4810,7 +4810,17 @@
       '<div class="table-scroll-top" aria-hidden="true"><div></div></div><div class="table-wrap');
   }
 
+  // Where a pinned top scrollbar must stop: under the filter bar when the
+  // page has one (it is sticky itself), else under the top bar, which is
+  // sticky only above 980 px.
+  function stickyScrollOffset() {
+    const fb = document.querySelector(".filter-sticky");
+    if (fb) return (parseFloat(getComputedStyle(fb).top) || 0) + fb.offsetHeight;
+    return window.matchMedia("(max-width: 980px)").matches ? 0 : 64;
+  }
+
   function syncTopScrollbars() {
+    document.documentElement.style.setProperty("--scroll-top-offset", `${stickyScrollOffset()}px`);
     document.querySelectorAll(".table-scroll-top").forEach((top) => {
       const wrap = top.nextElementSibling;
       if (!wrap || !wrap.classList.contains("table-wrap")) return;

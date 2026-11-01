@@ -1991,6 +1991,12 @@ th.sortable:hover {
   overflow-y: hidden;
   height: 14px;
   margin-bottom: 2px;
+  /* Stays under the sticky top bar / filter bar while the table scrolls
+     past; --scroll-top-offset is measured in syncTopScrollbars(). */
+  position: sticky;
+  top: var(--scroll-top-offset, 0px);
+  z-index: 3;
+  background: var(--panel);
 }
 
 .table-scroll-top > div {
