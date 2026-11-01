@@ -361,6 +361,20 @@ class RxBookTest(unittest.TestCase):
             self.send("lilygo", f'"seq":{n}')
         self.assertEqual(len(self.read("history")), 90000)
 
+    def test_rssi_file_keeps_frames_and_dbm_per_band(self):
+        rssi = self.d / "rssi"
+        book = bl.RxBook(*(self.files[n] for n in ("reception", "mode", "history", "sequence", "boots", "clock")),
+                         str(rssi))
+        for seq, mode, dbm in ((1, "T1", -70), (2, "T1", -80), (3, "C1", -90), (4, "S1", None)):
+            rssi_field = "" if dbm is None else f',"rssi_dbm":{dbm}'
+            book(b"wmbus/lilygo/rx",
+                 ('{"schema":1,"rx_task_wakeup_us":1,"frame_crc32":"7F56A83C","frame_length":10,'
+                  f'"meter_id":"52632878","boot_id":"A84F12C7","seq":{seq},"mode":"{mode}"{rssi_field}}}').encode())
+        book._write_rssi()
+        # T1: -70, then -70 + 0.2 * (-80 - -70) = -72; S1 frame without rssi_dbm keeps an empty dBm.
+        self.assertEqual(rssi.read_text().splitlines(),
+                         ["52632878	lilygo	-76	1790935210	4	C1:1:-90,S1:1:,T1:2:-72"])
+
 
 class TrackerBookTest(unittest.TestCase):
     QWATER = "".join((ROOT / "tests/fixtures/qwaterv2/52632878.hex").read_text().split())

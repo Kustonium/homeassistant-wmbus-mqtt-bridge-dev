@@ -1,0 +1,846 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ── Source modules ────────────────────────────────────────────
+BRIDGE_SCRIPT_PATH="${BASH_SOURCE[0]}"
+BRIDGE_SCRIPT_DIR="${BRIDGE_SCRIPT_PATH%/*}"
+[[ "${BRIDGE_SCRIPT_DIR}" == "${BRIDGE_SCRIPT_PATH}" ]] && BRIDGE_SCRIPT_DIR="."
+BRIDGE_SCRIPT_DIR="$(cd "${BRIDGE_SCRIPT_DIR}" && pwd)"
+BRIDGE_LIB_DIR="${BRIDGE_SCRIPT_DIR}/bridge-lib"
+# shellcheck source=bridge-lib/00-logging.sh
+source "${BRIDGE_LIB_DIR}/00-logging.sh"
+# shellcheck source=bridge-lib/01-utils.sh
+source "${BRIDGE_LIB_DIR}/01-utils.sh"
+# shellcheck source=bridge-lib/02-config.sh
+source "${BRIDGE_LIB_DIR}/02-config.sh"
+# shellcheck source=bridge-lib/03-tsv.sh
+source "${BRIDGE_LIB_DIR}/03-tsv.sh"
+# shellcheck source=bridge-lib/04-status.sh
+source "${BRIDGE_LIB_DIR}/04-status.sh"
+# shellcheck source=bridge-lib/05-raw.sh
+source "${BRIDGE_LIB_DIR}/05-raw.sh"
+# shellcheck source=bridge-lib/06-candidates.sh
+source "${BRIDGE_LIB_DIR}/06-candidates.sh"
+# shellcheck source=bridge-lib/07-meters.sh
+source "${BRIDGE_LIB_DIR}/07-meters.sh"
+# shellcheck source=bridge-lib/08-discovery-helpers.sh
+source "${BRIDGE_LIB_DIR}/08-discovery-helpers.sh"
+# shellcheck source=bridge-lib/09-discovery.sh
+source "${BRIDGE_LIB_DIR}/09-discovery.sh"
+# shellcheck source=bridge-lib/10-search.sh
+source "${BRIDGE_LIB_DIR}/10-search.sh"
+# shellcheck source=bridge-lib/11-listen.sh
+source "${BRIDGE_LIB_DIR}/11-listen.sh"
+# shellcheck source=bridge-lib/12-pipeline.sh
+source "${BRIDGE_LIB_DIR}/12-pipeline.sh"
+# shellcheck source=bridge-lib/13-esp.sh
+source "${BRIDGE_LIB_DIR}/13-esp.sh"
+# shellcheck source=bridge-lib/14-mbus.sh
+source "${BRIDGE_LIB_DIR}/14-mbus.sh"
+
+# ============================================================
+# wMBus MQTT Bridge (core)
+# - MQTT RAW HEX (payload-only) -> wmbusmeters stdin:hex
+# - wmbusmeters JSON telegram -> MQTT state: <state_prefix>/<id>/state
+# - Home Assistant MQTT Discovery (generic): sensor per numeric JSON field
+# ============================================================
+
+need_bin jq
+need_bin mosquitto_sub
+need_bin mosquitto_pub
+need_bin wmbusmeters
+need_bin awk
+need_bin sed
+need_bin tr
+
+BASE="${WMBUS_BASE:-/data}"
+# The status_* files are rewritten every few seconds; they live in RUNTIME, a
+# RAM directory when /tmp is a tmpfs (the add-on's), saved to
+# ${BASE}/runtime_state.tar every few minutes and at stop and restored here.
+# Without a tmpfs /tmp, RUNTIME is BASE, as before. webui.py picks the same.
+RUNTIME="$(python3 "${BRIDGE_LEDGER}" runtime --base "${BASE}" 2>/dev/null || true)"
+[[ -n "${RUNTIME}" ]] || RUNTIME="${BASE}"
+export WMBUS_RUNTIME="${RUNTIME}"
+# The live logs of the WebUI (ESPHome log, wmbusmeters output) change every
+# second; they are kept only in a RAM RUNTIME, never on the data disk.
+WEBUI_LOG_DIR=""
+[[ "${RUNTIME}" != "${BASE}" ]] && WEBUI_LOG_DIR="${RUNTIME}"
+log "$(python3 "${BRIDGE_LEDGER}" runtime-restore --base "${BASE}" --runtime "${RUNTIME}" 2>&1 \
+  || echo "runtime: restore into ${RUNTIME} failed")"
+OPTIONS_JSON="${BASE}/options.json"
+ETC_DIR="${BASE}/etc"
+METER_DIR="${ETC_DIR}/wmbusmeters.d"
+
+CONF_FILE="${ETC_DIR}/wmbusmeters.conf"
+
+mkdir -p "${ETC_DIR}" "${METER_DIR}"
+
+# ------------------------------------------------------------
+# Runtime status files for optional read-only Ingress dashboard
+# ------------------------------------------------------------
+# shellcheck disable=SC2034
+STATUS_JSON="${RUNTIME}/status.json"
+STATUS_METERS_FILE="${RUNTIME}/status_meters.tsv"
+STATUS_CANDIDATES_FILE="${RUNTIME}/status_candidates.tsv"
+STATUS_EVENTS_FILE="${RUNTIME}/status_events.tsv"
+STATUS_SEEN_FILE="${RUNTIME}/status_seen.tsv"
+STATUS_RAW_COUNT_FILE="${RUNTIME}/status_raw_count.txt"
+STATUS_LAST_RAW_FILE="${RUNTIME}/status_last_raw_seen.txt"
+STATUS_RECENT_RAW_FILE="${RUNTIME}/status_recent_raw.tsv"
+STATUS_CANDIDATE_ANALYSIS_FILE="${RUNTIME}/status_candidate_analysis.tsv"
+STATUS_CANDIDATE_RAW_FILE="${RUNTIME}/status_candidate_raw.tsv"
+# Last full decoded JSON per configured meter — written by status_meter_seen,
+# read by webui.py to show the "published fields" expander on the meters view.
+# Format: id<TAB>iso_timestamp<TAB>json_line
+STATUS_METER_LAST_JSON_FILE="${RUNTIME}/status_meter_last_json.tsv"
+# Discovery Doctor: webui.py touches the request flag; the heartbeat ticker
+# runs discovery_doctor_probe (09-discovery.sh) and writes the JSON result.
+DISCOVERY_DOCTOR_REQUEST_FILE="${BASE}/.discovery_doctor_request"
+# shellcheck disable=SC2034  # consumed by discovery_doctor_probe (sourced lib)
+STATUS_DISCOVERY_DOCTOR_FILE="${RUNTIME}/status_discovery_doctor.json"
+# Factory reset: webui.py empties options.json (meters=[]) and writes this flag
+# with the removed meter ids (one per line); the heartbeat ticker clears their
+# retained discovery, wipes runtime state and soft-reloads the pipeline so the
+# add-on returns to its post-install state. See the ticker block below.
+FACTORY_RESET_REQUEST_FILE="${BASE}/.factory_reset_request"
+# Per-meter AES key problem (key_missing | key_invalid) detected from
+# wmbusmeters warnings by status_detect_key_problem; cleared by the next
+# successfully decoded JSON (status_meter_seen). Read by webui.py.
+# Format: id<TAB>reason<TAB>iso_timestamp
+STATUS_METER_KEY_PROBLEM_FILE="${RUNTIME}/status_meter_key_problem.tsv"
+# Per-candidate decoded value preview — written by _store_candidate_value when
+# a preview one-shot decodes a candidate's RAW frame.
+# Format: id<TAB>value<TAB>value_key<TAB>iso_timestamp
+STATUS_CANDIDATE_VALUES_FILE="${RUNTIME}/status_candidate_values.tsv"
+# Per-candidate preview lifecycle state: pending | decoded_value | decoded_without_numeric_value
+# Format: id<TAB>state<TAB>iso_timestamp<TAB>note
+STATUS_CANDIDATE_PREVIEW_STATE_FILE="${RUNTIME}/status_candidate_preview_state.tsv"
+# Preview one-shot decoder paths. Defined here (derived purely from BASE) so the
+# liveness/maintenance ticker forked below can reference PREVIEW_METER_DIR; the
+# directory mkdir and conf-file creation still happen later in startup.
+PREVIEW_BASE="${BASE}/preview"
+PREVIEW_ETC="${PREVIEW_BASE}/etc"
+PREVIEW_METER_DIR="${PREVIEW_ETC}/wmbusmeters.d"
+PREVIEW_CONF_FILE="${PREVIEW_ETC}/wmbusmeters.conf"
+# MQTT->HA healthcheck: presence of Home Assistant's MQTT integration on the
+# broker the bridge uses, inferred from HA's retained birth message
+# (<discovery_prefix>/status). Written by the HA-presence subscriber in
+# start_esp_subscribers. Format: state<TAB>epoch  (state = online | offline).
+STATUS_HA_PRESENCE_FILE="${RUNTIME}/status_ha_presence.txt"
+# Liveness heartbeat — stamped every few seconds by the background ticker started
+# after the ESP subscribers, regardless of telegram flow. Lets the WebUI tell
+# "bridge alive but idle" apart from "bridge down / run.sh waiting for broker"
+# (status.json alone goes stale during quiet periods too). Format: epoch.
+STATUS_HEARTBEAT_FILE="${RUNTIME}/status_heartbeat.txt"
+# Broker identity from $SYS, written by the broker-info subscriber: brand+version
+# (Mosquitto via $SYS/broker/version, EMQX via $SYS/brokers/+/sysdescr+version).
+# Lets the WebUI label the MQTT tile "Mosquitto 2.x (native)" / "EMQX 5.x (other)".
+# Format: brand<TAB>version. Session-scoped (the broker can change between runs).
+STATUS_BROKER_INFO_FILE="${RUNTIME}/status_broker_info.txt"
+# Broker-connection failure marker, written by wait_for_mqtt when the broker
+# refuses the connection WHILE THE BRIDGE IS RUNNING. Format: code<TAB>host:port
+# (codes: auth_rejected, unreachable). Cleared on the first successful publish
+# or received telegram. Rendered by the WebUI as an actionable banner — the
+# offline MQTT tile alone proved too quiet when a wrong password silently
+# blocked everything (observed live). Distinct from status_run_error.txt,
+# which covers run.sh failing BEFORE the bridge ever starts.
+STATUS_BROKER_ERROR_FILE="${RUNTIME}/status_broker_error.txt"
+# HA entity verification (opt-in, see verify_ha_entities option): worker writes
+# one of verified | not_created | unavailable | pending here, after asking the
+# HA Core API whether the canary entity (sensor.wmbus_bridge_health) exists.
+# Format: state<TAB>epoch  (epoch = last check).
+STATUS_HA_VERIFICATION_FILE="${RUNTIME}/status_ha_verification.txt"
+# wmbusmeters version triplet — written once at start. webui.py surfaces it on
+# the wmbusmeters workspace panel. Format: runtime<TAB>build_version<TAB>build_commit.
+STATUS_WMBUSMETERS_VERSION_FILE="${RUNTIME}/status_wmbusmeters_version.txt"
+# File-backed count of officially configured meters. Several pipelines run in
+# subshells and can outlive a soft reload, so their inherited shell variable may
+# be stale. This file is the shared runtime source of truth.
+STATUS_OFFICIAL_METERS_COUNT_FILE="${RUNTIME}/status_official_meters_count.txt"
+# Per-ESP-device telegram tracking — written by the background MQTT subscriber
+# that listens to the RAW topic itself. The "+" wildcard segment carries the
+# device name (e.g. wmbus/xiaoseed/telegram → "xiaoseed"). Lets the WebGUI
+# detect ESPs WITHOUT requiring diagnostic publishing on the ESP side.
+# The file is cleared at bridge start, so rows describe devices seen in the
+# current bridge session via the configured RAW_TOPIC.
+# Format: device_name<TAB>last_seen_epoch<TAB>last_topic<TAB>telegram_count
+STATUS_ESP_TELEGRAM_DEVICES_FILE="${RUNTIME}/status_esp_telegram_devices.tsv"
+# Which ESP device delivered a given meter's telegrams — written by the same
+# background subscriber, from the RAW topic itself. Combined with that device's
+# listen_mode (status_esp_health.json, always published) this lets webui.py show
+# the wM-Bus band for meters that are NOT in the ESP's highlight_meters list, for
+# which no per-meter diagnostic topic exists. Only ever an approximation: it is
+# the band the receiving node was listening on, not a property read out of the
+# telegram. Exact per-meter "mode" from the diag topics always wins.
+# Format: meter_id<TAB>device_name<TAB>last_seen_epoch
+STATUS_ESP_METER_DEVICE_FILE="${RUNTIME}/status_esp_meter_device.tsv"
+# Per-meter, per-ESP counts measured by this bridge session from RAW_TOPIC.
+# Unlike ESP diagnostic percentages, every row has the same bridge-session
+# denominator. Format: id<TAB>device<TAB>first_seen<TAB>last_seen<TAB>count<TAB>last_topic
+STATUS_ESP_METER_RECEPTION_FILE="${RUNTIME}/status_esp_meter_reception.tsv"
+# Persistent bounded event history used to recover the exact first/last receive
+# time after the session state has been reset. JSONL contains no RAW payload.
+ESP_RX_HISTORY_FILE="${BASE}/esp_rx_history.jsonl"
+# Structured RF-receive metadata published by new ESP firmware on
+# wmbus/<device>/rx. Kept separate from the legacy /telegram-derived history so
+# the two observation points can never be mistaken for one another.
+STATUS_ESP_RX_RECEPTION_FILE="${RUNTIME}/status_esp_rx_reception.tsv"
+# Link mode (T1/C1/S1) each meter's /rx frames arrived on, counted per mode.
+# A meter can transmit on two bands at once (Techem sends T1 and C1), and a
+# node in listen_mode both cannot tell them apart from its configuration.
+STATUS_ESP_RX_MODE_FILE="${RUNTIME}/status_esp_rx_mode.tsv"
+ESP_RF_RX_HISTORY_FILE="${BASE}/esp_rf_rx_history.jsonl"
+# Raw radio diagnostic evidence is intentionally separate from /rx metadata.
+# This is used by the isolated dev add-on for LR1121 FIFO/drop investigation.
+ESP_DIAG_HISTORY_FILE="${BASE}/esp_diag_history.jsonl"
+STATUS_ESP_RX_SEQUENCE_FILE="${RUNTIME}/status_esp_rx_sequence.tsv"
+# One row per ESP boot. A restart resets the sequence counters, so without
+# this the evidence of the restart is destroyed by the restart itself.
+STATUS_ESP_RX_BOOTS_FILE="${RUNTIME}/status_esp_rx_boots.tsv"
+# ESP-reported reception time against bridge time, per board.
+STATUS_ESP_RX_CLOCK_FILE="${RUNTIME}/status_esp_rx_clock.tsv"
+# Retained per-source snapshot of the effective ESP configuration.
+# One JSON map source -> {radio, lines, epoch}; refreshed once per ESP boot.
+STATUS_ESP_CONFIG_FILE="${RUNTIME}/status_esp_config.json"
+SEARCH_MATCHES_FILE="${BASE}/search_matches.tsv"
+SEARCH_STATUS_FILE="${BASE}/search_status.json"
+# discovery_published flag — file-backed (see write_status_json). The raw-counter
+# and decode loops run in SEPARATE subshells, each with its own isolated copy of
+# STATUS_* vars. A shell-var-only flag gets clobbered back to false by the
+# frequent raw-counter writes. The file is the shared source of truth. Cleared
+# once per add-on start so the HA tile shows "pending" until discovery is
+# (re)published this session.
+STATUS_DISCOVERY_FLAG="${RUNTIME}/status_discovery_published.flag"
+rm -f "${STATUS_DISCOVERY_FLAG}" 2>/dev/null || true
+
+# shellcheck disable=SC2034
+STATUS_MQTT_CONNECTED="false"
+STATUS_WMBUSMETERS_RUNNING="false"
+# shellcheck disable=SC2034
+STATUS_RAW_COUNT=0
+# shellcheck disable=SC2034  # read by _decode_stage / _decode_consume_bash (12-pipeline.sh)
+STATUS_DECODED_COUNT=0
+# shellcheck disable=SC2034
+STATUS_DISCOVERY_PUBLISHED="false"
+# shellcheck disable=SC2034
+STATUS_DISCOVERY_PUBLISHED_AT=""
+# shellcheck disable=SC2034
+STATUS_LAST_RAW_SEEN=""
+# shellcheck disable=SC2034  # read by _decode_stage / _decode_consume_bash (12-pipeline.sh)
+STATUS_LAST_DECODED_SEEN=""
+STATUS_LAST_ERROR=""
+# shellcheck disable=SC2034
+STATUS_LAST_EVENT="starting"
+
+# Per-minute rate tracking: updated on every incoming RAW telegram.
+# WebGUI reads status_rate_1m.json to show live current/prev minute counts.
+# shellcheck disable=SC2034
+STATUS_RATE_1M_FILE="${RUNTIME}/status_rate_1m.json"
+# Per-minute history (rolling 15 entries) — feeds the sparkline in the WebGUI
+# Statystyki view. Each row: epoch_minute<TAB>telegram_count. Appended every
+# time a minute boundary is crossed; trimmed back to 15 rows.
+STATUS_RATE_HISTORY_FILE="${RUNTIME}/status_rate_history.tsv"
+STATUS_BRIDGE_START_FILE="${RUNTIME}/status_bridge_start.txt"
+# shellcheck disable=SC2034  # read by 13-esp.sh (sourced lib)
+# Last RSSI reported per meter id and ESP, one row per pair:
+# "<id>\t<dbm>\t<source esp>\t<epoch>".
+# Filled by an opt-in ESP publication (wmbus/<dev>/rssi/<meter_id>); absent
+# unless the firmware is configured to send it, which is the normal case.
+STATUS_RSSI_FILE="${RUNTIME}/status_rssi.tsv"
+# What the data directory is stored on, written once at start (WebUI panel).
+STATUS_STORAGE_FILE="${RUNTIME}/status_storage.json"
+
+touch "${STATUS_METERS_FILE}" "${STATUS_CANDIDATES_FILE}" "${STATUS_EVENTS_FILE}" "${STATUS_SEEN_FILE}" "${STATUS_LAST_RAW_FILE}" "${STATUS_RECENT_RAW_FILE}" "${STATUS_CANDIDATE_ANALYSIS_FILE}" "${STATUS_CANDIDATE_RAW_FILE}" "${STATUS_METER_LAST_JSON_FILE}" "${STATUS_METER_KEY_PROBLEM_FILE}" "${STATUS_RATE_HISTORY_FILE}" "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" "${STATUS_ESP_METER_DEVICE_FILE}" "${STATUS_ESP_METER_RECEPTION_FILE}" "${ESP_RX_HISTORY_FILE}" "${STATUS_ESP_RX_RECEPTION_FILE}" "${STATUS_ESP_RX_MODE_FILE}" "${ESP_RF_RX_HISTORY_FILE}" "${ESP_DIAG_HISTORY_FILE}" "${STATUS_ESP_RX_SEQUENCE_FILE}" "${STATUS_ESP_RX_BOOTS_FILE}" "${STATUS_ESP_RX_CLOCK_FILE}" "${STATUS_ESP_CONFIG_FILE}" "${SEARCH_MATCHES_FILE}" "${SEARCH_STATUS_FILE}" "${STATUS_CANDIDATE_PREVIEW_STATE_FILE}" "${STATUS_BROKER_ERROR_FILE}"
+printf '0\n' > "${STATUS_OFFICIAL_METERS_COUNT_FILE}" 2>/dev/null || true
+# Remove any orphaned pending-reload marker left by a hard stop during deferred sleep.
+rm -rf "${BASE}/.reload_listen_pending" 2>/dev/null || true
+# Session-scoped attempt counter dir — counts text-only telegrams per preview candidate
+# without JSON. Cleared on every bridge start so stale counts never carry over.
+rm -rf "${RUNTIME}/.preview_attempts" 2>/dev/null || true
+mkdir -p "${RUNTIME}/.preview_attempts" 2>/dev/null || true
+: > "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" 2>/dev/null || true
+: > "${STATUS_ESP_METER_DEVICE_FILE}" 2>/dev/null || true
+: > "${STATUS_ESP_METER_RECEPTION_FILE}" 2>/dev/null || true
+: > "${STATUS_ESP_RX_RECEPTION_FILE}" 2>/dev/null || true
+: > "${STATUS_ESP_RX_MODE_FILE}" 2>/dev/null || true
+: > "${STATUS_ESP_RX_SEQUENCE_FILE}" 2>/dev/null || true
+# Boot history and the clock view are scoped to the bridge session like every
+# other counter here. The 24 h reboot window therefore starts over when the
+# add-on restarts - stated in ARCHITECTURE.md so the number is not read as
+# "the board never rebooted".
+: > "${STATUS_ESP_RX_BOOTS_FILE}" 2>/dev/null || true
+: > "${STATUS_ESP_RX_CLOCK_FILE}" 2>/dev/null || true
+: > "${STATUS_ESP_CONFIG_FILE}" 2>/dev/null || true
+# HA presence is session-scoped to the current broker. Clear stale state so a
+# previous run's "online" cannot mask a now-foreign broker until the retained
+# birth message (if any) re-arrives on subscribe.
+: > "${STATUS_HA_PRESENCE_FILE}" 2>/dev/null || true
+# Broker identity is session-scoped — clear so a previous run's broker brand
+# cannot linger after the user repoints the add-on at a different broker.
+: > "${STATUS_BROKER_INFO_FILE}" 2>/dev/null || true
+# HA verification verdict is session-scoped (it depends on the running bridge's
+# Discovery publication and on the HA instance reachable now).
+: > "${STATUS_HA_VERIFICATION_FILE}" 2>/dev/null || true
+# Preview values are kept across a restart, like the preview state next to
+# them (both come back from the runtime snapshot). They used to be emptied here,
+# from when an old pick stored bogus backflow/fraud counters; but the state of
+# an already decoded candidate survived, so the WebUI showed "decoding..." for it
+# until its next telegram - up to an hour for a meter that sends rarely. A
+# kept value is the last reading the candidate sent; the next telegram
+# replaces it.
+touch "${STATUS_CANDIDATE_VALUES_FILE}" 2>/dev/null || true
+[[ -f "${STATUS_RAW_COUNT_FILE}" ]] || echo "0" > "${STATUS_RAW_COUNT_FILE}"
+
+# Record bridge start time for the WebGUI rate denominator fix.
+printf '%s\n' "$(epoch_now)" > "${STATUS_BRIDGE_START_FILE}" 2>/dev/null || true
+
+# What the data directory is stored on (NVMe, SSD, HDD, eMMC, SD), logged once
+# and shown in the WebUI. Nothing depends on it yet.
+log "$(python3 "${BRIDGE_SCRIPT_DIR:-/usr/bin}/bridge_ledger.py" storage --path "${BASE}" \
+  --json-file "${STATUS_STORAGE_FILE}" 2>/dev/null \
+  || echo "storage: ${BASE} on unknown (detection failed)")"
+# How often the RAM directory is saved: a minute on flash with a controller
+# (SSD, NVMe), ten on a spinning disk, eMMC or an SD card.
+case "$(jq -r '.kind // ""' "${STATUS_STORAGE_FILE}" 2>/dev/null)" in
+  nvme|ssd) _runtime_snapshot_default=60 ;;
+  *) _runtime_snapshot_default=600 ;;
+esac
+RUNTIME_SNAPSHOT_SECONDS="${RUNTIME_SNAPSHOT_SECONDS:-${_runtime_snapshot_default}}"
+[[ "${RUNTIME_SNAPSHOT_SECONDS}" =~ ^[0-9]+$ ]] || RUNTIME_SNAPSHOT_SECONDS=600
+runtime_snapshot() {
+  [[ "${RUNTIME}" != "${BASE}" ]] || return 0
+  python3 "${BRIDGE_LEDGER}" runtime-snapshot --base "${BASE}" --runtime "${RUNTIME}" \
+    || warn "runtime: snapshot of ${RUNTIME} to ${BASE} failed"
+}
+
+
+# ------------------------------------------------------------
+# Config (ENV overrides JSON)
+# ------------------------------------------------------------
+RAW_TOPIC="${RAW_TOPIC:-$(json_get '.raw_topic' 'wmbus/+/telegram')}"
+LOGLEVEL="${LOGLEVEL:-$(json_get '.loglevel' 'normal')}"
+FILTER_HEX_ONLY="${FILTER_HEX_ONLY:-$(json_get_bool '.filter_hex_only' 'true')}"
+DEBUG_EVERY_N="${DEBUG_EVERY_N:-$(json_get_int '.debug_every_n' '0')}"
+
+SEARCH_MODE="${SEARCH_MODE:-$(json_get_bool '.search_mode' 'false')}"
+SEARCH_EXPECTED_VALUE_M3="${SEARCH_EXPECTED_VALUE_M3:-$(json_get '.search_expected_value_m3' '0')}"
+SEARCH_TOLERANCE_M3="${SEARCH_TOLERANCE_M3:-$(json_get '.search_tolerance_m3' '0.05')}"
+SEARCH_DELTA_MODE="${SEARCH_DELTA_MODE:-$(json_get_bool '.search_delta_mode' 'false')}"
+SEARCH_MIN_DELTA_M3="${SEARCH_MIN_DELTA_M3:-$(json_get '.search_min_delta_m3' '0.001')}"
+SEARCH_TOPIC="${SEARCH_TOPIC:-$(json_get '.search_topic' 'wmbus/search/candidates')}"
+
+# Robustness toggles
+IGNORE_RETAINED="${IGNORE_RETAINED:-$(json_get_bool '.ignore_retained' 'true')}"
+REQUIRE_TIMESTAMP="${REQUIRE_TIMESTAMP:-$(json_get_bool '.require_timestamp' 'false')}"
+RESTART_ON_EXIT="${RESTART_ON_EXIT:-$(json_get_bool '.restart_on_exit' 'true')}"
+
+# Opt-in HA entity verification: when true, the bridge publishes a hidden canary
+# entity (sensor.wmbus_bridge_health) and a background worker asks the HA Core
+# API whether that entity exists. Off by default (read-only HA access is opt-in).
+VERIFY_HA_ENTITIES="${VERIFY_HA_ENTITIES:-$(json_get_bool '.verify_ha_entities' 'false')}"
+ESP_DIAG_HISTORY_ENABLED="${ESP_DIAG_HISTORY_ENABLED:-$(json_get_bool '.esp_diag_history_enabled' 'false')}"
+# Qundis walk-by block (0DFF5F). Off by default: no effect on installs that
+# never see the block. On (a) rejects walk-by records the decoder cannot
+# validate, so upstream cannot publish ciphertext as a reading, and (b) with
+# the meter AES key configured, decrypts the 2026-generation encrypted block
+# so the decoder sees plaintext. See config.yaml comment and docs/ARCHITECTURE.md.
+QDS_WALKBY_ENABLED="${QDS_WALKBY_ENABLED:-$(json_get_bool '.qds_walkby_enabled' 'false')}"
+# Optional Qundis walk-by stage, spliced between the RAW tee and wmbusmeters.
+# OFF (the default) is a plain `cat`: one long-lived process, no per-telegram
+# work, so an install that never sees a 0DFF5F block is unaffected. ON is one
+# long-lived python3 filter — deliberately not a fork per telegram, which would
+# hit the bash bookkeeping ceiling on the raw path. See rootfs/usr/bin/qds.py.
+if [[ "${QDS_WALKBY_ENABLED}" == "true" ]]; then
+  QDS_STAGE=( python3 -u /usr/bin/qds.py filter --meter-dir "${METER_DIR}" )
+else
+  QDS_STAGE=( cat )
+fi
+export VERIFY_HA_ENTITIES ESP_DIAG_HISTORY_ENABLED
+
+STATE_PREFIX="${STATE_PREFIX:-$(json_get '.state_prefix' 'wmbusmeters')}"
+STATE_RETAIN="${STATE_RETAIN:-$(json_get_bool '.state_retain' 'false')}"
+
+# Backward compat keys:
+# - discovery_enabled (new)
+# - enable_mqtt_discovery (old)
+# - discovery (docker)
+if [[ -z "${DISCOVERY_ENABLED:-}" ]]; then
+  if [[ -f "${OPTIONS_JSON}" ]] && jq -e '.discovery_enabled' "${OPTIONS_JSON}" >/dev/null 2>&1; then
+    DISCOVERY_ENABLED="$(json_get_bool '.discovery_enabled' 'true')"
+  elif [[ -f "${OPTIONS_JSON}" ]] && jq -e '.enable_mqtt_discovery' "${OPTIONS_JSON}" >/dev/null 2>&1; then
+    DISCOVERY_ENABLED="$(json_get_bool '.enable_mqtt_discovery' 'true')"
+  else
+    DISCOVERY_ENABLED="$(json_get_bool '.discovery' 'true')"
+  fi
+fi
+
+DISCOVERY_PREFIX="${DISCOVERY_PREFIX:-$(json_get '.discovery_prefix' 'homeassistant')}"
+DISCOVERY_RETAIN="${DISCOVERY_RETAIN:-$(json_get_bool '.discovery_retain' 'true')}"
+
+# MQTT must be provided by wrapper (HA run.sh or docker entrypoint)
+: "${MQTT_HOST:?MQTT_HOST is required}"
+MQTT_PORT="${MQTT_PORT:-1883}"
+MQTT_USER="${MQTT_USER:-}"
+MQTT_PASS="${MQTT_PASS:-}"
+
+WMBUSMETERS_BIN="$(command -v wmbusmeters || true)"
+WMBUSMETERS_RUNTIME_VERSION="$(wmbusmeters --version 2>&1 | head -n 1 || true)"
+WMBUSMETERS_BUILD_VERSION=""
+WMBUSMETERS_BUILD_COMMIT=""
+
+if [[ -f /usr/share/wmbusmeters-build-version.txt ]]; then
+  WMBUSMETERS_BUILD_VERSION="$(cat /usr/share/wmbusmeters-build-version.txt 2>/dev/null || true)"
+fi
+
+if [[ -f /usr/share/wmbusmeters-build-commit.txt ]]; then
+  WMBUSMETERS_BUILD_COMMIT="$(cat /usr/share/wmbusmeters-build-commit.txt 2>/dev/null || true)"
+fi
+
+log "core: bridge.sh (base=${BASE})"
+log "wmbusmeters binary: ${WMBUSMETERS_BIN:-unknown}"
+log "wmbusmeters runtime version: ${WMBUSMETERS_RUNTIME_VERSION:-unknown}"
+[[ -n "${WMBUSMETERS_BUILD_VERSION}" ]] && log "wmbusmeters build version: ${WMBUSMETERS_BUILD_VERSION}"
+[[ -n "${WMBUSMETERS_BUILD_COMMIT}" ]] && log "wmbusmeters build commit: ${WMBUSMETERS_BUILD_COMMIT}"
+# Persist the version triplet for the WebUI (write-once, never refreshed —
+# the binary cannot change without a restart). NB: write_atomic via .tmp + mv.
+printf '%s\t%s\t%s\n' \
+  "${WMBUSMETERS_RUNTIME_VERSION:-}" \
+  "${WMBUSMETERS_BUILD_VERSION:-}" \
+  "${WMBUSMETERS_BUILD_COMMIT:-}" \
+  > "${STATUS_WMBUSMETERS_VERSION_FILE}.tmp" 2>/dev/null \
+  && mv "${STATUS_WMBUSMETERS_VERSION_FILE}.tmp" "${STATUS_WMBUSMETERS_VERSION_FILE}" 2>/dev/null \
+  || true
+log "MQTT: ${MQTT_HOST}:${MQTT_PORT} topic=${RAW_TOPIC}"
+log "state: prefix=${STATE_PREFIX} retain=${STATE_RETAIN}"
+log "discovery: enabled=${DISCOVERY_ENABLED} prefix=${DISCOVERY_PREFIX} retain=${DISCOVERY_RETAIN}"
+log "wmbusmeters: loglevel=${LOGLEVEL} filter_hex_only=${FILTER_HEX_ONLY} debug_every_n=${DEBUG_EVERY_N}"
+log "search: mode=${SEARCH_MODE} expected_value_m3=${SEARCH_EXPECTED_VALUE_M3} tolerance_m3=${SEARCH_TOLERANCE_M3} delta_mode=${SEARCH_DELTA_MODE} min_delta_m3=${SEARCH_MIN_DELTA_M3} topic=${SEARCH_TOPIC}"
+log "robust: ignore_retained=${IGNORE_RETAINED} require_timestamp=${REQUIRE_TIMESTAMP} restart_on_exit=${RESTART_ON_EXIT}"
+log "verify_ha_entities: ${VERIFY_HA_ENTITIES}"
+log "esp_diag_history_enabled: ${ESP_DIAG_HISTORY_ENABLED}"
+status_add_event "ok" "bridge starting"
+write_status_json
+
+# ------------------------------------------------------------
+# MQTT args
+# ------------------------------------------------------------
+PUB_ARGS=( -h "${MQTT_HOST}" -p "${MQTT_PORT}" )
+SUB_ARGS=( -h "${MQTT_HOST}" -p "${MQTT_PORT}" )
+
+if [[ -n "${MQTT_USER}" && "${MQTT_USER}" != "null" ]]; then
+  PUB_ARGS+=( -u "${MQTT_USER}" )
+  SUB_ARGS+=( -u "${MQTT_USER}" )
+fi
+if [[ -n "${MQTT_PASS}" && "${MQTT_PASS}" != "null" ]]; then
+  PUB_ARGS+=( -P "${MQTT_PASS}" )
+  SUB_ARGS+=( -P "${MQTT_PASS}" )
+fi
+
+# mosquitto_sub robustness flags
+SUB_EXTRA=()
+if [[ "${IGNORE_RETAINED}" == "true" ]]; then
+  SUB_EXTRA+=( -R )
+fi
+
+# line-buffer output if stdbuf exists
+STDBUF_BIN=""
+if command -v stdbuf >/dev/null 2>&1; then
+  STDBUF_BIN="stdbuf -oL -eL"
+fi
+
+# Before anything that publishes is forked: they inherit MQTT_PUB_PORT.
+start_mqtt_publisher
+
+start_esp_subscribers
+
+# Liveness heartbeat ticker: stamp the current epoch every few seconds,
+# independent of telegram flow, so the WebUI can distinguish "bridge alive but
+# idle" from "bridge down / run.sh waiting for the broker". Dies with bridge.sh.
+(
+  _last_candidate_prune=0
+  _last_runtime_snapshot="${EPOCHSECONDS:-$(epoch_now)}"
+  while true; do
+    # EPOCHSECONDS (bash 5): no date process per tick.
+    _hb_now="${EPOCHSECONDS:-$(epoch_now)}"
+    printf '%s\n' "${_hb_now}" > "${STATUS_HEARTBEAT_FILE}.tmp" 2>/dev/null \
+      && mv "${STATUS_HEARTBEAT_FILE}.tmp" "${STATUS_HEARTBEAT_FILE}" 2>/dev/null \
+      || true
+    # Throttled bridge-side cleanup of long-silent candidates. The pipeline
+    # restart loop only prunes on reload; a stable long-running pipeline never
+    # reloads, so this ticker (already excluded from soft-reload kills) drives
+    # the time-based self-deletion. Heartbeat is stamped first every tick, so a
+    # prune run can never delay liveness past the 30 s WebUI threshold.
+    if (( _hb_now - _last_candidate_prune >= ${CANDIDATE_PRUNE_INTERVAL_SECONDS:-600} )); then
+      # After pruning, rows that survived but are stuck in "pending" (heard
+      # once, then silent -> decode attempts never reach the count that would
+      # end the state) get a time-based terminal state, so the WebUI stops
+      # showing "decoding…" for a candidate that is never coming back.
+      candidate_housekeeping
+      _last_candidate_prune="${_hb_now}"
+    fi
+    if (( _hb_now - _last_runtime_snapshot >= RUNTIME_SNAPSHOT_SECONDS )); then
+      runtime_snapshot || true
+      _last_runtime_snapshot="${_hb_now}"
+    fi
+    # Discovery Doctor: WebUI requested a broker probe. Consume the flag
+    # first so a slow probe cannot be re-triggered by the same request.
+    if [[ -f "${DISCOVERY_DOCTOR_REQUEST_FILE}" ]]; then
+      rm -f "${DISCOVERY_DOCTOR_REQUEST_FILE}" 2>/dev/null || true
+      discovery_doctor_probe || true
+    fi
+    # Factory reset: webui.py already emptied options.json (meters=[]) and wrote
+    # the removed ids here. Consume the flag first so a slow teardown cannot be
+    # re-triggered, clear each meter's retained discovery (entities vanish from
+    # HA), wipe runtime state (status_*/search_*/seen + preview meter files), and
+    # soft-reload the decode pipeline — refresh_meter_files then regenerates an
+    # empty meter set, leaving the add-on in its post-install state. The binary,
+    # options.json and the etc/listen/preview config dirs are left intact. NB:
+    # use ${BASE}-literal paths — RELOAD_FLAG/LISTEN_METER_DIR are defined after
+    # this ticker subshell forks, so they are not in scope here.
+    if [[ -f "${FACTORY_RESET_REQUEST_FILE}" ]]; then
+      _fr_ids=()
+      mapfile -t _fr_ids < "${FACTORY_RESET_REQUEST_FILE}" 2>/dev/null || _fr_ids=()
+      rm -f "${FACTORY_RESET_REQUEST_FILE}" 2>/dev/null || true
+      log "Factory reset: clearing discovery for ${#_fr_ids[@]} meter(s), wiping runtime state"
+      for _fr_id in "${_fr_ids[@]}"; do
+        [[ -n "${_fr_id}" ]] || continue
+        clear_meter_discovery "${_fr_id}" || true
+      done
+      rm -f "${BASE}/status_"* "${BASE}/search_"* "${BASE}/seen_ids.txt" 2>/dev/null || true
+      # The status files live in RUNTIME; its snapshot would bring them back.
+      rm -f "${RUNTIME}/status_"* "${RUNTIME}/status.json" "${BASE}/runtime_state.tar" 2>/dev/null || true
+      rm -f "${BASE}/preview/etc/wmbusmeters.d/meter-preview-"* \
+            "${BASE}/listen/etc/wmbusmeters.d/meter-preview-"* 2>/dev/null || true
+      # Recreate the empty status files exactly like startup does — the wipe
+      # removed them under RUNNING writers, and not every writer tolerates a
+      # missing file (observed: _upsert_candidate_row's awk failed on the
+      # absent status_candidates.tsv and silently dropped every candidate
+      # until the next restart). All these vars are defined before this
+      # ticker subshell forks, so they are in scope here.
+      touch "${STATUS_METERS_FILE}" "${STATUS_CANDIDATES_FILE}" "${STATUS_EVENTS_FILE}" "${STATUS_SEEN_FILE}" "${STATUS_LAST_RAW_FILE}" "${STATUS_RECENT_RAW_FILE}" "${STATUS_CANDIDATE_ANALYSIS_FILE}" "${STATUS_CANDIDATE_RAW_FILE}" "${STATUS_METER_LAST_JSON_FILE}" "${STATUS_METER_KEY_PROBLEM_FILE}" "${STATUS_RATE_HISTORY_FILE}" "${STATUS_ESP_TELEGRAM_DEVICES_FILE}" "${STATUS_ESP_METER_DEVICE_FILE}" "${SEARCH_MATCHES_FILE}" "${SEARCH_STATUS_FILE}" "${STATUS_CANDIDATE_PREVIEW_STATE_FILE}" "${STATUS_BROKER_ERROR_FILE}" 2>/dev/null || true
+      # The wipe also removed the heartbeat we stamped at the top of this loop;
+      # re-stamp now so the WebUI never sees a liveness gap before the next tick.
+      printf '%s\n' "$(epoch_now)" > "${STATUS_HEARTBEAT_FILE}" 2>/dev/null || true
+      touch "${BASE}/.reload_pipeline" 2>/dev/null || true
+      status_add_event "ok" "Factory reset applied — add-on returned to post-install state" || true
+    fi
+    # Per-board meter coverage -> HA entity -> long-term statistics.
+    # Throttles itself, so calling it on every tick is fine.
+    publish_esp_coverage || true
+    sleep "${HEARTBEAT_INTERVAL_SECONDS:-10}"
+  done
+) &
+# shellcheck disable=SC2034  # read by _soft_reload_kill_children (12-pipeline.sh)
+HEARTBEAT_PID=$!
+
+# ------------------------------------------------------------
+# wmbusmeters.conf
+# ------------------------------------------------------------
+cat > "${CONF_FILE}" <<EOFCONF
+loglevel=${LOGLEVEL}
+device=stdin:hex
+logfile=/dev/stdout
+format=json
+EOFCONF
+
+# ------------------------------------------------------------
+# Listen-only wmbusmeters config: SECONDARY instance for candidate
+# visibility in DECODE mode. Separate config dir under ${BASE}/listen
+# with NO meter files — this instance always runs in pure listen mode
+# and emits "Received telegram from: XXXXXXXX" / type: / driver: lines
+# for every wMBus telegram seen, regardless of how many meters the user
+# has configured in the primary instance. Spawned when DECODE is active or
+# when meter-preview-* files exist (preview values need this separate config
+# dir even if the primary instance is otherwise in pure LISTEN mode).
+#
+# Shares the SAME wmbusmeters binary as the primary — only the config
+# dir differs. User-uploaded binary upgrades are picked up by both
+# instances on addon restart with no additional work.
+# ------------------------------------------------------------
+LISTEN_BASE="${BASE}/listen"
+LISTEN_ETC="${LISTEN_BASE}/etc"
+LISTEN_METER_DIR="${LISTEN_ETC}/wmbusmeters.d"
+LISTEN_CONF_FILE="${LISTEN_ETC}/wmbusmeters.conf"
+mkdir -p "${LISTEN_METER_DIR}"
+# Defensive — the listen instance must NEVER have meter files (would force decode)
+rm -f "${LISTEN_METER_DIR}/meter-"* 2>/dev/null || true
+cat > "${LISTEN_CONF_FILE}" <<EOFLISTEN
+loglevel=${LOGLEVEL}
+device=stdin:hex
+logfile=/dev/stdout
+format=json
+EOFLISTEN
+
+# ------------------------------------------------------------
+# Preview one-shot decoder config
+# ------------------------------------------------------------
+# Preview must NOT contaminate the always-on LISTEN instance. Candidate preview
+# files live in a separate directory and are decoded from individual RAW frames
+# by short-lived one-shot wmbusmeters processes. This preserves exactly two
+# long-running pipelines: PRIMARY DECODE and SECONDARY PURE LISTEN.
+# PREVIEW_BASE/ETC/METER_DIR/CONF_FILE are defined earlier (near the STATUS_*
+# paths) so the maintenance ticker can see PREVIEW_METER_DIR; create them now.
+mkdir -p "${PREVIEW_METER_DIR}"
+cat > "${PREVIEW_CONF_FILE}" <<EOFPREVIEW
+loglevel=${LOGLEVEL}
+device=stdin:hex
+logfile=/dev/stdout
+format=json
+EOFPREVIEW
+# Defensive cleanup for upgrades from the broken hybrid LISTEN+preview design.
+rm -f "${LISTEN_METER_DIR}/meter-preview-"* 2>/dev/null || true
+rm -f "${BASE}/.reload_listen" "${BASE}/.reload_listen_req" 2>/dev/null || true
+rm -rf "${BASE}/.reload_listen_pending" 2>/dev/null || true
+# The one-shot decodes create and remove a lock, a slot and a config
+# directory each - directory writes, which a spinning disk feels - so they
+# live in RUNTIME with the status files. Their old place in BASE is cleared.
+rm -rf "${RUNTIME}/.preview_decode_locks" "${RUNTIME}/.preview_decode_slots" 2>/dev/null || true
+mkdir -p "${RUNTIME}/.preview_decode_locks" "${RUNTIME}/.preview_decode_last" "${RUNTIME}/.preview_decode_slots" 2>/dev/null || true
+if [[ "${RUNTIME}" != "${BASE}" ]]; then
+  rm -rf "${BASE}/.preview_decode_locks" "${BASE}/.preview_decode_slots" "${BASE}/.preview_decode_last" \
+         "${BASE}/.preview_attempts" "${BASE}/.preview_decode."* 2>/dev/null || true
+fi
+
+# ------------------------------------------------------------
+# Search mode helpers
+# ------------------------------------------------------------
+SEARCH_EXPECTED_VALUE_M3="$(float_or_default "${SEARCH_EXPECTED_VALUE_M3}" "0")"
+SEARCH_TOLERANCE_M3="$(float_or_default "${SEARCH_TOLERANCE_M3}" "0.05")"
+SEARCH_MIN_DELTA_M3="$(float_or_default "${SEARCH_MIN_DELTA_M3}" "0.001")"
+
+# shellcheck disable=SC2034
+SEARCH_CANDIDATES_FILE="${BASE}/search_candidates.tsv"
+# shellcheck disable=SC2034  # read by _decode_consume_bash (12-pipeline.sh)
+SEARCH_USING_TEMP_METERS="false"
+# Used by sourced bridge-lib/07-meters.sh
+# shellcheck disable=SC2034
+OFFICIAL_METERS_COUNT=0
+# Used by sourced bridge-lib/07-meters.sh
+# shellcheck disable=SC2034
+SEARCH_IGNORED_COUNT=0
+# shellcheck disable=SC2034
+SEARCH_TEMP_METERS_LOADED=0
+# shellcheck disable=SC2034
+SEARCH_CHECKED_VALUES=0
+# shellcheck disable=SC2034
+SEARCH_DECODED_JSON_COUNT=0
+# shellcheck disable=SC2034
+SEARCH_MATCH_COUNT=0
+# shellcheck disable=SC2034
+SEARCH_LAST_CACHE_CHANGE=""
+# shellcheck disable=SC2034
+SEARCH_LAST_CANDIDATE_ID=""
+# shellcheck disable=SC2034
+SEARCH_LAST_CANDIDATE_DRIVER=""
+# shellcheck disable=SC2034
+SEARCH_LAST_CANDIDATE_TYPE=""
+# shellcheck disable=SC2034
+SEARCH_LAST_CHECKED_ID=""
+# shellcheck disable=SC2034
+SEARCH_LAST_CHECKED_DRIVER=""
+# shellcheck disable=SC2034
+SEARCH_LAST_CHECKED_FIELD=""
+# shellcheck disable=SC2034
+SEARCH_LAST_CHECKED_VALUE=""
+# shellcheck disable=SC2034
+SEARCH_LAST_CHECKED_DIFF=""
+# shellcheck disable=SC2034
+SEARCH_LAST_REASON="starting"
+# shellcheck disable=SC2034
+SEARCH_LAST_IGNORED_REASON=""
+
+
+write_search_status "auto" "bridge_starting"
+
+
+# ------------------------------------------------------------
+# Meter registration — refresh_meter_files()
+# Called once at startup AND before every run_once() iteration, so that
+# meters added/removed by the user via options.json are picked up by a
+# soft pipeline restart (touch ${RELOAD_FLAG}) without needing a full
+# container restart. wmbusmeters reads its meter-NNNN files only at
+# startup, so the pipeline must be restarted to pick up changes.
+# ------------------------------------------------------------
+# Soft-reload flag: touch this file to make the running pipeline exit
+# cleanly. The restart_on_exit loop refreshes meter files and respawns.
+# Used by webui.py /api/reload-pipeline to pick up new meters without
+# a full container restart.
+RELOAD_FLAG="${BASE}/.reload_pipeline"
+rm -f "${RELOAD_FLAG}" 2>/dev/null || true
+
+# Initial meter registration before the restart loop kicks in. Without
+# this, OFFICIAL_METERS_COUNT would stay at 0 and the LISTEN parser
+# (_listen_parse_stage) would mis-guard candidate double-counting on the first
+# pipeline start.
+refresh_meter_files
+
+# ------------------------------------------------------------
+# Discovery
+# ------------------------------------------------------------
+
+# Listen-mode snippet (best-effort)
+# ------------------------------------------------------------
+SNIPPET_STATE="${BASE}/seen_ids.txt"
+touch "${SNIPPET_STATE}"
+
+
+# ------------------------------------------------------------
+# Pipeline
+# ------------------------------------------------------------
+log "Starting wmbusmeters..."
+
+run_once() {
+  # Each pipeline starts with empty Discovery caches (they live in its
+  # subshell); the publisher's copy of them is emptied the same way.
+  mqtt_reset_discovery
+
+  # ─── Soft-reload flag watcher ────────────────────────────────────────
+  # Polls for ${RELOAD_FLAG} every 2 s. When present, removes it and brings
+  # down the foreground pipeline (_soft_reload_kill_children). The
+  # restart_on_exit loop above refreshes meter files and respawns run_once.
+  (
+    watcher_self="${BASHPID}"
+    while sleep 2; do
+      if [[ -f "${RELOAD_FLAG}" ]]; then
+        rm -f "${RELOAD_FLAG}" 2>/dev/null || true
+        log "Soft reload: ${RELOAD_FLAG} detected, restarting decode pipeline..."
+        _soft_reload_kill_children "$$" "${watcher_self}"
+        exit 0
+      fi
+    done
+  ) &
+  local WATCHER_PID=$!
+
+  if [[ "${FILTER_HEX_ONLY}" == "true" ]]; then
+  _raw_source \
+    | awk -v dbg_n="${DEBUG_EVERY_N}" '
+        function ishex(s) { return (s ~ /^[0-9A-Fa-f]+$/) }
+        BEGIN { n=0 }
+        {
+          gsub(/[[:space:]]/, "", $0);
+          sub(/^0x/i, "", $0);
+          if (!ishex($0)) next;
+          if ((length($0) % 2) != 0) next;
+
+          n++;
+          if (dbg_n > 0 && (n % dbg_n) == 0) {
+            printf("[MQTT HEX] #%d %s...\n", n, substr($0,1,16)) > "/dev/stderr";
+          }
+          print $0;
+          fflush();
+        }
+      ' \
+    | tee >(_raw_counter_stage) \
+    | "${QDS_STAGE[@]}" \
+    | ${STDBUF_BIN} /usr/bin/wmbusmeters --useconfig="${BASE}" 2>&1 \
+    | _wmbusmeters_log_stage \
+    | _decode_stage true
+else
+  _raw_source \
+    | tee >(_raw_counter_stage) \
+    | "${QDS_STAGE[@]}" \
+    | ${STDBUF_BIN} /usr/bin/wmbusmeters --useconfig="${BASE}" 2>&1 \
+    | _wmbusmeters_log_stage \
+    | _decode_stage false
+fi
+
+  # ─── Cleanup flag watcher ──────────────────────────────────────────────
+  # Main pipeline exited (natural EOF / soft-reload kill / SIGTERM). Stop
+  # the polling watcher. LISTEN instance is NOT killed here — it persists
+  # across run_once restarts (managed by the restart_on_exit loop instead).
+  if [[ -n "${WATCHER_PID}" ]]; then
+    kill -TERM "${WATCHER_PID}" 2>/dev/null || true
+    wait "${WATCHER_PID}" 2>/dev/null || true
+  fi
+}
+
+# Ensure LISTEN and the wired M-Bus instance die when the addon shuts down
+# (docker stop / s6 SIGTERM).
+# The RAM directory is saved last, a moment after the ledger processes got the
+# same SIGTERM and wrote what they had collected.
+_STOPPED=0
+_stop_extra_instances() {
+  (( _STOPPED )) && return 0
+  _STOPPED=1
+  stop_listen_instance; stop_mbus_instance; sleep 1; runtime_snapshot || true
+}
+# SIGTERM/SIGINT end the script: a handler that only returned let the restart
+# loop below start the pipeline again, until s6 gave up waiting and killed it.
+_on_stop_signal() { log "stop: SIGTERM received, stopping"; _stop_extra_instances; exit 143; }
+trap _stop_extra_instances EXIT
+trap _on_stop_signal TERM INT
+
+# ------------------------------------------------------------
+# wait_for_mqtt
+# Czeka na dostępność brokera MQTT przed startem pipeline.
+# Potrzebne po aktualizacji addona - broker może być chwilę
+# niedostępny zanim mosquitto w HA zdąży się podnieść.
+# Próbuje co MQTT_WAIT_DELAY sekund, maksymalnie MQTT_WAIT_RETRIES razy.
+# Jeśli broker nie odpowie w tym czasie - kontynuuje mimo to
+# (pipeline i tak zrestartuje się przez pętlę restart_on_exit).
+# ------------------------------------------------------------
+MQTT_WAIT_RETRIES="${MQTT_WAIT_RETRIES:-30}"
+MQTT_WAIT_DELAY="${MQTT_WAIT_DELAY:-2}"
+
+# ------------------------------------------------------------
+# Restart loop (optional)
+# Uruchamia pipeline w pętli jeśli RESTART_ON_EXIT=true (domyślnie).
+# Przed każdym uruchomieniem sprawdza dostępność brokera MQTT.
+# ------------------------------------------------------------
+while true; do
+  set +e
+  wait_for_mqtt
+
+  # ─── Soft reload: refresh meter files & LISTEN instance ───
+  # Re-read options.json so meters added/removed via WebUI without a
+  # container restart are picked up. wmbusmeters reads its meter-NNNN
+  # configs only at startup, so the pipeline restart on the next line
+  # is required for new meters to start decoding.
+  refresh_meter_files
+
+  # Existing candidates from previous LISTEN ticks should retain preview
+  # configs after a soft reload. These files live under ${BASE}/preview, never
+  # inside the always-on LISTEN configuration directory. Then the preview
+  # configs of IDs promoted to official meters are removed: PRIMARY DECODE
+  # handles those meters from now on.
+  refresh_candidate_previews
+
+  # Parallel LISTEN always starts unconditionally and remains a pure, empty-dir
+  # discovery stream. Preview decoding is one-shot and never reloads LISTEN.
+  start_listen_instance
+
+  # Wired M-Bus: a separate engine that polls a serial bus instead of being fed
+  # from stdin. Disabled by default; when off it does not start and the radio
+  # path is untouched. Restarted with the pipeline so a soft reload picks up
+  # meters added through the WebUI, exactly like the primary instance.
+  stop_mbus_instance
+  start_mbus_instance
+
+  # Republish the canary entity used by the opt-in HA verification (no-op when
+  # the option is off). Cheap and idempotent — retained Discovery payload.
+  publish_canary_entity
+
+  run_once
+  rc=$?
+  set -e
+  if [[ "${RESTART_ON_EXIT}" != "true" ]]; then
+    exit ${rc}
+  fi
+  # shellcheck disable=SC2034
+  STATUS_WMBUSMETERS_RUNNING="false"
+  if [[ "${rc}" -eq 0 ]]; then
+    # rc=0 is a clean, intentional exit — typically a soft pipeline reload
+    # requested via the WebUI (.reload_pipeline) to pick up added/removed
+    # meters. Not an error: the loop just respawns the pipeline.
+    log "Pipeline exited cleanly (rc=0), reloading in 2s..."
+    status_add_event "ok" "Pipeline reloaded"
+  else
+    warn "Pipeline exited (rc=${rc}), restarting in 2s..."
+    # shellcheck disable=SC2034
+    STATUS_LAST_ERROR="pipeline exited rc=${rc}"
+    status_add_event "error" "Pipeline exited rc=${rc}"
+  fi
+  write_status_json
+  sleep 2
+  # continue
+done

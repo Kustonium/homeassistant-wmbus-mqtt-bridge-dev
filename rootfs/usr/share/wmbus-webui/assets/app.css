@@ -1955,6 +1955,12 @@ th.sortable:hover {
   color: #ff646b;
 }
 
+/* Divider between the T1 / C1 / S1 parts of one board's pill. */
+.band-sep {
+  opacity: 0.45;
+  margin: 0 2px;
+}
+
 /* The value filter bar sticks under the sticky top bar (64 px). Under
    980 px the top bar scrolls away (position: static), so the filter sticks
    to the very top instead of leaving a 64 px gap above it. */
