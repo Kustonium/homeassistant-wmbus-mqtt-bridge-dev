@@ -1,3 +1,8 @@
+## 1.6.7-dev.429
+
+### Added
+- frames and RSSI per band on each board's pill (fc3b80f)
+
 ## 1.6.7-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
