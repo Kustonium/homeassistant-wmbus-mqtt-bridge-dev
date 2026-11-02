@@ -1,3 +1,9 @@
+## 1.6.9-dev.438
+
+### Added
+- issue report names the wmbusmeters version and the setup (d815990)
+- anonymised issue report and a question to the add-on author (972c32d)
+
 ## 1.6.9-dev.437
 
 ### Added
