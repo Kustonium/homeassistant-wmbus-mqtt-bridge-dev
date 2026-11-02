@@ -490,11 +490,24 @@ def candidate_issue_report(meter_id: str) -> tuple[bool, dict]:
         if key
         else "--- wmbusmeters --analyze output ---"
     )
+    # wmbusmeters asks every issue for its version and the setup. The version
+    # is the one bridge.sh recorded at start (runtime, build version, commit).
+    wm_version = ""
+    try:
+        wv = STATUS_WMBUSMETERS_VERSION_FILE.read_text(encoding="utf-8").strip("\n").split("\t")
+        wm_version = next((p.strip() for p in wv[:2] if p.strip()), "")
+        if len(wv) > 2 and wv[2].strip():
+            wm_version = f"{wm_version} (commit {wv[2].strip()[:12]})".strip()
+    except OSError:
+        pass
     report = "\n".join([
         f"telegram=|{raw}|",
         f"manufacturer: {manufacturer}",
         f"type/medium: {mtype}",
         f"suggested driver: {driver}",
+        f"wmbusmeters: {wm_version or 'unknown'}",
+        f"setup: Home Assistant add-on wMBus MQTT Bridge {ADDON_VERSION} "
+        "(frames from an ESP32 radio over MQTT, fed to wmbusmeters as stdin:hex)",
         "",
         analyze_note,
         "```",

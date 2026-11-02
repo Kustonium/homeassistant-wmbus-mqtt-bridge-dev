@@ -50,6 +50,9 @@ cat > "${WORK_DIR}/options.json" <<JSON
 JSON
 printf '%s\t%s\t%s\n' "${MID}" "2026-08-15T06:00:01Z" '{"media":"water","meter":"hydrodigit","total_m3":0.066}' \
   > "${WORK_DIR}/status_meter_last_json.tsv"
+# The version triplet bridge.sh writes at start (runtime, build, commit).
+printf '%s\t%s\t%s\n' "1.31.0-1-gac4f295" "1.31.0" "ac4f295369a48ef51cb835e6920b62cbee743bd6" \
+  > "${WORK_DIR}/status_wmbusmeters_version.txt"
 
 # Stub decoder: prints an --analyze-shaped block on stdout and records the
 # arguments it received to a side file. The arguments must NOT go to stdout —
@@ -109,6 +112,12 @@ fi
 grep -q "dll-id (99999999)" <<<"${ANON}" && grep -q "99999999" <<<"$(grep '^telegram=' <<<"${ANON}")" \
   && pass "meter number replaced by 99999999 in the frame and the analysis" \
   || fail "stand-in missing: $(grep -E 'telegram=|dll-id' <<<"${ANON}")"
+grep -q "^wmbusmeters: 1.31.0-1-gac4f295 (commit ac4f295369a4)$" <<<"${REPORT}" \
+  && pass "wmbusmeters version in the report" \
+  || fail "version line: $(grep '^wmbusmeters:' <<<"${REPORT}" || echo missing)"
+grep -q "^setup: Home Assistant add-on wMBus MQTT Bridge " <<<"${REPORT}" \
+  && pass "setup line in the report" \
+  || fail "setup line missing"
 grep -q "manufacturer: BMT" <<<"${ANON}" \
   && pass "anonymised report keeps the rest" \
   || fail "anonymised report lost other lines"
