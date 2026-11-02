@@ -1,6 +1,6 @@
 {
   "_": "telegram",
+  "driver": "sanxing",
   "id": "12345678",
-  "media": "electricity",
-  "meter": "amiplus"
+  "media": "electricity"
 }

@@ -1,8 +1,8 @@
 {
   "_": "telegram",
+  "driver": "iwmtx5",
   "id": "24360570",
   "media": "warm water",
-  "meter": "iwmtx5",
   "meter_datetime": "2025-09-17 07:10:33",
   "status": "TAMPER",
   "total_m3": 29.458

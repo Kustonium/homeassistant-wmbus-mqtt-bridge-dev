@@ -1,8 +1,8 @@
 {
   "_": "telegram",
+  "driver": "qwaterv2",
   "id": "52632878",
   "media": "water",
-  "meter": "qwaterv2",
   "meter_datetime": "2026-04-30 19:00",
   "status": "OK",
   "target_date": "2026-03-31",

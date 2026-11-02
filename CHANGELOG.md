@@ -29,6 +29,39 @@
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
+### Changed - wmbusmeters 3.0.0 -> 3.1.1
+The bundled decoder moves to wmbusmeters 3.1.1. Most meters decode exactly as
+before; these change for the people who have them:
+
+- **Tauron / KPL electricity meters (manufacturer `KPL`, e.g. Sanxing S34U28)
+  move to the `sanxing` driver by themselves.** wmbusmeters now supports these
+  meters with its own `sanxing` driver, and the add-on's KPL patch steps aside.
+  Under `amiplus` (what this add-on's README said so far) wmbusmeters rejects
+  them ("decrypted content failed check"); the first time it does, the add-on
+  writes that meter with `sanxing` from then on and reloads the decoder, with a
+  line in the log. Your configuration is not changed; for new meters use
+  `sanxing` or `auto`. Checked on a telegram with a real S34U28's records
+  (upstream's sanxing test): `sanxing` gives the same fields and values as
+  `amiplus` did, plus `absolute_max_power_consumption_kw` and `fabrication_no`.
+  Entities are keyed on the meter id and field name, so they stay the same,
+  history included.
+- **Qundis qwaterv2 walk-by frames (version 0x1A)** keep all their values. 3.1.0
+  lost them (total, target and yearly values); the fix went upstream from this
+  project and is in 3.1.1.
+- **Renamed fields - the Home Assistant entity changes name, its history stays on
+  the old one:**
+  - Kamstrup water (`kamwater`, flowIQ / Multical 21): `max_external_temperature_c`
+    -> `max_external_temperature_last_month_c`; new fields
+    `max_flow_last_month_m3h`, `accoustic_noise` and the `time_*` alarm durations.
+  - Sensus/Itron `aquastream`: `total_tariff1_m3` -> `total_backwards_m3`.
+- `qheatv2`: `device_error_date` is empty instead of the placeholder date
+  2128-03-31 when the meter reports no error.
+- `amiplus`: new field `absolute_max_power_consumption_kw`.
+- `izar`: wmbusmeters marks the driver as deprecated in favour of `izarv2`
+  ("upgrade before 2026-12-01"). It still works in this version.
+- wmbusmeters' JSON names the driver in a field `driver` instead of `meter`; the
+  add-on reads both, nothing to do.
+
 ## 1.6.8-dev.433
 
 ### Fixed

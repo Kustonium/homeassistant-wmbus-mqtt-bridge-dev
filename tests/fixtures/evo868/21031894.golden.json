@@ -16,6 +16,7 @@
   "consumption_at_set_date_m3": 25.296,
   "current_status": "OK",
   "device_datetime": "2024-12-11 20:10",
+  "driver": "evo868",
   "fabrication_no": "000000005868",
   "history_10_date": "2024-02-29",
   "history_11_date": "2024-01-31",
@@ -34,7 +35,6 @@
   "max_flow_datetime": "2024-03-14 01:09",
   "max_flow_since_datetime_m3h": 0.719,
   "media": "cold water",
-  "meter": "evo868",
   "set_date": "2023-12-31",
   "set_date_2": "2024-11-30",
   "total_m3": 34.134

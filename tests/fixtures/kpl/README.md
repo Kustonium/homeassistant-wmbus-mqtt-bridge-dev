@@ -24,8 +24,8 @@ Measured behaviour, both directions:
 - **with** the patch: check bytes read `2f2f`, the telegram parses, JSON is emitted
   and compared against the golden file.
 
-The golden itself is deliberately thin (`id`, `media`, `meter`): `amiplus` is an
-electricity driver and does not map the volume record this frame carries. That is
+The golden itself is deliberately thin (`id`, `media`, the driver name): neither
+`amiplus` nor `sanxing` maps the volume record this frame carries. That is
 fine for what this fixture is for — it gates on *whether a telegram survives
 decryption at all*, and without the patch there is no JSON to compare.
 
@@ -36,5 +36,17 @@ only demonstrate that our code does what we think it does — it cannot testify
 about somebody else's hardware. If you have this meter, a captured telegram
 would replace this file with something that actually settles it.
 
-The driver is `amiplus` because that is what a user with this meter is told to
-configure; detection cannot find it, since no upstream driver claims `KPL`.
+Up to wmbusmeters 3.0.0 the driver here was `amiplus`, because that is what a
+user with this meter is told to configure; detection could not find it, since no
+upstream driver claimed `KPL`.
+
+**Since wmbusmeters 3.1.x** upstream handles these meters itself: the `sanxing`
+driver claims `KPL` (so `auto` picks it) and accepts the `60 9b` check bytes, and
+the local patch retires itself (`apply-local-patches.sh` prints "upstream now
+handles KPL itself"). `amiplus` without the patch fails this frame again
+("decrypted content failed check ... Permanently ignoring"), so the fixture now
+runs with `sanxing` and still gates on the same thing: the telegram survives
+decryption. Measured on 3.1.1 (`80ea8218`): `amiplus` no JSON, `sanxing` and
+`auto` the golden below. Whether a real Tauron meter's readings come out the same
+under `sanxing` as they did under the patched `amiplus` is not settled by this
+synthetic frame — that needs a captured telegram.
