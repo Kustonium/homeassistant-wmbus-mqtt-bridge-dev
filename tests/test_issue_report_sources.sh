@@ -86,6 +86,7 @@ with open(out, "w", encoding="utf-8") as fh:
     json.dump({
         "ok": ok,
         "report": payload.get("report", ""),
+        "report_anon": payload.get("report_anon", ""),
         "key_used": payload.get("key_used"),
         "raw_ts": payload.get("raw_ts", ""),
         "missing_ok": missing_ok,
@@ -96,6 +97,21 @@ PY
 field() { python3 -c "import json,sys;print(json.load(open(sys.argv[1],encoding='utf-8')).get(sys.argv[2]))" "${REPORT_OUT}" "$1"; }
 
 REPORT="$(field report)"
+ANON="$(field report_anon)"
+
+# The anonymised report: no meter number in either byte order, the stand-in
+# in both places (telegram hex and the analysis), the rest unchanged.
+if grep -qi -e "${MID}" -e "50492603" <<<"${ANON}"; then
+  fail "anonymised report still holds the meter number"
+else
+  pass "anonymised report holds no meter number"
+fi
+grep -q "dll-id (99999999)" <<<"${ANON}" && grep -q "99999999" <<<"$(grep '^telegram=' <<<"${ANON}")" \
+  && pass "meter number replaced by 99999999 in the frame and the analysis" \
+  || fail "stand-in missing: $(grep -E 'telegram=|dll-id' <<<"${ANON}")"
+grep -q "manufacturer: BMT" <<<"${ANON}" \
+  && pass "anonymised report keeps the rest" \
+  || fail "anonymised report lost other lines"
 
 [[ "$(field ok)" == "True" ]] \
   && pass "configured meter: report built without a candidate row" \

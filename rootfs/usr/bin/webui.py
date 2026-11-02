@@ -505,9 +505,29 @@ def candidate_issue_report(meter_id: str) -> tuple[bool, dict]:
         "ok": True,
         "meter_id": mid,
         "report": report,
+        "report_anon": _anonymize_report(report, mid),
         "raw_ts": raw_ts,
         "key_used": bool(key),
     }
+
+
+# The stand-in for the meter number in an anonymised report. 99999999 reads the
+# same in little-endian byte order, so the telegram hex and the analysis text
+# stay consistent with each other.
+ANON_METER_ID = "99999999"
+
+
+def _anonymize_report(report: str, mid: str) -> str:
+    """The report with the meter number replaced by ANON_METER_ID everywhere:
+    as printed (03264950) and as it sits in the frame's A-field, little-endian
+    (50492603), in any letter case. The rest of the frame stays as received;
+    an encrypted payload does not decrypt with the stand-in number (the AES IV
+    holds the A-field), which matters little as the key is never in a report."""
+    out = report
+    for form in {mid, _id_le_hex(mid)}:
+        if form:
+            out = re.sub(re.escape(form), ANON_METER_ID, out, flags=re.IGNORECASE)
+    return out
 
 
 def _id_le_hex(mid: str) -> str:
