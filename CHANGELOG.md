@@ -40,10 +40,10 @@
 - `qheat` and `qwater`: wmbusmeters marks these drivers as deprecated in favour
   of `qheatv2` and `qwaterv2` ("upgrade before 2026-12-01"). They still work in
   this version.
-- wmbusmeters' JSON names the driver in a field `driver` instead of `meter`; the
-  add-on reads both. External consumers such as Node-RED flows that read
-  `value_json.meter` directly should switch to `value_json.driver` (or accept
-  both during the transition).
+- wmbusmeters' JSON names the driver in a field `driver` instead of `meter`.
+  MQTT state keeps `meter` as a compatibility alias with the same value, so
+  existing external consumers continue to work (for example Node-RED flows
+  using `value_json.meter`); new integrations should use `value_json.driver`.
 
 ### Fixed
 - Reports analyse the longest stored frame for the meter, name the runtime

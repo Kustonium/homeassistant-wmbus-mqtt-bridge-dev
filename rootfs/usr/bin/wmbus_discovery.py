@@ -426,5 +426,14 @@ class Discovery:
             return out
         line = self.inject_rssi(mid, line)
         self.emit_discovery(line, patterns, out)
+        # wmbusmeters 3.1 renamed the metadata field `meter` to `driver`.
+        # Keep `meter` in the public MQTT state contract for existing Node-RED
+        # flows and other consumers, while exposing the new canonical field too.
+        values = bl.jq_values(line)
+        state = values[0] if values and isinstance(values[0], dict) else None
+        if state is not None and "meter" not in state and state.get("driver") not in (None, ""):
+            state = dict(state)
+            state["meter"] = state["driver"]
+            line = bl.jq_dumps(state)
         out.append((f"{self.cfg.state_prefix}/{mid}/state", line.encode(), self.cfg.state_retain))
         return out

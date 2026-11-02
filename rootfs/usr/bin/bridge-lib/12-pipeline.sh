@@ -393,6 +393,11 @@ publish_decoded_json() {
   # field and needs no special case downstream.
   line="$(inject_rssi_into_json "${id}" "${line}")"
   emit_discovery_from_json "${line}"
+  # wmbusmeters 3.1 renamed `meter` to `driver`. Preserve the old MQTT field
+  # as an alias so existing Node-RED flows keep working. This is the fallback
+  # path; the persistent Python publisher applies the same transformation.
+  line="$(jq -c 'if has("meter") or ((.driver? // "") == "") then . else . + {meter: .driver} end' \
+    <<<"${line}" 2>/dev/null || printf '%s' "${line}")"
   mqtt_pub "${STATE_PREFIX}/${id}/state" "${line}" "${STATE_RETAIN}" || true
   status_mark_discovery_published
   write_status_json

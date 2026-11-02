@@ -294,6 +294,11 @@ coverage_at 122
 coverage_at $(( 122 + ESP_COVERAGE_REFRESH_S ))
 FAKE_NOW="${t0}"
 
+# wmbusmeters 3.1 emits `driver` instead of `meter`. Both publishing paths
+# must keep the legacy key in the public state payload with the same value.
+scenario driver_alias; reset_caches
+publish_decoded_json '{"_":"telegram","id":"22222222","name":"compat","driver":"hydrodigit","media":"water","timestamp":"2026-10-06T08:00:00Z","total_m3":1.25}'
+
 # The canary entity of the opt-in HA verification.
 scenario canary; reset_caches; VERIFY_HA_ENTITIES="true"
 publish_canary_entity
