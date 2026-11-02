@@ -984,6 +984,9 @@ tr:last-child td {
 
 .modal-actions {
   display: flex;
+  /* Four buttons (the issue report) do not fit a narrow modal in one row;
+     without wrapping the first one was pushed out past the left edge. */
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
   border-top: 1px solid var(--line);

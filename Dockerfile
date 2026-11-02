@@ -43,6 +43,9 @@ COPY patches/ /patches/
 
 RUN git clone https://github.com/wmbusmeters/wmbusmeters.git . \
   && git checkout --detach "${WMBUSMETERS_COMMIT}" \
+  && install -d /out \
+  && git rev-parse HEAD > /out/wmbusmeters-build-commit.txt \
+  && { git describe --tags --always 2>/dev/null || git rev-parse --short HEAD; } > /out/wmbusmeters-build-version.txt \
   && bash /patches/apply-local-patches.sh . /patches \
   && ./configure \
   && make \
@@ -84,6 +87,10 @@ RUN apk add --no-cache \
   libusb librtlsdr
 
 COPY --from=builder /out/wmbusmeters /usr/bin/wmbusmeters
+# Which upstream commit was built (before the add-on's patches); bridge.sh
+# logs both and the issue report names them. The binary's own --version only
+# says "HEAD_x.y.z with local changes" for a detached, patched checkout.
+COPY --from=builder /out/wmbusmeters-build-commit.txt /out/wmbusmeters-build-version.txt /usr/share/
 # Build-time driver catalog consumed by the WebUI driver <datalist>.
 COPY --from=builder /out/drivers.json /usr/share/wmbus-webui/assets/drivers.json
 ARG ADDON_VERSION=dev
