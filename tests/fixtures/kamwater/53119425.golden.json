@@ -1,13 +1,21 @@
 {
   "_": "telegram",
+  "accoustic_noise": "076000077000",
+  "driver": "kamwater",
   "flow_m3h": 0,
   "id": "53119425",
-  "max_external_temperature_c": 11,
+  "max_external_temperature_last_month_c": 11,
+  "max_flow_last_month_m3h": 0.98,
   "media": "cold water",
-  "meter": "kamwater",
   "min_external_temperature_last_month_c": 4,
   "status": "OK",
   "target_date": "2026-03-01",
   "target_m3": 32.782,
+  "time_bursting": "",
+  "time_dry": "",
+  "time_flow_above_q4": "",
+  "time_leaking": "",
+  "time_low_ambient_temperature": "",
+  "time_reversed": "",
   "total_m3": 35.65
 }
