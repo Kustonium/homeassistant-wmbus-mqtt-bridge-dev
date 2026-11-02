@@ -1,4 +1,4 @@
-[wmbus-bridge] [DIAG] LISTEN-parse: JSON telegram received: {"_":"telegram","id":"52632878","media":"water","meter":"qwaterv2","meter_datetime":"2026-04-30 19:00","status":"OK","target_date":"2026-03-31","target_m3":7.3,
+[wmbus-bridge] [DIAG] LISTEN-parse: JSON telegram received: {"_":"telegram","driver":"qwaterv2","id":"52632878","media":"water","meter_datetime":"2026-04-30 19:00","status":"OK","target_date":"2026-03-31","target_m3":7.3
 [wmbus-bridge] [DIAG] LISTEN-parse: calling _store_candidate_value
 [wmbus-bridge] [DIAG] _store_candidate_value 52632878: value_key=total_m3 value=9.002
 [wmbus-bridge] [DIAG] _store_candidate_value 52632878: wrote to status_candidate_values.tsv
