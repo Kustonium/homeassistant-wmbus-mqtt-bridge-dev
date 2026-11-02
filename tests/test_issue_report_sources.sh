@@ -40,6 +40,10 @@ KEY="00112233445566778899AABBCCDDEEFF"
 
 printf '%s\t%s\t%s\n' "2026-08-15T06:00:00Z" "${#RAW}" "${RAW}" \
   > "${WORK_DIR}/status_recent_raw.tsv"
+# A later, shorter frame of the same meter, as a compact one would be: the
+# report must still analyse the longest (full) frame, not the latest.
+printf '%s\t%s\t%s\n' "2026-08-15T06:05:00Z" "40" "${RAW:0:40}" \
+  >> "${WORK_DIR}/status_recent_raw.tsv"
 # Deliberately absent: status_candidate_raw.tsv and status_candidates.tsv.
 cat > "${WORK_DIR}/options.json" <<JSON
 {"meters": [{"id": "Cold_Water", "meter_id": "${MID}", "type": "hydrodigit", "key": "${KEY}"}]}
@@ -98,7 +102,7 @@ REPORT="$(field report)"
   || fail "configured meter: report not built"
 
 grep -qi -- "${RAW}" <<<"${REPORT}" \
-  && pass "raw frame resolved from the rolling buffer" \
+  && pass "raw frame resolved from the rolling buffer (the longest, not the latest)" \
   || fail "raw frame missing from the report"
 
 grep -q "suggested driver: hydrodigit" <<<"${REPORT}" \

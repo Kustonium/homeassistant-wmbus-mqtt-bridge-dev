@@ -409,7 +409,9 @@ def candidate_issue_report(meter_id: str) -> tuple[bool, dict]:
     # little-endian order. That is the same lookup the preview path uses and it
     # is what makes the report available for meters that are already added —
     # asked for by a user who had no way to see the raw frame after adding one.
-    raw, raw_ts = _resolve_raw_for_id(mid)
+    # The longest stored frame, not the latest: a compact frame alone analyses
+    # to "signature unknown" (see _resolve_full_raw_for_id).
+    raw, raw_ts = _resolve_full_raw_for_id(mid)
     if not raw:
         return False, {"ok": False, "error": "no_raw_telegram"}
 
@@ -535,6 +537,38 @@ def _resolve_raw_for_id(mid: str) -> tuple[str, str]:
             if le in raw.lower():
                 match = (raw, str(r.get("ts") or ""))  # keep last (most recent)
     return match
+
+
+def _resolve_full_raw_for_id(mid: str) -> tuple[str, str]:
+    """Return (raw_hex, ts) of the LONGEST stored frame for this id (newest on
+    a tie), or ("",""). A meter sending compact frames (Kamstrup: about 7 of 8)
+    leaves a compact one as its latest frame, and `--analyze` of that alone
+    only says "signature unknown"; the full frame lists every record. Looks at
+    the latest frame, the preview's remembered full frame (.preview_full/<id>,
+    bridge_ledger.PreviewDecoder) and the matching rows of the RAW ring."""
+    found = []
+    raw, ts = _resolve_raw_for_id(mid)
+    if raw:
+        found.append((raw, ts))
+    try:
+        stamp, _, kept = (RUNTIME / ".preview_full" / mid).read_text(
+            encoding="utf-8", errors="replace").split("\n", 1)[0].partition("\t")
+        if kept and re.fullmatch(r"[0-9A-Fa-f]+", kept):
+            when = (datetime.fromtimestamp(int(stamp), timezone.utc).isoformat()
+                    if stamp.isdigit() else "")
+            found.append((kept, when))
+    except OSError:
+        pass
+    le = _id_le_hex(mid)
+    if le:
+        for r in read_tsv(RECENT_RAW_TSV, ["ts", "raw_len", "raw"])[-200:]:
+            ring_raw = str(r.get("raw") or "").strip()
+            if le in ring_raw.lower():
+                found.append((ring_raw, str(r.get("ts") or "")))
+    if not found:
+        return "", ""
+    # max() keeps the first of equal lengths: the latest frame comes first.
+    return max(found, key=lambda f: len(f[0]))
 
 
 def _decode_with_driver(raw: str, driver: str, mid: str, key: str) -> dict | None:

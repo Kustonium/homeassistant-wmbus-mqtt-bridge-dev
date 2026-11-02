@@ -223,6 +223,7 @@
       if (document.querySelector(".table-wrap:hover, .table-scroll-top:hover")
           && !state.modal && !state.reportModal && !state.editModal) {
         liveRenderDeferred = true;
+        showLivePaused(true);
         return;
       }
       liveRenderDeferred = false;
@@ -230,9 +231,29 @@
     }, 150);
   }
 
+  // The held render is invisible otherwise: an expanded panel under the
+  // pointer (a meter's Fields) simply stops updating, which a user reported
+  // as a bug. A small badge outside #app (morphdom never touches it) says so.
+  function showLivePaused(on) {
+    let el = document.getElementById("live-paused");
+    if (!on) {
+      if (el) el.hidden = true;
+      return;
+    }
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "live-paused";
+      el.className = "live-paused";
+      document.body.appendChild(el);
+    }
+    el.textContent = `⏸ ${t("live_paused_hover", "Live updates paused while the pointer is over a table")}`;
+    el.hidden = false;
+  }
+
   document.addEventListener("mouseover", () => {
     if (liveRenderDeferred && !document.querySelector(".table-wrap:hover, .table-scroll-top:hover")) {
       liveRenderDeferred = false;
+      showLivePaused(false);
       scheduleRender();
     }
   });
@@ -4850,6 +4871,9 @@
   window.addEventListener("resize", () => syncTopScrollbars());
 
   function render() {
+    // Any render brings the page up to date, so nothing is held any more.
+    liveRenderDeferred = false;
+    showLivePaused(false);
     const newHtml = withTopScrollbars(renderRoute());
     if (typeof morphdom !== "undefined") {
       // morphdom patches only the DOM nodes that actually changed —
