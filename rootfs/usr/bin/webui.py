@@ -538,18 +538,34 @@ def candidate_issue_report(meter_id: str) -> tuple[bool, dict]:
 # same in little-endian byte order, so the telegram hex and the analysis text
 # stay consistent with each other.
 ANON_METER_ID = "99999999"
+ANON_FIELD_VALUE = "[redacted]"
+_ANON_REPORT_FIELD_RE = re.compile(
+    r'(?i)(?<![A-Za-z0-9_])'
+    r'(?P<label>["\']?(?:serial_number|prefix|fabrication_no)["\']?)'
+    r'(?P<separator>\s*[:=]\s*["\']?)'
+    r'(?P<value>[^"\'\s,}\]]+)'
+)
 
 
 def _anonymize_report(report: str, mid: str) -> str:
-    """The report with the meter number replaced by ANON_METER_ID everywhere:
+    """Mask common identifiers in a report intended for public sharing.
+
+    The meter number is replaced by ANON_METER_ID everywhere:
     as printed (03264950) and as it sits in the frame's A-field, little-endian
     (50492603), in any letter case. The rest of the frame stays as received;
     an encrypted payload does not decrypt with the stand-in number (the AES IV
-    holds the A-field), which matters little as the key is never in a report."""
+    holds the A-field), which matters little as the key is never in a report.
+    Decoder output can also expose manufacturer-specific identifiers outside
+    the A-field, so their labelled values are redacted as well. This remains a
+    best-effort aid: the UI tells the user to review the report before sharing."""
     out = report
     for form in {mid, _id_le_hex(mid)}:
         if form:
             out = re.sub(re.escape(form), ANON_METER_ID, out, flags=re.IGNORECASE)
+    out = _ANON_REPORT_FIELD_RE.sub(
+        lambda match: f"{match.group('label')}{match.group('separator')}{ANON_FIELD_VALUE}",
+        out,
+    )
     return out
 
 

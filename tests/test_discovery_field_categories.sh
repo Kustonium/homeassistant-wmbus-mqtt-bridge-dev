@@ -183,7 +183,7 @@ assert_excluded() {
 }
 
 # --- apatorna1: text status fields, historic readings, dedicated "status" ----
-run_telegram 04913581 '{"_":"telegram","current_status":"OK","frame_status":"SUMMER_TIME","historic_age_h":304,"historic_datetime":"2026-07-31 22:08","historic_m3":1785.804,"historic_status":"MINIMUM_FLOW","id":"04913581","media":"water","meter":"apatorna1","meter_datetime":"2026-08-13 14:08","name":"Cold_Water_3581","status":"OK","timestamp":"2026-08-13T13:22:13Z","total_m3":1798.2}'
+run_telegram 04913581 '{"_":"telegram","current_status":"OK","driver_deprecated_by":"apatorna1v2, upgrade before 2026-12-01","frame_status":"SUMMER_TIME","historic_age_h":304,"historic_datetime":"2026-07-31 22:08","historic_m3":1785.804,"historic_status":"MINIMUM_FLOW","id":"04913581","media":"water","meter":"apatorna1","meter_datetime":"2026-08-13 14:08","name":"Cold_Water_3581","status":"OK","timestamp":"2026-08-13T13:22:13Z","total_m3":1798.2}'
 
 assert_measurement total_m3 "m³"
 assert_measurement historic_m3 "m³"
@@ -193,9 +193,25 @@ assert_no_measurement_for_totals
 for f in current_status frame_status historic_status historic_datetime meter_datetime historic_age_h; do
   assert_diagnostic "${f}"
 done
-for f in id name meter media timestamp; do
+for f in id name meter driver_deprecated_by media timestamp; do
   assert_no_entity "${f}"
 done
+
+python3 - "${ROOT_DIR}" <<'PY'
+import sys
+sys.path.insert(0, f"{sys.argv[1]}/rootfs/usr/bin")
+import wmbus_discovery
+assert "driver_deprecated_by" in wmbus_discovery._SKIP_KEYS
+PY
+pass "driver_deprecated_by: Python Discovery path skips the field too"
+
+APP_JS="${ROOT_DIR}/rootfs/usr/share/wmbus-webui/assets/app.js"
+if grep -q -F '"driver_deprecated_by"' "${APP_JS}" \
+    && grep -q -F 'driverDeprecationPill(row)' "${APP_JS}"; then
+  pass "driver_deprecated_by: WebUI keeps the migration warning visible"
+else
+  fail "driver_deprecated_by: WebUI warning is missing"
+fi
 
 # The dedicated status block owns .../status/config; the generic loop must not
 # publish a second, conflicting config for the same topic.

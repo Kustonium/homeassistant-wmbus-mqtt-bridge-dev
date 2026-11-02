@@ -1,45 +1,15 @@
-## 1.6.9-dev.440
-
-### Added
-- Tauron/KPL meters configured as amiplus move to sanxing (55f05d8)
-
-### Fixed
-- report's wmbusmeters version line; modal buttons wrap (ec8ea0a)
-
-## 1.6.9-dev.439
-
-### Added
-- issue report names the wmbusmeters version and the setup (d815990)
-
-### Fixed
-- report's wmbusmeters version line; modal buttons wrap (ec8ea0a)
-
-## 1.6.9-dev.438
-
-### Added
-- issue report names the wmbusmeters version and the setup (d815990)
-- anonymised issue report and a question to the add-on author (972c32d)
-
-## 1.6.9-dev.437
-
-### Added
-- anonymised issue report and a question to the add-on author (972c32d)
-
-### Fixed
-- report analyses the full frame; badge while live updates are held (d0fb64e)
-
-## 1.6.9-dev.436
-
-### Fixed
-- report analyses the full frame; badge while live updates are held (d0fb64e)
-
 ## 1.6.9-dev
 
-<!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
+### Added
+- The issue-report dialog can generate a copy with common identifiers masked
+  and open a pre-filled question to the add-on author for bridge-side problems.
+- Issue reports name the exact bundled wmbusmeters build and the Home Assistant
+  add-on/MQTT setup, so upstream receives reproducible context.
 
-### Changed - wmbusmeters 3.0.0 -> 3.1.1
-The bundled decoder moves to wmbusmeters 3.1.1. Most meters decode exactly as
-before; these change for the people who have them:
+### Changed
+- **The bundled decoder moves from wmbusmeters 3.0.0 to 3.1.1.** Most meters
+  decode exactly as before; the following bullets describe the user-visible
+  exceptions.
 
 - **Tauron / KPL electricity meters (manufacturer `KPL`, e.g. Sanxing S34U28)
   move to the `sanxing` driver by themselves.** wmbusmeters now supports these
@@ -67,8 +37,23 @@ before; these change for the people who have them:
 - `amiplus`: new field `absolute_max_power_consumption_kw`.
 - `izar`: wmbusmeters marks the driver as deprecated in favour of `izarv2`
   ("upgrade before 2026-12-01"). It still works in this version.
+- `qheat` and `qwater`: wmbusmeters marks these drivers as deprecated in favour
+  of `qheatv2` and `qwaterv2` ("upgrade before 2026-12-01"). They still work in
+  this version.
 - wmbusmeters' JSON names the driver in a field `driver` instead of `meter`; the
-  add-on reads both, nothing to do.
+  add-on reads both. External consumers such as Node-RED flows that read
+  `value_json.meter` directly should switch to `value_json.driver` (or accept
+  both during the transition).
+
+### Fixed
+- Reports analyse the longest stored frame for the meter, name the runtime
+  wmbusmeters version correctly and keep their modal buttons usable on narrow
+  screens. A badge shows when live WebUI updates are held while a dialog is open.
+- `driver_deprecated_by` stays visible as a driver-migration warning in the
+  WebUI but no longer creates a separate Home Assistant text entity.
+- Anonymised issue reports also mask labelled `serial_number`, `prefix` and
+  `fabrication_no` values. The dialog now describes this as best-effort masking
+  and asks the user to review the report before sharing it.
 
 ## 1.6.8-dev.433
 

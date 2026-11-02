@@ -72,6 +72,9 @@ echo "Auto driver    : hydrodigit"
 echo "002   : b409 dll-mfct (BMT)"
 echo "004   : 50492603 dll-id (03264950)"
 echo "017 C!: 66000000 (\\"total_m3\\":0.066)"
+echo '018 C!: ("serial_number":"040138")'
+echo '019 C!: ("prefix":"C23UA")'
+echo '020 C!: ("fabrication_no":"000000005868")'
 STUB
 chmod +x "${STUB}"
 
@@ -123,6 +126,14 @@ grep -q "^setup: Home Assistant add-on wMBus MQTT Bridge " <<<"${REPORT}" \
 grep -q "manufacturer: BMT" <<<"${ANON}" \
   && pass "anonymised report keeps the rest" \
   || fail "anonymised report lost other lines"
+if grep -q -F -e "040138" -e "C23UA" -e "000000005868" <<<"${ANON}"; then
+  fail "anonymised report still holds a labelled serial/fabrication identifier"
+else
+  pass "anonymised report masks labelled serial/fabrication identifiers"
+fi
+[[ "$(grep -o -F '[redacted]' <<<"${ANON}" | wc -l | tr -d ' ')" == "3" ]] \
+  && pass "all known extra identifier fields use the redacted stand-in" \
+  || fail "expected three redacted extra identifiers"
 
 [[ "$(field ok)" == "True" ]] \
   && pass "configured meter: report built without a candidate row" \

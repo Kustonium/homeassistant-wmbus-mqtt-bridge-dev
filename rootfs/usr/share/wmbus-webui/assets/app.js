@@ -2131,7 +2131,17 @@
   // reception rather than measuring anything. Mirrors the exclusion list in
   // rootfs/usr/bin/bridge-lib/09-discovery.sh; a checkbox next to them would
   // promise control that does not exist.
-  const METADATA_FIELDS = new Set(["_", "id", "name", "meter", "driver", "media", "timestamp", "device_date_time", "rssi", "lqi"]);
+  const METADATA_FIELDS = new Set(["_", "id", "name", "meter", "driver", "driver_deprecated_by", "media", "timestamp", "device_date_time", "rssi", "lqi"]);
+
+  function driverDeprecationPill(row) {
+    let fields = null;
+    try { fields = JSON.parse(row.last_json || ""); } catch (_) { fields = null; }
+    const replacement = fields && typeof fields === "object"
+      ? String(fields.driver_deprecated_by || "").trim()
+      : "";
+    if (!replacement) return "";
+    return `<div style="margin-top:3px;"><span class="pill warn" title="${escapeHtml(t("driver_deprecated_hint", "Change the configured driver before the upstream deadline. This notice is shown here instead of becoming a Home Assistant entity."))}">⚠ ${escapeHtml(t("driver_deprecated_warning", "Driver deprecated: {replacement}").replace("{replacement}", replacement))}</span></div>`;
+  }
 
   // A wired meter is configured in mbus_meters under a NAME, but the table row
   // carries the id from its telegram - and those are different things: the id
@@ -2177,7 +2187,10 @@
               const byGlob = kind === "glob";
               let cell;
               if (meta) {
-                cell = `<span style="color:var(--muted);" title="${escapeHtml(t("published_fields_meta_hint", "Meter identity — always in the attributes, never its own entity."))}">—</span>`;
+                const metaHint = k === "driver_deprecated_by"
+                  ? t("driver_deprecated_hint", "Change the configured driver before the upstream deadline. This notice is shown here instead of becoming a Home Assistant entity.")
+                  : t("published_fields_meta_hint", "Meter identity — always in the attributes, never its own entity.");
+                cell = `<span style="color:var(--muted);" title="${escapeHtml(metaHint)}">—</span>`;
               } else {
                 cell = `<input type="checkbox" ${kind === "" ? "checked" : ""} ${byGlob ? "disabled" : ""}
                   data-action="toggle-meter-field" data-id="${escapeHtml(meterId)}"
@@ -2240,7 +2253,7 @@
                   <tr>
                     <td><strong>${escapeHtml(id)}</strong>${aesLockBadge(row)}</td>
                     <td><span style="margin-right:5px;font-size:15px;vertical-align:middle;">${mIcon}</span>${escapeHtml(row.name || row.id || "-")}</td>
-                    <td>${escapeHtml(row.driver || "-")}</td>
+                    <td>${escapeHtml(row.driver || "-")}${driverDeprecationPill(row)}</td>
                     <td>${mfrCell}</td>
                     <td>
                       ${meterValueCell(row)}
@@ -4085,7 +4098,7 @@
           </div>
           <div class="modal-body">
             <p style="font-size:11px;color:#f3c84b;margin:0 0 8px;">⚠️ ${escapeHtml(rm.anon
-              ? t("export_report_privacy_anon", "The meter number is replaced by 99999999. The AES key is never included.")
+              ? t("export_report_privacy_anon", "The meter number and common serial/fabrication fields are masked. Review the report before sharing it; the AES key is never included.")
               : t("export_report_privacy", "The telegram contains your meter's serial number. The AES key is never included."))}</p>
             ${rm.keyUsed ? `<p style="font-size:11px;color:#f3c84b;margin:0 0 8px;">🔓 ${escapeHtml(t("export_report_key_used", "The analysis was decrypted with your configured AES key — the report reveals meter readings, but never the key itself."))}</p>` : ""}
             ${anonToggle}

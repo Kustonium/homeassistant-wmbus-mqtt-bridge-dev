@@ -25,8 +25,8 @@ import bridge_ledger as bl
 
 Publish = Tuple[str, bytes, bool]
 
-_SKIP_KEYS = frozenset(("_", "id", "name", "meter", "driver", "media", "timestamp", "device_date_time",
-                        "rssi", "lqi", "status"))
+_SKIP_KEYS = frozenset(("_", "id", "name", "meter", "driver", "driver_deprecated_by",
+                        "media", "timestamp", "device_date_time", "rssi", "lqi", "status"))
 _BASH_SPACE = re.compile(r"[ \t\n\v\f\r]")
 _HEX = re.compile(r"[0-9A-F]+")
 _HEX8 = re.compile(r"[0-9A-Fa-f]{8}")
