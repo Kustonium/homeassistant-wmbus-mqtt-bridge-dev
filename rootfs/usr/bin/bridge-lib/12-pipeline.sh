@@ -297,6 +297,7 @@ _decode_stage() {
       --events-file="${STATUS_EVENTS_FILE}" --meters-file="${STATUS_METERS_FILE}" \
       --meter-last-json-file="${STATUS_METER_LAST_JSON_FILE}" \
       --key-problem-file="${STATUS_METER_KEY_PROBLEM_FILE}" --seen-file="${STATUS_SEEN_FILE}" \
+      --kpl-sanxing-file="${METER_KPL_SANXING_FILE:-}" --reload-flag-file="${BASE}/.reload_pipeline" \
       --publisher-port="${MQTT_PUB_PORT}" --zero="${zero}" \
       --raw-topic="${RAW_TOPIC:-}" --state-prefix="${STATE_PREFIX:-}" \
       --discovery-prefix="${DISCOVERY_PREFIX:-}" --search-mode="${SEARCH_MODE:-false}" \

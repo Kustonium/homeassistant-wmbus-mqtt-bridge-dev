@@ -33,16 +33,18 @@
 The bundled decoder moves to wmbusmeters 3.1.1. Most meters decode exactly as
 before; these change for the people who have them:
 
-- **Tauron / KPL electricity meters (manufacturer `KPL`, e.g. Sanxing S34U28):
-  set the driver to `sanxing` or `auto`.** wmbusmeters now supports these
-  meters itself with its `sanxing` driver, and the add-on's own KPL patch steps
-  aside. A meter configured as `amiplus` (what this add-on's README said so far)
-  stops decoding: the log shows "decrypted content failed check ... Permanently
-  ignoring telegrams". Checked on a telegram with a real S34U28's records
+- **Tauron / KPL electricity meters (manufacturer `KPL`, e.g. Sanxing S34U28)
+  move to the `sanxing` driver by themselves.** wmbusmeters now supports these
+  meters with its own `sanxing` driver, and the add-on's KPL patch steps aside.
+  Under `amiplus` (what this add-on's README said so far) wmbusmeters rejects
+  them ("decrypted content failed check"); the first time it does, the add-on
+  writes that meter with `sanxing` from then on and reloads the decoder, with a
+  line in the log. Your configuration is not changed; for new meters use
+  `sanxing` or `auto`. Checked on a telegram with a real S34U28's records
   (upstream's sanxing test): `sanxing` gives the same fields and values as
   `amiplus` did, plus `absolute_max_power_consumption_kw` and `fabrication_no`.
-  Entities are keyed on the meter id and field name, so after switching the
-  driver they stay the same, history included.
+  Entities are keyed on the meter id and field name, so they stay the same,
+  history included.
 - **Qundis qwaterv2 walk-by frames (version 0x1A)** keep all their values. 3.1.0
   lost them (total, target and yearly values); the fix went upstream from this
   project and is in 3.1.1.

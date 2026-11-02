@@ -195,6 +195,19 @@ class MeterFilesTests(unittest.TestCase):
             self.compare({"meters": METERS[:3]}, loglevel="verbose")
         with self.subTest("debug"):
             self.compare({"meters": METERS[:3]}, loglevel="debug")
+        with self.subTest("kpl_sanxing"):
+            # A Tauron/KPL meter wmbusmeters rejected under amiplus is written
+            # with sanxing; another amiplus meter and a listed id with another
+            # driver stay as configured.
+            out = self.compare(
+                {"meters": [{"id": "tauron", "meter_id": "12345678", "type": "amiplus"},
+                            {"id": "apator", "meter_id": "87654321", "type": "amiplus"},
+                            {"id": "water", "meter_id": "11223344", "type": "hydrodigit"}]},
+                extra="printf '12345678\\t%s\\n11223344\\t%s\\n' x x > \"${METER_KPL_SANXING_FILE}\"")
+            self.assertIn("driver=sanxing", out["etc/wmbusmeters.d/meter-0001"])
+            self.assertIn("driver=amiplus", out["etc/wmbusmeters.d/meter-0002"])
+            self.assertIn("driver=hydrodigit", out["etc/wmbusmeters.d/meter-0003"])
+            self.assertTrue(any("amiplus -> sanxing" in ln for ln in out["log"]))
         with self.subTest("no_candidates"):
             self.compare({"meters": METERS[:3]}, candidates=False)
 
