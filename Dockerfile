@@ -34,7 +34,7 @@ WORKDIR /src
 # CI's build + boot-test jobs (local verification above is Ubuntu/WSL).
 # A monthly cron (.github/workflows/wmbusmeters-pin-bump.yml) opens a bump PR
 # whenever upstream publishes a new release tag; merging it re-runs these gates.
-ARG WMBUSMETERS_COMMIT=ac4f295369a48ef51cb835e6920b62cbee743bd6
+ARG WMBUSMETERS_COMMIT=80ea82184569412d53060037ed8e9bd3af1b6b05
 # Add-on-local patches for upstream behaviour we cannot configure around. Each
 # one retires itself: the script skips a patch as soon as upstream grows its own
 # handling, and FAILS the build if a patch no longer applies, so the monthly pin
