@@ -176,6 +176,28 @@ class PreviewOneShotTests(unittest.TestCase):
                                                      + JSON + "\n")
         self.compare("no_number", output='{"_":"telegram","id":"12345678","meter":"x","status":"OK"}\n')
 
+    def test_full_frame_goes_first(self):
+        # A compact frame after a longer (full) one: the one-shot reads the full
+        # frame first and books the last telegram, the current frame's.
+        full = RAW + "00" * 8
+        files, rec = self.compare(
+            "full_first",
+            output=JSON.replace("12.5", "9.0") + "\n" + JSON + "\n",
+            extra={".preview_full/12345678": f"{NOW - 60}\t{full}\n"})
+        self.assertIn("stdin:\n" + full + "\n" + RAW + "\n", rec)
+        self.assertEqual(files[".preview_full/12345678"], f"{NOW - 60}\t{full}\n".encode(), "full frame kept")
+        self.assertIn(b"12.5", files[NAMES["STATUS_CANDIDATE_VALUES_FILE"]])
+        # The longest frame replaces a shorter one, and is not fed twice.
+        files, rec = self.compare("full_arrives", raw=full,
+                                  extra={".preview_full/12345678": f"{NOW - 60}\t{RAW}\n"})
+        self.assertIn("stdin:\n" + full + "\n", rec)
+        self.assertNotIn(full + "\n" + full, rec)
+        self.assertEqual(files[".preview_full/12345678"], f"{NOW}\t{full}\n".encode())
+        # A full frame older than 24 h gives way to the current one.
+        files, _ = self.compare("full_expired",
+                                extra={".preview_full/12345678": f"{NOW - 90000}\t{full}\n"})
+        self.assertEqual(files[".preview_full/12345678"], f"{NOW}\t{RAW}\n".encode())
+
 
 class WakeTests(unittest.TestCase):
     """The RAW stage books a one-shot's result while its input stays quiet:
