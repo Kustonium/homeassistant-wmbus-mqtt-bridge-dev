@@ -1,3 +1,8 @@
+## 1.6.8-dev.433
+
+### Fixed
+- preview decodes compact frames after a full one (5bad8ac)
+
 ## 1.6.8-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
