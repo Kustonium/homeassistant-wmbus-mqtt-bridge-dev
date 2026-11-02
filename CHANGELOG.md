@@ -38,9 +38,11 @@ before; these change for the people who have them:
   meters itself with its `sanxing` driver, and the add-on's own KPL patch steps
   aside. A meter configured as `amiplus` (what this add-on's README said so far)
   stops decoding: the log shows "decrypted content failed check ... Permanently
-  ignoring telegrams". Checked on a constructed telegram only; whether a real
-  meter's readings under `sanxing` match the previous `amiplus` ones is not yet
-  confirmed.
+  ignoring telegrams". Checked on a telegram with a real S34U28's records
+  (upstream's sanxing test): `sanxing` gives the same fields and values as
+  `amiplus` did, plus `absolute_max_power_consumption_kw` and `fabrication_no`.
+  Entities are keyed on the meter id and field name, so after switching the
+  driver they stay the same, history included.
 - **Qundis qwaterv2 walk-by frames (version 0x1A)** keep all their values. 3.1.0
   lost them (total, target and yearly values); the fix went upstream from this
   project and is in 3.1.1.

@@ -1,0 +1,17 @@
+{
+  "_": "telegram",
+  "absolute_max_power_consumption_kw": 99,
+  "current_power_consumption_kw": 0.259,
+  "current_power_production_kw": 0,
+  "device_datetime": "2026-07-28 13:02",
+  "driver": "sanxing",
+  "fabrication_no": "11223344",
+  "id": "11223344",
+  "max_power_consumption_kw": 3.492,
+  "media": "electricity",
+  "total_energy_consumption_kwh": 2469.595,
+  "total_energy_production_kwh": 0,
+  "voltage_at_phase_1_v": 230,
+  "voltage_at_phase_2_v": 230,
+  "voltage_at_phase_3_v": 230
+}
