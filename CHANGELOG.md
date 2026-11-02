@@ -1,3 +1,11 @@
+## 1.6.9-dev.440
+
+### Added
+- Tauron/KPL meters configured as amiplus move to sanxing (55f05d8)
+
+### Fixed
+- report's wmbusmeters version line; modal buttons wrap (ec8ea0a)
+
 ## 1.6.9-dev.439
 
 ### Added
