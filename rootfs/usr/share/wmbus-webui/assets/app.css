@@ -1941,6 +1941,17 @@ th.sortable:hover {
   white-space: nowrap;
 }
 
+/* Keep the candidate medium identical in every locale: icon above the label.
+   Natural table wrapping put German "Wasser" beside the icon while the other
+   translations wrapped below it. */
+.candidate-medium {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  white-space: nowrap;
+}
+
 /* Per-board signal inside a reception pill (unfolded "+N" list). */
 .board-rssi {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;

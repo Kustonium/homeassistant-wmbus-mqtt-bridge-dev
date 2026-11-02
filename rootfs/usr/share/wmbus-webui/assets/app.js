@@ -2416,7 +2416,7 @@
                     <td><strong>${escapeHtml(id)}</strong></td>
                     <td>${escapeHtml(driver)}</td>
                     <td style="color:#9eafba;font-size:12px;">${escapeHtml(row.type || "-")}</td>
-                    <td>${mediaIconHtml(row.type || "", driver)} ${escapeHtml(mediaLabel)}</td>
+                    <td><span class="candidate-medium">${mediaIconHtml(row.type || "", driver)}<span>${escapeHtml(mediaLabel)}</span></span></td>
                     <td>${mfrCell}</td>
                     <td>${bandSecurityBadges(row, previewDecoded) || encBadge(effectiveEnc, note)}</td>
                     <td>${previewCell}</td>
@@ -4105,7 +4105,7 @@
             ${body}
           </div>
           <div class="modal-actions">
-            <button class="btn" type="button" data-action="close-report-modal">${escapeHtml(t("webui_cancel", "Cancel"))}</button>
+            <button class="btn danger" type="button" data-action="close-report-modal">${escapeHtml(t("webui_cancel", "Cancel"))}</button>
             ${rm.report ? `
               <a class="btn" href="https://github.com/wmbusmeters/wmbusmeters/issues/new" target="_blank" rel="noopener noreferrer">${escapeHtml(t("export_report_open_issue", "Open a new wmbusmeters issue"))}</a>
               <button class="btn" type="button" data-action="ask-author-report" title="${escapeHtml(t("export_report_ask_hint", "Opens a new question in the add-on's GitHub Discussions with this report filled in. You review it and post it from your own account."))}">${escapeHtml(t("export_report_ask", "Ask the add-on author"))}</button>

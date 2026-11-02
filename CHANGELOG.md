@@ -46,6 +46,9 @@
   using `value_json.meter`); new integrations should use `value_json.driver`.
 
 ### Fixed
+- Candidate medium cells keep the icon above the translated label in every
+  language instead of putting German `Wasser` beside the icon.
+- The report dialog's Cancel button is visually distinct from its sharing actions.
 - Reports analyse the longest stored frame for the meter, name the runtime
   wmbusmeters version correctly and keep their modal buttons usable on narrow
   screens. A badge shows when live WebUI updates are held while a dialog is open.
