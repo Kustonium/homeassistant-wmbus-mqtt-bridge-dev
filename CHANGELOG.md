@@ -1,3 +1,11 @@
+## 1.6.9-dev.437
+
+### Added
+- anonymised issue report and a question to the add-on author (972c32d)
+
+### Fixed
+- report analyses the full frame; badge while live updates are held (d0fb64e)
+
 ## 1.6.9-dev.436
 
 ### Fixed
