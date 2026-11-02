@@ -1,3 +1,7 @@
+## 1.6.10-dev
+
+<!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
+
 ## 1.6.9-dev
 
 ### Added
