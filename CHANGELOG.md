@@ -1,3 +1,11 @@
+## 1.6.9-dev.439
+
+### Added
+- issue report names the wmbusmeters version and the setup (d815990)
+
+### Fixed
+- report's wmbusmeters version line; modal buttons wrap (ec8ea0a)
+
 ## 1.6.9-dev.438
 
 ### Added
