@@ -1,3 +1,8 @@
+## 1.6.9-dev.436
+
+### Fixed
+- report analyses the full frame; badge while live updates are held (d0fb64e)
+
 ## 1.6.9-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
