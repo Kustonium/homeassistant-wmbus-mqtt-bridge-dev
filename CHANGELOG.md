@@ -1,3 +1,7 @@
+## 1.6.9-dev
+
+<!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
+
 ## 1.6.8-dev.433
 
 ### Fixed
