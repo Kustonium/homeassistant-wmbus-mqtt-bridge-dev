@@ -27,10 +27,12 @@
   last telegram as before. Do not build a "meter is dead" automation on
   `total_m3`. Takes effect when the discovery config is resent (the meter's
   first telegram after the add-on restarts).
-- **Heat meters reporting energy in GJ or MJ** (`total_energy_consumption_gj`
-  and the like) get `device_class: energy` and `state_class: total_increasing`,
-  so they are covered by the fix above and can be added to the Energy dashboard.
-  Before, the field had no class and kept expiring after an hour of silence.
+- **Heat meters reporting energy in GJ or MJ** get `device_class: energy`. Their
+  cumulative fields (`total_energy_consumption_gj` and the like, named
+  total/consumption/production) also get `state_class: total_increasing`, so they
+  are covered by the fix above and can be added to the Energy dashboard; before,
+  they had no class and kept expiring after an hour of silence. Other GJ fields
+  (e.g. `previous_gj`) are treated like their kWh counterparts.
 
 ## 1.6.9-dev
 

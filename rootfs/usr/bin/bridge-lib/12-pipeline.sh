@@ -137,8 +137,11 @@ _raw_source() {
 # With a RAM log, wmbusmeters runs with addtelegramhex (bridge.sh): the log
 # copy keeps the "hex" field, the line passed on loses it - a bash regex, no
 # fork - so it reaches no entity, MQTT payload or recorder. If the log cannot
-# be written the field is still removed.
+# be written the field is still removed. LC_ALL=C: the image runs C.UTF-8, where
+# "." does not match an invalid UTF-8 byte - one such byte anywhere in the line
+# made both patterns miss and the decrypted frame went on to MQTT.
 _wmbusmeters_log_stage() {
+  local LC_ALL=C
   local file="${WEBUI_LOG_DIR:+${WEBUI_LOG_DIR}/wmbusmeters.log}" line n=0
   local hex_re='^(.*)"hex":"[0-9A-Fa-f]*",(.*)$' hex_last_re='^(.*),"hex":"[0-9A-Fa-f]*"(\}.*)$'
   [[ -n "${file}" ]] || exec dd bs=65536 status=none
