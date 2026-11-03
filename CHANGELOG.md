@@ -1,3 +1,8 @@
+## 1.6.10-dev.447
+
+### Fixed
+- wmbusmeters log stage removes hex in the C locale; test for it (a66ce44)
+
 ## 1.6.10-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
