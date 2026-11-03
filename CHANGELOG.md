@@ -2,6 +2,16 @@
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
+### Added
+- **The wmbusmeters log (LOGS → wmbusmeters) shows each decoded telegram's
+  frame hex and whether it was a full or a compact frame.** wmbusmeters adds the
+  hex (decrypted when the meter has a key); the badge next to the meter name
+  says *full frame*, *compact frame* or *manufacturer format*. A compact frame
+  decodes only after wmbusmeters has seen a full frame of that meter or knows
+  its format, so this shows at a glance whether full frames arrive. The hex is
+  in the expanded JSON, ready for a driver question. It stays in the log: the
+  field is removed before MQTT, Discovery or the recorder see the telegram.
+
 ### Fixed
 - **Cumulative readings no longer turn "unavailable" when a meter is silent by
   schedule** (#165). Every entity carried an `expire_after` of one hour (or twice
