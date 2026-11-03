@@ -2741,8 +2741,10 @@
     const data = state.data || {};
     const allCandidates = asArray(data.candidates);
     const filteredCandidates = applyMediaFilter(allCandidates, "type");
+    // The media chips sit in the candidates section and filter only that list.
+    // Applied to the configured meters too, a chip that matched none of them
+    // made the whole "configured meters on air" section vanish.
     const allMeters = asArray(data.meters);
-    const filteredMeters = applyMediaFilter(allMeters, "media");
     const pending = pendingMeters();
     const rxDownloadEnabled = Boolean(data.options?.esp_rx_api_enabled);
     const candidateCountLabel = `${filteredCandidates.length}${filteredCandidates.length !== allCandidates.length ? `/${allCandidates.length}` : ""} ${t("webui_visible", "visible")}`;
@@ -2750,8 +2752,8 @@
     // this page for when exporting, and the candidate list below runs long.
     return `
       ${rxDownloadEnabled ? `<div class="page-actions"><a class="btn" href="api/esp-rx?limit=100000&amp;download=1" download>${escapeHtml(t("download_rx_history", "Download RX history"))}</a></div>` : ""}
-      ${discoverValueFilterBar(filteredMeters.length + filteredCandidates.length)}
-      ${discoverConfiguredPanel(filteredMeters)}
+      ${discoverValueFilterBar(allMeters.length + filteredCandidates.length)}
+      ${discoverConfiguredPanel(allMeters)}
       ${pending.length ? pendingMetersSection(pending, data.analysis || {}) : ""}
       <section class="section">
         <div class="section-head">
