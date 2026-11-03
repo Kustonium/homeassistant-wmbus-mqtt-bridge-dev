@@ -354,6 +354,10 @@ class Discovery:
             if ecat:
                 payload["entity_category"] = ecat
                 payload["enabled_by_default"] = False
+            # A cumulative reading stays valid until the next one: no expiry
+            # (issue #165, see 09-discovery.sh). The status entity keeps it.
+            if sclass in ("total", "total_increasing"):
+                del payload["expire_after"]
             if desc:
                 payload["json_attributes_template"] = (
                     '{{ dict(value_json, Description="%s") | tojson }}' % desc)

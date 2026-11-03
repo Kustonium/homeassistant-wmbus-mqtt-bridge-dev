@@ -2,6 +2,19 @@
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
 
+### Fixed
+- **Cumulative readings no longer turn "unavailable" when a meter is silent by
+  schedule** (#165). Every entity carried an `expire_after` of one hour (or twice
+  the meter's average interval), so a meter that transmits only on weekdays
+  07-18 went unavailable every evening and weekend and the Energy dashboard read
+  zero. Readings with `state_class` `total` / `total_increasing` (e.g.
+  `total_m3`, `total_energy_consumption_kwh`) now keep their last value until
+  the next telegram, as with the upstream wmbusmeters add-on. The meter's status
+  entity and the instantaneous fields keep `expire_after`, so Home Assistant
+  still shows when a meter has gone quiet; the add-on's own panel judges silence
+  from the last telegram as before. Takes effect when the discovery config is
+  resent (on the next add-on start).
+
 ## 1.6.9-dev
 
 ### Added
