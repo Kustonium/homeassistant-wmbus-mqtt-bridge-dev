@@ -1,8 +1,3 @@
-## 1.6.10-dev.444
-
-### Fixed
-- cumulative readings never expire (#165) (a49a2e5)
-
 ## 1.6.10-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
@@ -16,9 +11,16 @@
   `total_m3`, `total_energy_consumption_kwh`) now keep their last value until
   the next telegram, as with the upstream wmbusmeters add-on. The meter's status
   entity and the instantaneous fields keep `expire_after`, so Home Assistant
-  still shows when a meter has gone quiet; the add-on's own panel judges silence
-  from the last telegram as before. Takes effect when the discovery config is
-  resent (on the next add-on start).
+  still shows when a meter has gone quiet - for meters that report a `status`
+  field. A meter without one (some izar, for example) no longer shows silence in
+  Home Assistant at all, only in the add-on's own panel, which judges it from the
+  last telegram as before. Do not build a "meter is dead" automation on
+  `total_m3`. Takes effect when the discovery config is resent (the meter's
+  first telegram after the add-on restarts).
+- **Heat meters reporting energy in GJ or MJ** (`total_energy_consumption_gj`
+  and the like) get `device_class: energy` and `state_class: total_increasing`,
+  so they are covered by the fix above and can be added to the Energy dashboard.
+  Before, the field had no class and kept expiring after an hour of silence.
 
 ## 1.6.9-dev
 

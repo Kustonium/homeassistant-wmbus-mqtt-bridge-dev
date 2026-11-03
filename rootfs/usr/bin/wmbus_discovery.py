@@ -122,7 +122,8 @@ def guess_unit(key: str) -> str:
 
 def guess_device_class(key_lc: str, unit: str, media: str) -> str:
     simple = {"°C": "temperature", "%": "humidity", "W": "power", "kW": "power",
-              "Wh": "energy", "kWh": "energy", "V": "voltage", "A": "current",
+              "Wh": "energy", "kWh": "energy", "MJ": "energy", "GJ": "energy",  # heat meters (#165)
+              "V": "voltage", "A": "current",
               "Hz": "frequency", "dBm": "signal_strength"}
     if unit in simple:
         return simple[unit]
