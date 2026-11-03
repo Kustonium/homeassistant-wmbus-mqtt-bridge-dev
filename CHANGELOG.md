@@ -1,8 +1,3 @@
-## 1.6.10-dev.447
-
-### Fixed
-- wmbusmeters log stage removes hex in the C locale; test for it (a66ce44)
-
 ## 1.6.10-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
@@ -18,6 +13,9 @@
   field is removed before MQTT, Discovery or the recorder see the telegram.
 
 ### Fixed
+- **RECEIVED / SEARCH: the media chips of the candidate list no longer hide the
+  configured meters.** Picking a medium that none of the configured meters had
+  (e.g. warm water) made the whole "configured meters on air" section vanish.
 - **Cumulative readings no longer turn "unavailable" when a meter is silent by
   schedule** (#165). Every entity carried an `expire_after` of one hour (or twice
   the meter's average interval), so a meter that transmits only on weekdays
