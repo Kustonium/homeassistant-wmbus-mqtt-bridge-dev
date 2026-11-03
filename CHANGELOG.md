@@ -1,8 +1,3 @@
-## 1.6.10-dev.445
-
-### Fixed
-- GJ and MJ totals are energy; docs say cumulative readings do not expire (8b99e5f)
-
 ## 1.6.10-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
