@@ -1,3 +1,8 @@
+## 1.6.10-dev.444
+
+### Fixed
+- cumulative readings never expire (#165) (a49a2e5)
+
 ## 1.6.10-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
