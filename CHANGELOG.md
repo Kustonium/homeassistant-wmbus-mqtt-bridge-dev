@@ -1,3 +1,8 @@
+## 1.6.10-dev.446
+
+### Added
+- wmbusmeters log shows each frame's hex and full/compact kind (0011e06)
+
 ## 1.6.10-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
