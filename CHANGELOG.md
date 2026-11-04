@@ -1,3 +1,11 @@
+## 1.6.11-dev.451
+
+### Added
+- RX history kept in hours, export of the last hours sent piece by piece (ea965a1)
+
+### Fixed
+- the Qundis and radio diagnostics options explain themselves in the settings (5b040ee)
+
 ## 1.6.11-dev.450
 
 ### Added
