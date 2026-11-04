@@ -516,9 +516,11 @@ collection or the normal GUI. Turning it on does two things:
 `esp_rx_history_hours` (0, 12, 24, 48 or 72, default 0) sets how long the
 history lasts. At 0 it is the last 90-100 thousand frames, which with several
 boards is only hours; other values keep that many hours whatever the number of
-boards (the file is limited to 1 GB, and 1 GB of disk stays free). The longer
-history is refused on an SD card, under 2 GB of RAM or under 2 GB of free disk;
-the add-on then keeps the default and says why in the settings.
+boards, up to a quarter more before each trim (the file is limited to 1 GB, and
+1 GB of disk stays free, but at least 32 MB of the newest frames stay). The longer
+history is refused on an SD card or eMMC, under 2 GB of RAM or under 2 GB of free
+disk; the add-on then keeps the default and says why in the settings. The history
+is left out of Home Assistant backups.
 
 The export **never** returns RAW telegrams, AES keys or MQTT credentials, and it is
 read-only: downloading does not truncate history, reset counters or restart

@@ -111,6 +111,8 @@ _esp_rssi_subscriber() {
 # With esp_rx_history_hours the limit in lines does not apply: the book trims by
 # time, from its first trim on.
 _trim_esp_rf_rx_history_at_start() {
+  # A copy a killed trim left behind can be as large as the history.
+  rm -f "${ESP_RF_RX_HISTORY_FILE}".tmp.*
   [[ "${ESP_RX_HISTORY_HOURS:-0}" -gt 0 ]] && return 0
   _trim_esp_rx_history "${ESP_RF_RX_HISTORY_FILE}" 100000 90000 || true
 }

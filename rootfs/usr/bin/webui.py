@@ -908,7 +908,7 @@ def esp_rx_export_chunks(limit: int, since: int, until: int, generated_at: int,
 def rx_history_info() -> dict:
     """For the WebUI: what the history covers now and what the start decided
     (bridge_ledger.rx_history_policy). Reads one line, not the file."""
-    info: dict = {"size_bytes": 0, "span_h": None, "requested": 0, "effective": 0, "reason": ""}
+    info: dict = {"size_mb": 0, "span_h": None, "requested": 0, "effective": 0, "reason": ""}
     try:
         policy = json.loads(STATUS_ESP_RX_HISTORY_FILE.read_text(encoding="utf-8"))
         if isinstance(policy, dict):
@@ -916,12 +916,17 @@ def rx_history_info() -> dict:
     except (OSError, ValueError):
         pass
     try:
-        info["size_bytes"] = ESP_RF_RX_HISTORY_FILE.stat().st_size
+        # In MB, as shown: in bytes it would change the state sent with every frame.
+        info["size_mb"] = round(ESP_RF_RX_HISTORY_FILE.stat().st_size / 1e6)
         with ESP_RF_RX_HISTORY_FILE.open("r", encoding="utf-8", errors="replace") as stream:
-            oldest = safe_int(json.loads(stream.readline()).get("bridge_rx_time", 0))
-        if oldest > 0:
-            info["span_h"] = round(max(0, time.time() - oldest) / 3600, 1)
-    except (OSError, ValueError, AttributeError):
+            for _ in range(16):  # a damaged first line must not hide the rest
+                line = stream.readline()
+                found = re.search(r'"bridge_rx_time":\s*(\d+)', line)
+                if not line or found:
+                    break
+        if line and found:
+            info["span_h"] = round(max(0, time.time() - int(found.group(1))) / 3600, 1)
+    except OSError:
         pass
     return info
 

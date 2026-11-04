@@ -2743,7 +2743,7 @@
     const span = Number(info?.span_h);
     const hasSpan = info?.span_h != null && Number.isFinite(span);
     const hours = hasSpan ? [2, 4, 6, 8, 12, 24, 48].filter((h) => h < span) : [];
-    const mb = Math.round(Number(info?.size_bytes || 0) / 1e6);
+    const mb = Number(info?.size_mb || 0);
     const allLabel = hasSpan
       ? `${t("rx_export_all", "All")} (${span.toFixed(1)} h, ${mb} MB)`
       : t("rx_export_all", "All");

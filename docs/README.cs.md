@@ -500,10 +500,11 @@ dat ani na běžném rozhraní. Zapnutí udělá dvě věci:
 
 `esp_rx_history_hours` (0, 12, 24, 48 nebo 72, výchozí 0) určuje délku historie.
 Při 0 je to posledních 90-100 tisíc rámců, tedy s několika deskami jen pár hodin;
-ostatní hodnoty drží tolik hodin bez ohledu na počet desek (soubor má limit 1 GB
-a 1 GB disku zůstává volný). Delší historie je odmítnuta na SD kartě, pod 2 GB RAM
-a pod 2 GB volného disku; doplněk pak zůstane u výchozího limitu a důvod uvede
-v nastavení.
+ostatní hodnoty drží tolik hodin bez ohledu na počet desek, až o čtvrtinu více před
+každým ořezem (soubor má limit 1 GB a 1 GB disku zůstává volný, ale alespoň 32 MB
+nejnovějších rámců zůstane). Delší historie je odmítnuta na SD kartě a eMMC, pod
+2 GB RAM a pod 2 GB volného disku; doplněk pak zůstane u výchozího limitu a důvod
+uvede v nastavení. Historie se nezahrnuje do záloh Home Assistantu.
 
 Export **nikdy** nevrací RAW telegramy, AES klíče ani přihlašovací údaje MQTT a je
 jen pro čtení: stažení nezkracuje historii, nenuluje počítadla a nic nerestartuje.

@@ -529,10 +529,12 @@ Erfassung oder an der normalen Oberfläche. Eingeschaltet bewirkt sie zweierlei:
 `esp_rx_history_hours` (0, 12, 24, 48 oder 72, Standard 0) legt die Länge der
 Historie fest. Bei 0 sind es die letzten 90-100 Tausend Frames, mit mehreren
 Platinen also nur wenige Stunden; die anderen Werte behalten so viele Stunden
-unabhängig von der Zahl der Platinen (die Datei ist auf 1 GB begrenzt, 1 GB
-Speicherplatz bleibt frei). Die längere Historie wird auf einer SD-Karte, unter
-2 GB RAM und unter 2 GB freiem Speicherplatz abgelehnt; das Add-on bleibt dann beim
-Standard und nennt den Grund in den Einstellungen.
+unabhängig von der Zahl der Platinen, bis zu einem Viertel mehr vor jedem Kürzen
+(die Datei ist auf 1 GB begrenzt, 1 GB Speicherplatz bleibt frei, mindestens 32 MB
+der neuesten Frames bleiben aber erhalten). Die längere Historie wird auf einer
+SD-Karte oder eMMC, unter 2 GB RAM und unter 2 GB freiem Speicherplatz abgelehnt; das
+Add-on bleibt dann beim Standard und nennt den Grund in den Einstellungen. Die
+Historie wird nicht in Home-Assistant-Backups aufgenommen.
 
 Der Export liefert **nie** RAW-Telegramme, AES-Schlüssel oder MQTT-Zugangsdaten und
 ist nur lesend: Herunterladen kürzt die Historie nicht, setzt keine Zähler zurück

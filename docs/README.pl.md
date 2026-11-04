@@ -514,10 +514,12 @@ w zbieraniu danych ani w zwykłym GUI. Włączenie robi dwie rzeczy:
 
 `esp_rx_history_hours` (0, 12, 24, 48 lub 72, domyślnie 0) ustala długość
 historii. Przy 0 to ostatnie 90-100 tysięcy ramek, czyli przy kilku płytkach tylko
-kilka godzin; pozostałe wartości trzymają tyle godzin niezależnie od liczby płytek
-(plik ma limit 1 GB, a 1 GB dysku zostaje wolny). Dłuższa historia jest odrzucana
-na karcie SD, poniżej 2 GB RAM i poniżej 2 GB wolnego dysku; dodatek zostaje wtedy
-przy domyślnym limicie i podaje powód w ustawieniach.
+kilka godzin; pozostałe wartości trzymają tyle godzin niezależnie od liczby płytek,
+do ćwierci więcej przed każdym przycięciem (plik ma limit 1 GB, a 1 GB dysku zostaje
+wolny, ale co najmniej 32 MB najnowszych ramek zostaje). Dłuższa historia jest
+odrzucana na karcie SD i eMMC, poniżej 2 GB RAM i poniżej 2 GB wolnego dysku; dodatek
+zostaje wtedy przy domyślnym limicie i podaje powód w ustawieniach. Historia nie
+trafia do kopii zapasowych Home Assistanta.
 
 Przy domyślnie wyłączonej historii diagnostyki eksport nie zwraca surowych
 telegramów, kluczy AES ani poświadczeń MQTT

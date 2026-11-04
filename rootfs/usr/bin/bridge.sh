@@ -302,7 +302,7 @@ touch "${STATUS_CANDIDATE_VALUES_FILE}" 2>/dev/null || true
 printf '%s\n' "$(epoch_now)" > "${STATUS_BRIDGE_START_FILE}" 2>/dev/null || true
 
 # What the data directory is stored on (NVMe, SSD, HDD, eMMC, SD), logged once
-# and shown in the WebUI. rx-history-policy below refuses a long history on an SD card.
+# and shown in the WebUI. rx-history-policy below refuses a long history on an SD card or eMMC.
 log "$(python3 "${BRIDGE_SCRIPT_DIR:-/usr/bin}/bridge_ledger.py" storage --path "${BASE}" \
   --json-file "${STATUS_STORAGE_FILE}" 2>/dev/null \
   || echo "storage: ${BASE} on unknown (detection failed)")"

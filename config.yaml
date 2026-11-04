@@ -8,6 +8,10 @@ arch:
   - amd64
   - aarch64
 
+# Evidence of reception, rebuilt as frames arrive; it can reach 1 GB.
+backup_exclude:
+  - "esp_rf_rx_history.jsonl*"
+
 init: false
 # /tmp in RAM: the status files, rewritten every few seconds, live there
 # (/tmp/wmbus-runtime) and are saved to /data/runtime_state.tar every few
@@ -73,7 +77,7 @@ options:
 
   # How many hours of RX history to keep. 0 keeps the last 90-100 thousand
   # frames, which on a site with several boards is only hours. A longer history
-  # is refused on an SD card, under 2 GB of RAM or under 2 GB of free disk.
+  # is refused on an SD card or eMMC, under 2 GB of RAM or under 2 GB of free disk.
   esp_rx_history_hours: "0"
 
   # Advanced, opt-in capture for investigating the radio path. Keeps up to

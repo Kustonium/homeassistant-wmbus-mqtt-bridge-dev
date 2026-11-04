@@ -4,6 +4,7 @@ esp_rx_export_chunks and /api/esp-rx with hours.
 """
 from __future__ import annotations
 
+import fcntl
 import importlib.util
 import json
 import os
@@ -76,7 +77,10 @@ class Policy(Dir):
     def test_refused_on_sd_ram_disk(self):
         with statvfs(10 * GIB):
             self.assertEqual(bl.rx_history_policy(24, self.dir, kind="sd", meminfo=self.meminfo(8 << 20))["reason"], "sd")
+            self.assertEqual(bl.rx_history_policy(24, self.dir, kind="emmc", meminfo=self.meminfo(8 << 20))["reason"], "emmc")
             self.assertEqual(bl.rx_history_policy(24, self.dir, meminfo=self.meminfo(1 << 20))["reason"], "ram")
+            # A machine sold as 2 GB reports somewhat less.
+            self.assertEqual(bl.rx_history_policy(24, self.dir, meminfo=self.meminfo(1900 << 10))["reason"], "")
         with statvfs(GIB):
             got = bl.rx_history_policy(24, self.dir, meminfo=self.meminfo(8 << 20))
         self.assertEqual((got["effective"], got["reason"]), (0, "disk"))
@@ -126,7 +130,7 @@ class Trim(Dir):
         self.write(stamps)
         size = os.path.getsize(self.path)
         with statvfs(10 * GIB):
-            bl.trim_history_by_time(self.path, 24, max_bytes=size // 2)
+            bl.trim_history_by_time(self.path, 24, max_bytes=size // 2, min_bytes=0)
         kept = self.stamps()  # parses every line, so none was cut in half
         self.assertLessEqual(os.path.getsize(self.path), size // 2)
         self.assertEqual(kept[-1], stamps[-1])
@@ -137,9 +141,79 @@ class Trim(Dir):
         self.write(stamps)
         size = os.path.getsize(self.path)
         with statvfs(100):
-            bl.trim_history_by_time(self.path, 24, reserve=size // 2)
+            bl.trim_history_by_time(self.path, 24, reserve=size // 2, min_bytes=0)
         self.assertLess(os.path.getsize(self.path), size)
         self.assertEqual(self.stamps()[-1], stamps[-1])
+
+    def test_no_disk_left_keeps_the_newest_part(self):
+        stamps = [NOW - 3600 + i for i in range(2000)]
+        self.write(stamps)
+        size = os.path.getsize(self.path)
+        with statvfs(0):  # size + free - reserve is negative
+            bl.trim_history_by_time(self.path, 24, min_bytes=size // 2)
+        kept = self.stamps()
+        self.assertTrue(kept, "the whole history was deleted")
+        self.assertEqual(kept[-1], stamps[-1])
+        self.assertLessEqual(os.path.getsize(self.path), size // 2)
+
+    def test_small_file_with_no_disk_stays(self):
+        stamps = [NOW - 3600 + i for i in range(20)]
+        self.write(stamps)
+        with statvfs(0):
+            bl.trim_history_by_time(self.path, 24)
+        self.assertEqual(self.stamps(), stamps)
+
+    def test_damaged_first_line_does_not_stop_the_trim(self):
+        stamps = [NOW - 40 * 3600 + i for i in range(5)] + [NOW]
+        self.write(stamps)
+        text = Path(self.path).read_text(encoding="utf-8")
+        Path(self.path).write_text("damaged\n" + text, encoding="utf-8")
+        with statvfs(10 * GIB):
+            bl.trim_history_by_time(self.path, 24)
+        self.assertEqual(self.stamps(), [NOW])
+
+    def test_copy_runs_without_the_lock_and_keeps_what_arrives(self):
+        stamps = [NOW - 40 * 3600 + i for i in range(5)] + [NOW]
+        self.write(stamps)
+        real = shutil.copyfileobj
+        calls = []
+
+        def copy(src, dst, length):
+            calls.append(1)
+            if len(calls) == 1:
+                # The first copy is the long one: the lock must be free, as the
+                # book appends in another thread while it runs.
+                fd = os.open(self.path + ".lock", os.O_WRONLY | os.O_CREAT, 0o644)
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+                finally:
+                    os.close(fd)
+                bl.append_locked(self.path, event(NOW + 1, 99))
+            real(src, dst, length)
+
+        with statvfs(10 * GIB), mock.patch.object(bl.shutil, "copyfileobj", copy):
+            bl.trim_history_by_time(self.path, 24)
+        self.assertEqual(self.stamps(), [NOW, NOW + 1])
+
+    def test_replaced_meanwhile_leaves_the_new_file(self):
+        stamps = [NOW - 40 * 3600 + i for i in range(5)] + [NOW]
+        self.write(stamps)
+        real = shutil.copyfileobj
+        calls = []
+
+        def copy(src, dst, length):
+            calls.append(1)
+            if len(calls) == 1:
+                other = self.path + ".other"
+                Path(other).write_text(event(NOW + 5) + "\n", encoding="utf-8")
+                os.replace(other, self.path)
+            real(src, dst, length)
+
+        with statvfs(10 * GIB), mock.patch.object(bl.shutil, "copyfileobj", copy):
+            bl.trim_history_by_time(self.path, 24)
+        self.assertEqual(self.stamps(), [NOW + 5])
+        self.assertEqual([n for n in os.listdir(self.dir) if ".tmp." in n], [])
 
     def test_failure_leaves_the_file_and_no_exception(self):
         stamps = [NOW - 40 * 3600 + i for i in range(10)] + [NOW]
@@ -164,6 +238,8 @@ class Trim(Dir):
             book.since_trim = book.TRIM_EVERY - 1
             with mock.patch.object(bl, called) as wanted, mock.patch.object(bl, other) as unwanted:
                 book(b"wmbus/board/rx", payload)
+                if book.trim_thread is not None:
+                    book.trim_thread.join(5)
             wanted.assert_called_once()
             unwanted.assert_not_called()
 
@@ -217,7 +293,14 @@ class Export(Dir):
                 mock.patch.object(webui.time, "time", lambda: float(NOW)):
             info = webui.rx_history_info()
         self.assertEqual((info["span_h"], info["reason"], info["effective"]), (2.0, "sd", 0))
-        self.assertEqual(info["size_bytes"], self.hist.stat().st_size)
+        self.assertEqual(info["size_mb"], round(self.hist.stat().st_size / 1e6))
+
+    def test_span_past_a_damaged_first_line(self):
+        self.write([NOW - 7200, NOW])
+        text = self.hist.read_text(encoding="utf-8")
+        self.hist.write_text("damaged\n" + text, encoding="utf-8")
+        with mock.patch.object(webui.time, "time", lambda: float(NOW)):
+            self.assertEqual(webui.rx_history_info()["span_h"], 2.0)
 
     def test_endpoint_hours_and_download(self):
         real_now = int(webui.time.time())
@@ -254,6 +337,7 @@ class Wiring(unittest.TestCase):
         config = (ROOT / "config.yaml").read_text(encoding="utf-8")
         self.assertIn('esp_rx_history_hours: "0"', config)
         self.assertIn("esp_rx_history_hours: list(0|12|24|48|72)", config)
+        self.assertIn('- "esp_rf_rx_history.jsonl*"', config)
         for lang in ("en", "pl", "de", "cs", "sk"):
             text = (ROOT / "translations" / f"{lang}.yaml").read_text(encoding="utf-8")
             self.assertIn("esp_rx_history_hours:", text, lang)
@@ -262,6 +346,7 @@ class Wiring(unittest.TestCase):
         esp = (BIN / "bridge-lib" / "13-esp.sh").read_text(encoding="utf-8")
         self.assertNotIn('_trim_esp_rx_history "${ESP_RF_RX_HISTORY_FILE}" 100000 90000 || true\n  while', esp)
         self.assertEqual(esp.count("_trim_esp_rf_rx_history_at_start"), 3)
+        self.assertIn('rm -f "${ESP_RF_RX_HISTORY_FILE}".tmp.*', esp)
 
     def test_publisher_book_gets_the_hours(self):
         self.assertIn('int(cfg.get("history_hours", 0))',

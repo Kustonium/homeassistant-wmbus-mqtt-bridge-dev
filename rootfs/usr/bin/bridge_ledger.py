@@ -162,11 +162,15 @@ def trim_locked(path: str, max_lines: int, keep_lines: int) -> None:
 # esp_rx_history_hours: the same hours whatever the number of boards, where a
 # limit in lines shrinks with every board added. The file is never read whole:
 # the first line says whether anything is due, and the cut is found by bisection
-# and copied in blocks.
+# and copied in blocks. The copy runs in a thread of its own and without the lock:
+# the same process feeds the decoder, and it must not wait for a disk.
 
-RX_HISTORY_MIN_RAM = 2 << 30
+# 2 GB as the machine is sold: MemTotal is less than that by what the kernel keeps.
+RX_HISTORY_MIN_RAM = int(1.8 * (1 << 30))
 RX_HISTORY_MIN_DISK = 2 << 30
 RX_HISTORY_MAX_BYTES = 1 << 30
+# What stays however little disk is left: about what the limit in lines keeps.
+RX_HISTORY_MIN_BYTES = 32 << 20
 # What the trim leaves free on the disk, whatever the file's limit.
 RX_HISTORY_DISK_RESERVE = 1 << 30
 _RX_TIME = re.compile(rb'"bridge_rx_time":\s*(\d+)')
@@ -185,7 +189,7 @@ def _mem_total(meminfo: str = "/proc/meminfo") -> int:
 def rx_history_policy(hours: int, path: str, history_file: str = "", kind: str = "",
                       meminfo: str = "/proc/meminfo") -> Dict[str, Any]:
     """The hours this machine may keep: `requested`, `effective` (0 = the limit
-    in lines) and `reason` when refused: sd, ram or disk. The history already
+    in lines) and `reason` when refused: sd, emmc, ram or disk. The history already
     on the disk counts as free space, or a full history would refuse itself."""
     out: Dict[str, Any] = {"requested": max(0, hours), "effective": 0, "reason": ""}
     if hours <= 0:
@@ -198,8 +202,8 @@ def rx_history_policy(hours: int, path: str, history_file: str = "", kind: str =
             disk += os.path.getsize(history_file)
     except OSError:
         disk = 0
-    if kind == "sd":
-        out["reason"] = "sd"
+    if kind in ("sd", "emmc"):
+        out["reason"] = kind
     elif memory and memory < RX_HISTORY_MIN_RAM:
         out["reason"] = "ram"
     elif disk < RX_HISTORY_MIN_DISK:
@@ -212,6 +216,19 @@ def rx_history_policy(hours: int, path: str, history_file: str = "", kind: str =
 def _line_time(line: bytes) -> Optional[int]:
     found = _RX_TIME.search(line)
     return int(found.group(1)) if found else None
+
+
+def _first_time(fh: Any, lines: int = 16) -> Optional[int]:
+    """The time of the first lines that have one: a damaged first line must not
+    stop the trim."""
+    for _ in range(lines):
+        line = fh.readline()
+        if not line:
+            return None
+        stamp = _line_time(line)
+        if stamp is not None:
+            return stamp
+    return None
 
 
 def _offset_of_time(fh: Any, size: int, since: float) -> int:
@@ -235,40 +252,50 @@ def _offset_of_time(fh: Any, size: int, since: float) -> int:
         if not line:
             return size
         stamp = _line_time(line)
-        if stamp is None or stamp >= since:
+        if stamp is not None and stamp >= since:
             return start
 
 
 def trim_history_by_time(path: str, hours: int, max_bytes: int = RX_HISTORY_MAX_BYTES,
-                         reserve: int = RX_HISTORY_DISK_RESERVE) -> None:
+                         reserve: int = RX_HISTORY_DISK_RESERVE,
+                         min_bytes: int = RX_HISTORY_MIN_BYTES) -> None:
     """Keep `hours` of the JSONL history, trimming once a quarter more has
     gathered (each trim rewrites the file, a smaller margin rewrites it oftener).
-    Above max_bytes, or with the disk running out, the newest part stays."""
+    Above max_bytes, or with the disk running out, the newest part stays, at least
+    min_bytes of it. The lock is held only to look and to finish: what was appended
+    during the copy is added under it, right before the file is replaced."""
     if not os.path.isfile(path):
         return
     tmp = ""
     try:
-        with locked(path), open(path, "rb") as fh:
-            size = os.path.getsize(path)
-            stat = os.statvfs(os.path.dirname(path) or ".")
-            allowed = min(max_bytes, size + stat.f_bavail * stat.f_frsize - reserve)
-            oldest = _line_time(fh.readline())
-            keep_s = hours * 3600
-            late = oldest is not None and oldest < now() - keep_s * 1.25
-            if not late and size <= allowed:
-                return
-            start = _offset_of_time(fh, size, now() - keep_s) if late else 0
-            if size - start > allowed:
-                fh.seek(max(start, size - max(0, allowed) * 4 // 5))
-                fh.readline()
-                start = fh.tell()
+        with open(path, "rb") as fh:
+            with locked(path):
+                size = os.fstat(fh.fileno()).st_size
+                stat = os.statvfs(os.path.dirname(path) or ".")
+                allowed = max(min_bytes, min(max_bytes, size + stat.f_bavail * stat.f_frsize - reserve))
+                oldest = _first_time(fh)
+                keep_s = hours * 3600
+                late = oldest is not None and oldest < now() - keep_s * 1.25
+                if not late and size <= allowed:
+                    return
+                start = _offset_of_time(fh, size, now() - keep_s) if late else 0
+                if size - start > allowed:
+                    fh.seek(max(start, size - allowed * 4 // 5))
+                    fh.readline()
+                    start = fh.tell()
             directory, base = os.path.split(path)
             fd, tmp = tempfile.mkstemp(prefix=base + ".tmp.", dir=directory or ".")
             with os.fdopen(fd, "wb") as out:
                 fh.seek(start)
                 shutil.copyfileobj(fh, out, 1 << 20)
-            os.replace(tmp, path)
-            tmp = ""
+                with locked(path):
+                    # Replaced meanwhile (the trim of a start): that file stays.
+                    if os.stat(path).st_ino != os.fstat(fh.fileno()).st_ino:
+                        return
+                    shutil.copyfileobj(fh, out, 1 << 20)
+                    out.flush()
+                    os.replace(tmp, path)
+                    tmp = ""
     except OSError as exc:
         # A full disk must not stop the book; the next trim tries again.
         print(f"rx history trim failed: {exc}", file=sys.stderr)
@@ -997,6 +1024,7 @@ class RxBook:
                  history_hours: int = 0) -> None:
         self.reception, self.mode, self.history = reception, mode, history
         self.history_hours = history_hours
+        self.trim_thread: Optional[threading.Thread] = None
         self.sequence, self.boots, self.clock = sequence, boots, clock
         self.rssi_file = rssi_file
         # (meter, board) -> [frames, average dBm or None, last ts,
@@ -1079,7 +1107,11 @@ class RxBook:
         self.since_trim += 1
         if self.since_trim >= self.TRIM_EVERY:
             if self.history_hours > 0:
-                trim_history_by_time(self.history, self.history_hours)
+                if self.trim_thread is None or not self.trim_thread.is_alive():
+                    self.trim_thread = threading.Thread(
+                        target=trim_history_by_time, args=(self.history, self.history_hours),
+                        name="rx-history-trim", daemon=True)
+                    self.trim_thread.start()
             else:
                 trim_locked(self.history, 100000, 90000)
             self.since_trim = 0
