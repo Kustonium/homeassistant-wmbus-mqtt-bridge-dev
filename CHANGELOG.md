@@ -1,3 +1,8 @@
+## 1.6.11-dev.452
+
+### Fixed
+- the trim keeps the newest frames on a full disk and no longer holds up the decoder (5cbd0be)
+
 ## 1.6.11-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
