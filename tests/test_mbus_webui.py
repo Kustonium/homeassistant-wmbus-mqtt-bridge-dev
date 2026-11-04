@@ -127,6 +127,18 @@ class MBusWebUITest(unittest.TestCase):
         self.assertTrue(hasattr(webui, "urllib"))
         self.assertTrue(hasattr(webui.urllib, "request"))
 
+    def test_log_text_can_be_selected_and_copied(self):
+        # Releasing the mouse after a selection is a click, and a live patch of
+        # the rows drops the selection.
+        source = APP_JS.read_text(encoding="utf-8")
+        toggle = source.split('action === "log-line-toggle"', 1)[1].split("render();", 1)[0]
+        self.assertIn('logSelectionActive() || event.target.closest(".live-log-json")', toggle)
+        hold = source.split("function liveRenderHold()", 1)[1].split("function scheduleRender", 1)[0]
+        self.assertIn('"selection"', hold)
+        self.assertIn('addEventListener("selectionchange", resumeHeldRender)', source)
+        i18n = (WEBUI.parent / "i18n.py").read_text(encoding="utf-8")
+        self.assertEqual(i18n.count('"live_paused_selection"'), 5)
+
     def test_every_option_of_the_form_is_explained_in_every_language(self):
         # The settings form shows cfg_desc_<key>; without one an option just hangs
         # there with its bare name. mbus_meters has no inline type, so no field.
