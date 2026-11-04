@@ -1,3 +1,8 @@
+## 1.6.11-dev.450
+
+### Added
+- RX history kept in hours, export of the last hours sent piece by piece (ea965a1)
+
 ## 1.6.11-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
