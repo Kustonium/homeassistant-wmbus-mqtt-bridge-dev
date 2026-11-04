@@ -494,8 +494,16 @@ na bežnom rozhraní. Zapnutie urobí dve veci:
   spojitosť sekvencie podľa dosiek a ohraničenú históriu, s `limit` (1–10000),
   `since` a `until` (UTC epocha, `until` nezahrnuté);
 - pridá tlačidlo **Download RX history** na stránke Prijaté / Hľadať, ktoré uloží
-  tie isté povolené dáta s celým uchovaným bufferom (až 100 000 udalostí) pod
-  názvom súboru s UTC značkou.
+  tie isté povolené dáta pod názvom súboru s UTC značkou: posledných 2-48 hodín
+  (`hours`), kam až história siaha, alebo všetko. Súbor sa posiela po častiach,
+  takže jeho veľkosť nezaťažuje pamäť.
+
+`esp_rx_history_hours` (0, 12, 24, 48 alebo 72, predvolene 0) určuje dĺžku
+histórie. Pri 0 je to posledných 90-100 tisíc rámcov, teda s niekoľkými doskami
+len pár hodín; ostatné hodnoty držia toľko hodín bez ohľadu na počet dosiek (súbor
+má limit 1 GB a 1 GB disku zostáva voľný). Dlhšia história je odmietnutá na SD
+karte, pod 2 GB RAM a pod 2 GB voľného disku; doplnok potom zostane pri predvolenom
+limite a dôvod uvedie v nastaveniach.
 
 Export **nikdy** nevracia RAW telegramy, AES kľúče ani prihlasovacie údaje MQTT
 a je len na čítanie: stiahnutie neskracuje históriu, nenuluje počítadlá a nič

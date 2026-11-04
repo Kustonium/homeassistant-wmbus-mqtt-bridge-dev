@@ -129,7 +129,8 @@ class MBusWebUITest(unittest.TestCase):
     def test_discover_page_offers_read_only_rx_history_download(self):
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("data.options?.esp_rx_api_enabled", source)
-        self.assertIn('href="api/esp-rx?limit=100000&amp;download=1"', source)
+        self.assertIn('href="api/esp-rx?download=1"', source)
+        self.assertIn('href="api/esp-rx?download=1&amp;hours=${h}"', source)
 
     def test_wired_device_discovery_bypasses_cache_and_refreshes(self):
         source = APP_JS.read_text(encoding="utf-8")

@@ -48,3 +48,4 @@ python3 -m unittest tests/test_mbus_config.py -v
 python3 -m unittest tests/test_decode_stage.py -v
 python3 -m unittest tests/test_meter_files.py -v
 python3 -m unittest tests/test_kpl_sanxing.py -v
+python3 -m unittest tests/test_rx_history.py -v

@@ -1,4 +1,7 @@
 configuration:
+  esp_rx_history_hours:
+    name: "Dĺžka histórie RX (hodiny)"
+    description: "Koľko hodín histórie RX uchovávať. 0 = posledných 90-100 tisíc rámcov, teda s niekoľkými doskami len pár hodín. Vyžaduje aspoň 2 GB RAM a 2 GB voľného disku; na SD karte je odmietnuté. Platí po reštarte."
   esp_rx_api_enabled:
     name: "ESP RX dôkazové API"
     description: "Sprístupňuje iba na čítanie endpoint WebUI /api/esp-rx so štruktúrovaným zhrnutím RX a obmedzenou históriou. Predvolene vypnuté; nikdy nevracia RAW telegramy, kľúče AES ani prihlasovacie údaje MQTT."
