@@ -1,3 +1,8 @@
+## 1.6.12-dev.454
+
+### Fixed
+- log text can be selected and copied (5edb44c)
+
 ## 1.6.12-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
