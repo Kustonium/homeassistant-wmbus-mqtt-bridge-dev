@@ -5,6 +5,9 @@ configuration:
   esp_rx_api_enabled:
     name: "ESP-RX-Beweis-API"
     description: "Stellt den nur-lesend zugänglichen WebUI-Endpunkt /api/esp-rx mit strukturierter RX-Zusammenfassung und begrenzter Historie bereit. Standardmäßig aus; liefert nie RAW-Telegramme, AES-Schlüssel oder MQTT-Zugangsdaten."
+  esp_diag_history_enabled:
+    name: "Historie der ESP-Funkdiagnose (fortgeschritten)"
+    description: "Speichert bis zu 10.000 fifo_sample- und pipeline_drop-Ereignisse aus MQTT, einschließlich roher Funkbytes. Nur zur Analyse von Empfängerproblemen; belegt mehr Speicherplatz. Zum Herunterladen ist die ESP-RX-Nachweis-API nötig."
   qds_walkby_enabled:
     name: "Qundis-Walk-by-Block (fortgeschritten)"
     description: >-

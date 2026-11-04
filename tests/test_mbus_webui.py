@@ -3,6 +3,7 @@
 
 import importlib.util
 import json
+import re
 import sys
 import tempfile
 import threading
@@ -125,6 +126,16 @@ class MBusWebUITest(unittest.TestCase):
         # imported urllib.request as a side effect first.
         self.assertTrue(hasattr(webui, "urllib"))
         self.assertTrue(hasattr(webui.urllib, "request"))
+
+    def test_every_option_of_the_form_is_explained_in_every_language(self):
+        # The settings form shows cfg_desc_<key>; without one an option just hangs
+        # there with its bare name. mbus_meters has no inline type, so no field.
+        schema = (ROOT / "config.yaml").read_text(encoding="utf-8").split("\nschema:", 1)[1]
+        keys = re.findall(r"^  (\w+): *\S", schema, re.M)
+        self.assertIn("qds_walkby_enabled", keys)
+        i18n = (WEBUI.parent / "i18n.py").read_text(encoding="utf-8")
+        missing = [key for key in keys if i18n.count(f'"cfg_desc_{key}"') != 5]
+        self.assertEqual(missing, [])
 
     def test_discover_page_offers_read_only_rx_history_download(self):
         source = APP_JS.read_text(encoding="utf-8")
