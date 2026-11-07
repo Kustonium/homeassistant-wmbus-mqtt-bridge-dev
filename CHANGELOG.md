@@ -1,3 +1,12 @@
+## 1.6.13-dev.464
+
+### Added
+- show the meters on air an uploaded driver is for (7fef48b)
+- SAVE + RESTART ADDON in the top bar while settings are unsaved (a38970f)
+
+### Fixed
+- readable file button on the Drivers tab (b5776ee)
+
 ## 1.6.13-dev.462
 
 ### Added
