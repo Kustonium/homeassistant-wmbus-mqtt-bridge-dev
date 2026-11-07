@@ -871,6 +871,102 @@ def drivers_delete(name: str) -> tuple[bool, dict]:
     return True, {"ok": True, "name": name}
 
 
+# Which meters on air an uploaded driver is for: the mvt lines of its detect
+# block against the header of each meter's latest frame, then (decode=True) a
+# trial decode of that frame with the driver, the way Compare does it - a
+# one-shot process with the checked copy, never a running instance.
+_MVT_RE = re.compile(r"^\s*mvt\s*=\s*([A-Za-z@]{3})\s*,\s*([0-9A-Fa-f]{1,2})\s*,\s*([0-9A-Fa-f]{1,2})\s*$", re.M)
+MATCH_DECODE_LIMIT = 12  # trial decodes per driver and request
+
+
+def driver_mvts(path: Path) -> set:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return set()
+    return {(m.upper(), int(v, 16), int(t, 16)) for m, v, t in _MVT_RE.findall(text)}
+
+
+def frame_header(raw: str) -> tuple | None:
+    """(id, mfct, version, type) from a wM-Bus frame: L C M M A A A A V T."""
+    raw = re.sub(r"\s+", "", raw or "")
+    if not re.fullmatch(r"(?:[0-9A-Fa-f]{2}){10,}", raw):
+        return None
+    b = bytes.fromhex(raw[:20])
+    m = b[2] | (b[3] << 8)
+    mfct = "".join(chr(((m >> s) & 0x1F) + 64) for s in (10, 5, 0))
+    return b[4:8][::-1].hex().upper(), mfct, b[8], b[9]
+
+
+def _latest_frames() -> dict:
+    """{id: (raw, ts)}: the latest stored frame of every meter heard - the
+    candidates' own rows, then the RAW ring for configured meters."""
+    latest: dict = {}
+
+    def keep(raw: str, ts: str) -> None:
+        h = frame_header(raw)
+        if h and (h[0] not in latest or ts >= latest[h[0]][1]):
+            latest[h[0]] = (raw.strip(), ts)
+
+    for r in read_tsv(CANDIDATE_RAW_TSV, ["id", "ts", "raw_len", "raw"]):
+        keep(str(r.get("raw") or ""), str(r.get("ts") or ""))
+    for r in read_tsv(RECENT_RAW_TSV, ["ts", "raw_len", "raw"])[-200:]:
+        keep(str(r.get("raw") or ""), str(r.get("ts") or ""))
+    return latest
+
+
+def _preview_values(fields: dict, n: int = 3) -> dict:
+    """A few readable values of a decode: numbers and short texts first."""
+    out = {}
+    for k, v in fields.items():
+        if k in ("hex", "rssi_dbm") or v is None or isinstance(v, (dict, list)):
+            continue
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            out[k] = v
+        if len(out) >= n:
+            break
+    return out
+
+
+def external_driver_matches(decode: bool = True) -> dict:
+    if not custom_drivers_enabled():
+        return {"ok": False, "reason": "disabled"}
+    configured = {}
+    opts = read_options()
+    for m in (opts.get("meters") or []) if isinstance(opts, dict) else []:
+        if isinstance(m, dict):
+            mid = normalize_meter_id(m.get("meter_id"))
+            if mid:
+                configured[mid] = {"name": str(m.get("id") or ""), "driver": _meter_driver(m) or "auto",
+                                   "key": str(m.get("key") or "").strip()}
+    frames = _latest_frames()
+    headers = {mid: frame_header(raw) for mid, (raw, _) in frames.items()}
+    drivers = []
+    for name in accepted_external_drivers():
+        mvts = driver_mvts(EXT_DRIVERS_DIR / f"{name}.xmq")
+        meters = []
+        for mid, (raw, ts) in sorted(frames.items(), key=lambda kv: kv[1][1], reverse=True):
+            h = headers[mid]
+            if not h or (h[1], h[2], h[3]) not in mvts:
+                continue
+            cfg = configured.get(mid)
+            entry = {"id": mid, "mvt": f"{h[1]},{h[2]:02x},{h[3]:02x}", "last_seen": ts,
+                     "configured": ({"name": cfg["name"], "driver": cfg["driver"]} if cfg else None),
+                     "state": "not_checked", "values": {}}
+            if decode and len(meters) < MATCH_DECODE_LIMIT:
+                key = cfg["key"] if cfg and re.fullmatch(r"[0-9A-Fa-f]{32}", cfg["key"]) else ""
+                fields = _decode_with_driver(raw, name, mid, key)
+                if fields is None:
+                    entry["state"] = "failed"
+                else:
+                    entry["values"] = _preview_values(fields)
+                    entry["state"] = "decoded" if entry["values"] else "no_values"
+            meters.append(entry)
+        drivers.append({"name": name, "mvts": sorted(f"{m},{v:02x},{t:02x}" for m, v, t in mvts),
+                        "meters": meters})
+    return {"ok": True, "drivers": drivers, "decoded": decode}
+
+
 def compare_meter_drivers(meter_id: str, requested_driver: str, key_override: str | None = None) -> tuple[bool, dict]:
     """Decode a meter's last frame with wmbusmeters' auto driver (when useful)
     or the saved driver, and with the requested driver. Pure read + short-lived
@@ -4673,7 +4769,7 @@ class Handler(BaseHTTPRequestHandler):
             '/api/mbus/meter-fields',
             '/api/mbus/console', '/api/mbus/scan', '/api/mbus/poll-one',
             '/api/mbus/detect-driver',
-            '/api/drivers', '/api/drivers/upload', '/api/drivers/delete',
+            '/api/drivers', '/api/drivers/upload', '/api/drivers/delete', '/api/drivers/matches',
         )
         if any(path.endswith(suffix) for suffix in api_suffixes):
             return path
@@ -5146,6 +5242,11 @@ class Handler(BaseHTTPRequestHandler):
             meter_id = (params.get('meter_id') or [''])[0].strip()
             ok, payload = candidate_issue_report(meter_id)
             self._send_json(200 if ok else 404, payload)
+            return
+        if path.endswith('/api/drivers/matches'):
+            decode = (params.get('decode') or ['1'])[0].strip().lower() not in ('0', 'false', 'no')
+            payload = external_driver_matches(decode)
+            self._send_json(200 if payload.get("ok") else 404, payload)
             return
         if path.endswith('/api/drivers'):
             if not custom_drivers_enabled():

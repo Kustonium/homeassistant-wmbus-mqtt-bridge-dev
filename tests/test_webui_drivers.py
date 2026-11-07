@@ -116,6 +116,43 @@ class Drivers(unittest.TestCase):
             self.assertFalse(any(a.startswith("--driversdir") for a in run.call_args[0][0]))
 
 
+class Matches(unittest.TestCase):
+    HYDRO = (ROOT / "tests" / "fixtures" / "hydrodigit" / "03264950.hex").read_text().strip()
+    KAM = (ROOT / "tests" / "fixtures" / "kamwater" / "53119425.hex").read_text().strip()
+
+    def test_frame_header(self):
+        self.assertEqual(webui.frame_header(self.HYDRO)[:2], ("03264950", "BMT"))
+        self.assertIsNone(webui.frame_header("zz"))
+        self.assertIsNone(webui.frame_header("1e44"))
+
+    def test_only_meters_with_a_driver_mvt_match(self):
+        Drivers.setUp(self)
+        hdr = webui.frame_header(self.HYDRO)
+        mvt = f"BMT,{hdr[2]:02x},{hdr[3]:02x}"
+        self.assertTrue(webui.drivers_upload(driver("external_good", f"mvt = {mvt}"), nda=True)[0])
+        (webui.RUNTIME / "status_candidate_raw.tsv").write_text(
+            f"03264950\t2026-11-07T21:50:00+00:00\t{len(self.HYDRO) // 2}\t{self.HYDRO}\n"
+            f"53119425\t2026-11-07T21:51:00+00:00\t{len(self.KAM) // 2}\t{self.KAM}\n", encoding="utf-8")
+        with mock.patch.object(webui, "_decode_with_driver", return_value={"total_m3": 0.066, "media": "x"}) as dec:
+            res = webui.external_driver_matches(decode=True)
+        d = res["drivers"][0]
+        self.assertEqual(d["mvts"], [mvt])
+        self.assertEqual([m["id"] for m in d["meters"]], ["03264950"])
+        m = d["meters"][0]
+        # Drivers.setUp configures 03264950 on external_good: "Uses it" in the tab.
+        self.assertEqual((m["state"], m["values"], m["configured"]),
+                         ("decoded", {"total_m3": 0.066}, {"name": "Ext", "driver": "external_good"}))
+        dec.assert_called_once()
+        with mock.patch.object(webui, "_decode_with_driver") as dec:
+            res = webui.external_driver_matches(decode=False)
+            dec.assert_not_called()
+        self.assertEqual(res["drivers"][0]["meters"][0]["state"], "not_checked")
+        self.options({"custom_drivers_enabled": False})
+        self.assertFalse(webui.external_driver_matches()["ok"])
+
+    options = Drivers.options
+
+
 class Texts(unittest.TestCase):
     def test_every_drivers_text_exists_in_five_languages(self):
         js = APP_JS.read_text(encoding="utf-8")

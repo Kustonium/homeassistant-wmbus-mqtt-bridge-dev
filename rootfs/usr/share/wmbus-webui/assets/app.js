@@ -137,6 +137,11 @@
     xdrvLoading: false,
     xdrvBusy: false,
     xdrvNotNda: false,
+    // api/drivers/matches: with trial decodes for the Drivers tab, and the
+    // id -> driver names map (refreshed once a minute) for the RX pills.
+    xdrvMatches: null,
+    xdrvMatchesLoading: false,
+    xdrvMatchIds: null,
     // Result of the last 0xFE bus probe: {state, reply_hex}.
     mbusProbe: null,
     // Driver catalog (assets/drivers.json, baked at image build time from the
@@ -2452,7 +2457,7 @@
                 return groupDivider(_arr[_i - 1], row) + `
                   <tr data-value="${escapeHtml(previewVal)}" data-id="${escapeHtml(id)}" data-driver="${escapeHtml(driver)}" data-media="${escapeHtml(mc)}" data-manufacturer="${escapeHtml(mfrRaw)}">
                     <td><strong>${escapeHtml(id)}</strong></td>
-                    <td>${escapeHtml(driver)}</td>
+                    <td>${escapeHtml(driver)}${xdrvMatchPill(id)}</td>
                     <td style="color:#9eafba;font-size:12px;">${escapeHtml(row.type || "-")}</td>
                     <td><span class="candidate-medium">${mediaIconHtml(row.type || "", driver)}<span>${escapeHtml(mediaLabel)}</span></span></td>
                     <td>${mfrCell}</td>
@@ -4486,7 +4491,103 @@
           <tbody>${rows}</tbody>
         </table></div>` : `<p class="hint">${escapeHtml(t("xdrv_empty", "No driver uploaded yet."))}</p>`}
       </div>
+      ${files.some(f => f.ok) ? driverMatchesCard() : ""}
     </div>`;
+  }
+
+  // Meters on air an uploaded driver is for (api/drivers/matches): the mvt of
+  // its detect block against each meter's latest frame. decode=1 adds a trial
+  // decode (Drivers tab); decode=0 is the cheap form for the RX pills.
+  async function loadDriverMatches(decode) {
+    if (state.xdrvMatchesLoading) return;
+    state.xdrvMatchesLoading = true;
+    try {
+      const response = await fetch(`api/drivers/matches?decode=${decode ? 1 : 0}`, {cache: "no-store"});
+      const data = response.ok ? await response.json() : {error: true};
+      if (decode) state.xdrvMatches = data;
+      const ids = {};
+      for (const d of asArray(data.drivers)) {
+        for (const m of asArray(d.meters)) (ids[m.id] = ids[m.id] || []).push(d.name);
+      }
+      state.xdrvMatchIds = {at: Date.now(), ids};
+    } catch (_) {
+      if (decode) state.xdrvMatches = {error: true};
+    } finally {
+      state.xdrvMatchesLoading = false;
+      render();
+    }
+  }
+
+  // RX / SEARCH: refreshed at most once a minute while the tab is open.
+  function ensureDriverMatchIds() {
+    if (!driversTabVisible() || state.xdrvMatchesLoading) return;
+    const at = state.xdrvMatchIds?.at || 0;
+    if (Date.now() - at > 60000) loadDriverMatches(false);
+  }
+
+  function xdrvMatchPill(id) {
+    if (!driversTabVisible()) return "";
+    const names = state.xdrvMatchIds?.ids?.[id];
+    if (!names || !names.length) return "";
+    return `<div style="margin-top:4px;"><a class="pill warn" href="#drivers" style="text-decoration:none;" title="${escapeHtml(t("xdrv_match_pill_hint", "An uploaded external driver is for this meter - see DRIVERS"))}">${escapeHtml(t("xdrv_match_pill", "matches: {driver}", {driver: names.join(", ")}))}</a></div>`;
+  }
+
+  function driverMatchesCard() {
+    const mt = state.xdrvMatches;
+    const head = `<h3>${escapeHtml(t("xdrv_matches_title", "Matching meters on air"))}
+      <button class="btn" style="margin-left:8px;" data-action="xdrv-matches-refresh"${state.xdrvMatchesLoading ? " disabled" : ""}>${escapeHtml(t("xdrv_matches_refresh", "Check again"))}</button></h3>
+      <p class="hint">${escapeHtml(t("xdrv_matches_hint", "Meters whose latest frame has the manufacturer, version and type from the driver's detect block, each decoded on trial with the driver. Nothing running is touched."))}</p>`;
+    if (!mt) {
+      if (!state.xdrvMatchesLoading) loadDriverMatches(true);
+      return `<div class="card">${head}<p>${escapeHtml(t("xdrv_matches_checking", "Checking the meters on air..."))}</p></div>`;
+    }
+    if (mt.error) {
+      return `<div class="card">${head}<p>${escapeHtml(t("xdrv_load_failed", "Could not load the external drivers."))}</p></div>`;
+    }
+    const stateText = (m) => {
+      if (m.state === "decoded") {
+        return Object.entries(m.values || {}).map(([k, v]) =>
+          `<div class="mono" style="font-size:12px;"><span style="color:var(--muted);">${escapeHtml(k)}</span> ${escapeHtml(String(v))}</div>`).join("");
+      }
+      const key = {
+        no_values: ["xdrv_match_no_values", "No values: an encrypted frame without the key, or the driver does not fit its content."],
+        failed: ["xdrv_match_failed", "The trial decode failed."],
+        not_checked: ["xdrv_match_not_checked", "Not checked (only the first meters are decoded)."],
+      }[m.state] || ["xdrv_match_not_checked", "Not checked (only the first meters are decoded)."];
+      return `<span class="hint">${escapeHtml(t(key[0], key[1]))}</span>`;
+    };
+    const sections = asArray(mt.drivers).map(d => {
+      const meters = asArray(d.meters);
+      const rows = meters.map(m => {
+        const cfg = m.configured;
+        let action;
+        if (!cfg) {
+          action = `<button class="btn primary" data-action="open-add" data-id="${escapeHtml(m.id)}" data-driver="${escapeHtml(d.name)}">${escapeHtml(t("xdrv_match_add", "Add with this driver"))}</button>`;
+        } else if (cfg.driver === d.name) {
+          action = `<span class="pill ok">${escapeHtml(t("xdrv_match_in_use", "Uses it"))}</span>`;
+        } else {
+          action = `<button class="btn" data-action="open-edit-driver" data-id="${escapeHtml(m.id)}" data-driver="${escapeHtml(d.name)}">${escapeHtml(t("xdrv_match_switch", "Switch to {driver}", {driver: d.name}))}</button>`;
+        }
+        return `<tr>
+          <td><strong>${escapeHtml(m.id)}</strong>${cfg ? `<div class="hint">${escapeHtml(cfg.name)} · ${escapeHtml(cfg.driver)}</div>` : `<div class="hint">${escapeHtml(t("xdrv_match_new", "not configured"))}</div>`}</td>
+          <td class="mono" style="font-size:12px;">${escapeHtml(m.mvt)}</td>
+          <td>${fmtTime(m.last_seen)}</td>
+          <td>${stateText(m)}</td>
+          <td>${action}</td>
+        </tr>`;
+      }).join("");
+      return `<h4 style="margin:14px 0 6px;"><code>${escapeHtml(d.name)}</code></h4>
+        ${meters.length ? `<div class="table-wrap"><table>
+          <thead><tr>
+            <th>ID</th>
+            <th>${escapeHtml(t("xdrv_match_col_mvt", "Manufacturer, version, type"))}</th>
+            <th>${escapeHtml(t("xdrv_match_col_seen", "Latest frame"))}</th>
+            <th>${escapeHtml(t("xdrv_match_col_values", "Trial decode"))}</th>
+            <th></th>
+          </tr></thead><tbody>${rows}</tbody></table></div>`
+          : `<p class="hint">${escapeHtml(t("xdrv_match_none", "No meter with this data is heard now ({mvts}). Some meters fall silent at night and at weekends.", {mvts: asArray(d.mvts).join("; ")}))}</p>`}`;
+    }).join("");
+    return `<div class="card">${head}${sections || `<p class="hint">${escapeHtml(t("xdrv_empty", "No driver uploaded yet."))}</p>`}</div>`;
   }
 
   // The checkbox lives in state: a live render rebuilds the page from it, and
@@ -5093,6 +5194,7 @@
       case "meters":
         return shell(metersPage());
       case "discover":
+        ensureDriverMatchIds();
         return shell(discoverPage());
       case "search":
         return shell(searchPage());
@@ -5496,6 +5598,12 @@
       return;
     }
 
+    if (action === "xdrv-matches-refresh") {
+      state.xdrvMatches = null;
+      await loadDriverMatches(true);
+      return;
+    }
+
     if (action === "xdrv-upload") {
       const input = document.getElementById("xdrv_file");
       const file = input && input.files && input.files[0];
@@ -5517,6 +5625,8 @@
         toast(t("xdrv_uploaded", "Driver {name} accepted.", {name: result.name || ""}));
         if (input) input.value = "";
         state.xdrvNotNda = false;
+        state.xdrvMatches = null;
+        state.xdrvMatchIds = null;
         await loadDrivers(true);
         triggerSoftReload(t("xdrv_reloading", "Starting the external instance with the new drivers..."));
       } catch (error) {
@@ -5536,6 +5646,8 @@
       try {
         await postDrivers("delete", {name});
         toast(t("xdrv_deleted", "Driver {name} removed.", {name}));
+        state.xdrvMatches = null;
+        state.xdrvMatchIds = null;
         await loadDrivers(true);
         triggerSoftReload();
       } catch (error) {
