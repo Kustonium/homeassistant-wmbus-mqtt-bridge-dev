@@ -1,3 +1,8 @@
+## 1.6.13-dev.460
+
+### Added
+- Drivers tab - upload, check and remove external .xmq drivers (b5cf87b)
+
 ## 1.6.13-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
