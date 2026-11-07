@@ -1,3 +1,10 @@
+## 1.6.13-dev.458
+
+### Added
+- meters on an external_* driver never reach the main wmbusmeters (f48fecb)
+- custom_drivers_enabled option, checked at every start (9ec7bc2)
+- check external .xmq drivers before any instance loads them (dd55424)
+
 ## 1.6.13-dev.456
 
 ### Added
