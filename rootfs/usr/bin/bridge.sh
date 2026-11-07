@@ -353,6 +353,16 @@ ESP_RX_HISTORY_HOURS="$(python3 "${BRIDGE_SCRIPT_DIR:-/usr/bin}/bridge_ledger.py
   --history-file "${ESP_RF_RX_HISTORY_FILE}" --storage-file "${STATUS_STORAGE_FILE}" \
   --json-file "${RUNTIME}/status_esp_rx_history.json" 2>/dev/null || true)"
 [[ "${ESP_RX_HISTORY_HOURS}" =~ ^[0-9]+$ ]] || ESP_RX_HISTORY_HOURS=0
+# External .xmq drivers (custom_drivers.py). Checked here, each in a process of
+# its own, and only the accepted ones are copied for the separate instance that
+# decodes the external_* meters; the main instance never sees them. With the
+# option off the instance directory is emptied, so nothing is loaded.
+CUSTOM_DRIVERS_ENABLED="$(json_get_bool '.custom_drivers_enabled' 'false')"
+EXT_BASE="${BASE}/external"
+EXT_DRIVERS_DIR="${EXT_BASE}/etc/wmbusmeters.drivers.d"
+STATUS_CUSTOM_DRIVERS_FILE="${RUNTIME}/status_custom_drivers.json"
+mkdir -p "${EXT_DRIVERS_DIR}" 2>/dev/null || true
+CUSTOM_DRIVERS_RESULT="$(python3 "${BRIDGE_SCRIPT_DIR:-/usr/bin}/custom_drivers.py" install   --dest "${EXT_DRIVERS_DIR}" --status "${STATUS_CUSTOM_DRIVERS_FILE}"   --enabled "${CUSTOM_DRIVERS_ENABLED}" 2>&1 || true)"
 # Qundis walk-by block (0DFF5F). Off by default: no effect on installs that
 # never see the block. On (a) rejects walk-by records the decoder cannot
 # validate, so upstream cannot publish ciphertext as a reading, and (b) with
@@ -433,6 +443,7 @@ log "robust: ignore_retained=${IGNORE_RETAINED} require_timestamp=${REQUIRE_TIME
 log "verify_ha_entities: ${VERIFY_HA_ENTITIES}"
 log "esp_diag_history_enabled: ${ESP_DIAG_HISTORY_ENABLED}"
 log "esp_rx_history_hours: ${ESP_RX_HISTORY_HOURS}"
+log "custom_drivers_enabled: ${CUSTOM_DRIVERS_ENABLED}${CUSTOM_DRIVERS_RESULT:+ (${CUSTOM_DRIVERS_RESULT})}"
 status_add_event "ok" "bridge starting"
 write_status_json
 
