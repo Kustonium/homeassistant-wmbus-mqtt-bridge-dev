@@ -1,3 +1,8 @@
+## 1.6.13-dev.456
+
+### Added
+- check external .xmq drivers before any instance loads them (dd55424)
+
 ## 1.6.13-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
