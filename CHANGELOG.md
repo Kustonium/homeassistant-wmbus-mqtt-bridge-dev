@@ -1,3 +1,9 @@
+## 1.6.13-dev.466
+
+### Fixed
+- the Drivers tab is fetched again on every visit and every 30 s (b0e218f)
+- matching meters list the user's own first, the reading first (1b80c7d)
+
 ## 1.6.13-dev.465
 
 ### Added
