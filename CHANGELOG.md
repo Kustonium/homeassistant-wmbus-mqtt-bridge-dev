@@ -1,3 +1,11 @@
+## 1.6.13-dev.462
+
+### Added
+- Drivers tab - upload, check and remove external .xmq drivers (b5cf87b)
+
+### Fixed
+- readable file button on the Drivers tab (b5776ee)
+
 ## 1.6.13-dev.460
 
 ### Added
