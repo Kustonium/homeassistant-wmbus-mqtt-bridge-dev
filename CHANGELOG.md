@@ -1,3 +1,11 @@
+## 1.6.13-dev.465
+
+### Added
+- show the meters on air an uploaded driver is for (7fef48b)
+
+### Fixed
+- matching meters list the user's own first, the reading first (1b80c7d)
+
 ## 1.6.13-dev.464
 
 ### Added
