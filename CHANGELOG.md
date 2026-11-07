@@ -1,3 +1,9 @@
+## 1.6.13-dev.460
+
+### Added
+- external instance decodes the external_* meters, merged into the one decode stage (d1111ec)
+- meters on an external_* driver never reach the main wmbusmeters (f48fecb)
+
 ## 1.6.13-dev.458
 
 ### Added
