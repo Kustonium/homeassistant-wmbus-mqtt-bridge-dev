@@ -1292,7 +1292,7 @@
               ${bridgeStale
                 ? `<span class="pill bad"><span class="dot"></span>${escapeHtml(t("webui_stale", "STALE"))}</span>`
                 : `<span class="pill ${state.liveConnected ? "ok" : "muted"}"><span class="dot"></span>${state.liveConnected ? "LIVE" : "POLL"}</span>`}
-              <button class="btn danger" data-action="restart">${escapeHtml(t("webui_restart", "Restart"))}</button>
+              ${topRestartButton()}
             </div>
           </header>
           <div class="content">
@@ -3829,7 +3829,45 @@
   window.__cfgSet = function (key, value) {
     if (!state.configEdits) state.configEdits = {};
     state.configEdits[key] = value;
+    // Only the top-bar button follows at once (no full render: focus).
+    const b = document.getElementById("top-restart");
+    if (b) b.outerHTML = topRestartButton();
   };
+
+  // Unsaved settings: an edit that differs from the saved value (a secret
+  // counts once something is typed).
+  function configDirty() {
+    const edits = state.configEdits || {};
+    for (const s of ((state.data || {}).config_options) || []) {
+      if (!(s.key in edits)) continue;
+      if (s.secret ? String(edits[s.key]) !== "" : String(edits[s.key]) !== String(s.value)) return true;
+    }
+    return false;
+  }
+
+  // On SETTINGS with unsaved changes the top-bar button saves and restarts,
+  // so a change is applied without scrolling down to "Save options".
+  function topRestartButton() {
+    if (state.route === "settings" && configDirty()) {
+      return `<button class="btn danger" id="top-restart" data-action="save-restart">${escapeHtml(t("save_restart_addon", "SAVE + RESTART ADDON"))}</button>`;
+    }
+    return `<button class="btn danger" id="top-restart" data-action="restart">${escapeHtml(t("webui_restart", "Restart"))}</button>`;
+  }
+
+  function configPayload() {
+    const edits = state.configEdits || {};
+    const payload = {};
+    for (const s of ((state.data || {}).config_options) || []) {
+      const k = s.key;
+      if (s.secret) {
+        // Blank/untouched secret = keep current — only send a typed value.
+        if (k in edits && String(edits[k]) !== "") payload[k] = edits[k];
+      } else {
+        payload[k] = (k in edits) ? edits[k] : s.value;
+      }
+    }
+    return payload;
+  }
   window.__editModalKeySet = function (value) {
     if (state.editModal) {
       state.editModal.key = String(value == null ? "" : value);
@@ -5747,20 +5785,8 @@
     }
 
     if (action === "save-config") {
-      const opts = ((state.data || {}).config_options) || [];
-      const edits = state.configEdits || {};
-      const payload = {};
-      for (const s of opts) {
-        const k = s.key;
-        if (s.secret) {
-          // Blank/untouched secret = keep current — only send a typed value.
-          if (k in edits && String(edits[k]) !== "") payload[k] = edits[k];
-        } else {
-          payload[k] = (k in edits) ? edits[k] : s.value;
-        }
-      }
       try {
-        const res = await postApi("save-config", payload);
+        const res = await postApi("save-config", configPayload());
         state.configEdits = {};
         await fetchData(currentLang());
         toast(res.message || t("cfg_saved", "Options saved. Restart to apply."));
@@ -6009,8 +6035,21 @@
       return;
     }
 
-    if (action === "restart") {
-      if (!window.confirm(t("webui_restart_confirm", "Restart the Home Assistant add-on?"))) return;
+    if (action === "restart" || action === "save-restart") {
+      if (action === "save-restart") {
+        if (!window.confirm(t("save_restart_confirm", "Save the changed options and restart the add-on?"))) return;
+        try {
+          await postApi("save-config", configPayload());
+          state.configEdits = {};
+        } catch (error) {
+          // Nothing restarts when the options were not saved.
+          toast(error.message, true);
+          render();
+          return;
+        }
+      } else if (!window.confirm(t("webui_restart_confirm", "Restart the Home Assistant add-on?"))) {
+        return;
+      }
       // Docker standalone: /api/restart-bridge SIGTERMs PID 1 (the entrypoint
       // traps it and exits), so the same restarting overlay + recovery poll
       // applies — the container comes back under a restart policy. Without
