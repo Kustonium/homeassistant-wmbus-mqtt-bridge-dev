@@ -361,8 +361,15 @@ CUSTOM_DRIVERS_ENABLED="$(json_get_bool '.custom_drivers_enabled' 'false')"
 EXT_BASE="${BASE}/external"
 EXT_DRIVERS_DIR="${EXT_BASE}/etc/wmbusmeters.drivers.d"
 STATUS_CUSTOM_DRIVERS_FILE="${RUNTIME}/status_custom_drivers.json"
-mkdir -p "${EXT_DRIVERS_DIR}" 2>/dev/null || true
-CUSTOM_DRIVERS_RESULT="$(python3 "${BRIDGE_SCRIPT_DIR:-/usr/bin}/custom_drivers.py" install   --dest "${EXT_DRIVERS_DIR}" --status "${STATUS_CUSTOM_DRIVERS_FILE}"   --enabled "${CUSTOM_DRIVERS_ENABLED}" 2>&1 || true)"
+# Meters on an external_* driver (wmbus_meters.py refresh) are written here,
+# for the external instance only. Exported for bridge_ledger.meter_files: they
+# still count as configured meters (no preview for them, their RSSI is wanted).
+EXTERNAL_METER_DIR="${EXT_BASE}/etc/wmbusmeters.d"
+export EXTERNAL_METER_DIR
+# shellcheck disable=SC2034  # set by refresh_meter_files (07-meters.sh)
+EXTERNAL_METERS_COUNT=0
+mkdir -p "${EXT_DRIVERS_DIR}" "${EXTERNAL_METER_DIR}" 2>/dev/null || true
+CUSTOM_DRIVERS_RESULT="$(python3 "${BRIDGE_SCRIPT_DIR:-/usr/bin}/custom_drivers.py" install --dest "${EXT_DRIVERS_DIR}" --status "${STATUS_CUSTOM_DRIVERS_FILE}" --enabled "${CUSTOM_DRIVERS_ENABLED}" 2>&1 || true)"
 # Qundis walk-by block (0DFF5F). Off by default: no effect on installs that
 # never see the block. On (a) rejects walk-by records the decoder cannot
 # validate, so upstream cannot publish ciphertext as a reading, and (b) with
