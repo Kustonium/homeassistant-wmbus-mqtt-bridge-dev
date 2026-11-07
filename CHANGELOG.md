@@ -1,24 +1,30 @@
-## 1.6.13-dev.460
-
-### Added
-- external instance decodes the external_* meters, merged into the one decode stage (d1111ec)
-- meters on an external_* driver never reach the main wmbusmeters (f48fecb)
-
-## 1.6.13-dev.458
-
-### Added
-- meters on an external_* driver never reach the main wmbusmeters (f48fecb)
-- custom_drivers_enabled option, checked at every start (9ec7bc2)
-- check external .xmq drivers before any instance loads them (dd55424)
-
-## 1.6.13-dev.456
-
-### Added
-- check external .xmq drivers before any instance loads them (dd55424)
-
 ## 1.6.13-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
+
+### Added
+- **External wmbusmeters drivers (.xmq), off by default (`custom_drivers_enabled`).**
+  With the option on, a DRIVERS tab appears. A driver file is uploaded from the
+  browser, never copied by hand. Every file is checked in a wmbusmeters process of
+  its own before anything uses it, and a file with an error is refused with the
+  reason. The driver name must start with `external_`. By default a file is treated
+  as confidential (NDA) and left out of Home Assistant backups; a tick says it may
+  go into them.
+- **Meters set to an external driver are decoded by a separate wmbusmeters
+  instance.** A faulty driver cannot stop the other meters: wmbusmeters ends on a
+  bad driver file, and a driver whose detect data matches a built-in one takes that
+  driver's place in the process that loads it. The main instance never loads an
+  external file. The separate instance stops after five quick crashes in a row
+  until the next reload; the DRIVERS tab shows its state. The decoded telegrams are
+  published exactly like the others.
+- A meter set to an external driver that is not uploaded or not accepted is skipped,
+  and the log says why. Accepted drivers appear in the driver list under
+  "External", and Compare can decode with them.
+
+### Changed
+- The README states the measured size of the RX history: with six boards, 48 hours
+  take about 180 MB, up to about 220 MB just before a trim (the 1.6.11 estimate,
+  150-190 MB, assumed 14,000 frames an hour).
 
 ## 1.6.12-dev
 
