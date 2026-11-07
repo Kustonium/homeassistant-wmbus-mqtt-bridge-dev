@@ -6242,8 +6242,27 @@
       await loadMbus(true);
       return;
     }
+    // The Drivers tab shows state that changes elsewhere (a meter switched in
+    // the add or edit dialog, the external instance started by the reload):
+    // fetched again on every visit, not kept from the first one.
+    if (state.route === "drivers") {
+      state.xdrvMatches = null;
+      if (state.xdrv) {
+        await loadDrivers(true);
+        return;
+      }
+    }
     render();
   });
+
+  // While the Drivers tab is open: its list and the instance state every 30 s
+  // (the instance starts a few seconds after a reload). The trial decodes are
+  // not repeated here; "Check again" does that.
+  window.setInterval(() => {
+    if (!document.hidden && state.route === "drivers" && state.xdrv && !state.xdrvBusy) {
+      loadDrivers(true);
+    }
+  }, 30000);
 
   fetchData();
   window.setInterval(() => {
