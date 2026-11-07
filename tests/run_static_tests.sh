@@ -52,3 +52,4 @@ python3 -m unittest tests/test_rx_history.py -v
 python3 -m unittest tests/test_custom_drivers.py -v
 python3 -m unittest tests/test_external_meters.py -v
 python3 -m unittest tests/test_external_instance.py -v
+python3 -m unittest tests/test_webui_drivers.py -v

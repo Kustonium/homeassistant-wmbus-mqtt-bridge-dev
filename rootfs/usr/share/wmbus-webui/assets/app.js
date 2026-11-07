@@ -33,11 +33,20 @@
     return Boolean(state.data?.mbus_tab_visible);
   }
 
+  // External drivers (.xmq): the tab exists only with custom_drivers_enabled,
+  // and the route is gated the same way as #mbus.
+  function driversTabVisible() {
+    return Boolean(state.data?.custom_drivers_enabled);
+  }
+
   function visibleNavItems() {
-    if (!mbusTabVisible()) return navItems;
+    const mbus = mbusTabVisible();
+    const drivers = driversTabVisible();
+    if (!mbus && !drivers) return navItems;
     const out = [];
     for (const item of navItems) {
-      if (item[0] === "logs") out.push(["mbus", "nav_mbus", "MB"]);
+      if (mbus && item[0] === "logs") out.push(["mbus", "nav_mbus", "MB"]);
+      if (drivers && item[0] === "settings") out.push(["drivers", "nav_drivers", "XD"]);
       out.push(item);
     }
     return out;
@@ -122,6 +131,12 @@
     // null = not fetched yet; fetched lazily when the tab is opened.
     mbus: null,
     mbusLoading: false,
+    // Drivers tab (api/drivers): null = not fetched yet. xdrvBusy while an
+    // upload or a removal runs.
+    xdrv: null,
+    xdrvLoading: false,
+    xdrvBusy: false,
+    xdrvNotNda: false,
     // Result of the last 0xFE bus probe: {state, reply_hex}.
     mbusProbe: null,
     // Driver catalog (assets/drivers.json, baked at image build time from the
@@ -3745,7 +3760,10 @@
   // the wild: options.json kept type=auto after choosing istawater). With
   // the choice in state, every rebuild renders the user's current pick.
   function driverPickerHtml(prefill, hiddenId, hiddenName) {
-    const drivers = state.drivers || [];
+    // Accepted external drivers join the catalog in a group of their own.
+    const extGroup = t("xdrv_picker_group", "External (uploaded)");
+    const drivers = (state.drivers || []).concat(
+      asArray(state.data?.external_drivers).map(n => ({driver: n, type: extGroup})));
     const known = new Set(drivers.map(d => d.driver));
     // prefill === "" means "custom mode, empty text" (mid-typing across a
     // re-render); other empty-ish/unknown prefills fall back to "auto".
@@ -4335,6 +4353,119 @@
         render();
       })
       .catch(() => { state.drivers = []; });
+  }
+
+  async function loadDrivers(force = false) {
+    if (state.xdrvLoading) return;
+    if (state.xdrv && !force) return;
+    state.xdrvLoading = true;
+    try {
+      const response = await fetch("api/drivers", {cache: "no-store"});
+      state.xdrv = response.ok ? await response.json() : {error: true};
+    } catch (_) {
+      state.xdrv = {error: true};
+    } finally {
+      state.xdrvLoading = false;
+      render();
+    }
+  }
+
+  // Why a file was refused, in the user's words; the code itself as a fallback.
+  function xdrvReason(code) {
+    const c = String(code || "");
+    if (!c) return "";
+    return t(`xdrv_reason_${c}`, c);
+  }
+
+  function driversPage() {
+    const x = state.xdrv || {};
+    if (x.error) {
+      return `<div class="card"><p>${escapeHtml(t("xdrv_load_failed", "Could not load the external drivers."))}</p></div>`;
+    }
+    const files = asArray(x.files);
+    const inst = x.instance || {};
+    const instState = String(inst.state || "");
+    const instPill = {
+      running: ["ok", t("xdrv_inst_running", "Running")],
+      exited: ["warn", t("xdrv_inst_exited", "Restarting")],
+      crash_loop: ["bad", t("xdrv_inst_crash_loop", "Stopped after repeated crashes")],
+      no_meters: ["muted", t("xdrv_inst_no_meters", "Not started: no meter uses an external driver")],
+      disabled: ["muted", t("xdrv_inst_disabled", "Off")],
+    }[instState] || ["muted", t("xdrv_inst_unknown", "Not started yet")];
+    const missing = Object.entries(x.missing || {});
+    const rows = files.map(f => {
+      const status = f.ok === null || f.ok === undefined
+        ? `<span class="pill muted">${escapeHtml(t("xdrv_status_pending", "Checked at the next reload"))}</span>`
+        : f.ok
+          ? `<span class="pill ok">${escapeHtml(t("xdrv_status_ok", "Accepted"))}</span>`
+          : `<span class="pill bad">${escapeHtml(t("xdrv_status_rejected", "Rejected"))}</span><div class="hint">${escapeHtml(xdrvReason(f.reason))}</div>`;
+      const replaces = asArray(f.replaces).length
+        ? `<div class="hint">${escapeHtml(t("xdrv_replaces", "Takes over telegrams of the built-in driver: {drivers}", {drivers: f.replaces.join(", ")}))}</div>`
+        : "";
+      const meters = asArray(f.meters).length
+        ? f.meters.map(m => escapeHtml(m)).join("<br>")
+        : `<span class="hint">${escapeHtml(t("xdrv_no_meters", "none"))}</span>`;
+      return `<tr>
+        <td><code>${escapeHtml(f.name)}</code>${replaces}</td>
+        <td>${f.nda
+          ? `<span class="pill warn">${escapeHtml(t("xdrv_nda", "NDA - not in backups"))}</span>`
+          : `<span class="pill muted">${escapeHtml(t("xdrv_not_nda", "In backups"))}</span>`}</td>
+        <td>${status}</td>
+        <td>${meters}</td>
+        <td><button class="btn" data-action="xdrv-delete" data-name="${escapeHtml(f.name)}"${state.xdrvBusy ? " disabled" : ""}>${escapeHtml(t("xdrv_delete", "Remove"))}</button></td>
+      </tr>`;
+    }).join("");
+    return `<div class="xdrv-page">
+      <div class="card banner-untested">
+        <h2>${escapeHtml(t("xdrv_title", "External drivers (.xmq)"))}</h2>
+        <p><strong>${escapeHtml(t("xdrv_responsibility", "The add-on's support ends at this tab. An external driver is your own file: you know what it does and you take responsibility for it. Problems with decoding through it are not add-on bugs."))}</strong></p>
+        <p class="hint">${escapeHtml(t("xdrv_how", "Every file is checked in a separate wmbusmeters process before anything uses it. Meters set to an external driver are decoded by a separate wmbusmeters instance, so a failing driver cannot stop the other meters. The driver name must start with {prefix}.", {prefix: x.prefix || "external_"}))}</p>
+      </div>
+      <div class="card">
+        <h3>${escapeHtml(t("xdrv_upload_title", "Upload a driver"))}</h3>
+        <input type="file" id="xdrv_file" accept=".xmq,text/plain">
+        <label style="display:block;margin-top:8px;"><input type="checkbox" id="xdrv_not_nda"${state.xdrvNotNda ? " checked" : ""} onchange="window.__xdrvNotNda(this.checked)">
+          ${escapeHtml(t("xdrv_not_nda_label", "This driver is NOT covered by an NDA (it may go into Home Assistant backups)"))}</label>
+        <p class="hint">${escapeHtml(t("xdrv_nda_default", "Unchecked, the file is treated as confidential: it stays in the add-on and is left out of backups."))}</p>
+        <div class="row-actions">
+          <button class="btn primary" data-action="xdrv-upload"${state.xdrvBusy ? " disabled" : ""}>${escapeHtml(state.xdrvBusy ? t("xdrv_checking", "Checking...") : t("xdrv_upload", "Check and upload"))}</button>
+        </div>
+        <p class="hint">${escapeHtml(t("xdrv_use_hint", "Then set the meter's driver to the uploaded name (in the driver list under \"External\"). Changes apply after the pipeline reload that follows."))}</p>
+      </div>
+      <div class="card">
+        <h3>${escapeHtml(t("xdrv_list_title", "Uploaded drivers"))}</h3>
+        <p>${escapeHtml(t("xdrv_instance", "External instance"))}: <span class="pill ${instPill[0]}">${escapeHtml(instPill[1])}</span>
+          ${inst.last_rc !== undefined && inst.last_rc !== 0 ? `<span class="hint">rc=${escapeHtml(String(inst.last_rc))}</span>` : ""}</p>
+        ${missing.length ? `<p class="banner warn" style="margin:8px 0;">⚠ ${escapeHtml(t("xdrv_missing", "Meters set to a driver that is not uploaded (skipped): {list}", {list: missing.map(([d, m]) => `${d}: ${m.join(", ")}`).join("; ")}))}</p>` : ""}
+        ${files.length ? `<div class="table-wrap"><table>
+          <thead><tr>
+            <th>${escapeHtml(t("xdrv_col_name", "Driver"))}</th>
+            <th>${escapeHtml(t("xdrv_col_nda", "Storage"))}</th>
+            <th>${escapeHtml(t("xdrv_col_status", "Check"))}</th>
+            <th>${escapeHtml(t("xdrv_col_meters", "Meters"))}</th>
+            <th></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>` : `<p class="hint">${escapeHtml(t("xdrv_empty", "No driver uploaded yet."))}</p>`}
+      </div>
+    </div>`;
+  }
+
+  // The checkbox lives in state: a live render rebuilds the page from it, and
+  // morphdom would otherwise put an unfocused checkbox back to unchecked.
+  window.__xdrvNotNda = (checked) => { state.xdrvNotNda = Boolean(checked); };
+
+  async function postDrivers(endpoint, payload) {
+    const response = await fetch(`api/drivers/${endpoint}`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload || {}),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok === false) {
+      throw new Error(xdrvReason(result.reason) || `HTTP ${response.status}`);
+    }
+    return result;
   }
 
   async function loadMbus(force = false) {
@@ -4942,6 +5073,13 @@
           loadMbusConsole();
         }
         return shell(mbusPage());
+      case "drivers":
+        if (!driversTabVisible()) return shell(dashboard());
+        if (!state.xdrv) {
+          loadDrivers();
+          return shell(`<div class="card"><p>${escapeHtml(t("webui_loading", "Loading..."))}</p></div>`);
+        }
+        return shell(driversPage());
       case "logs":
         return shell(logsPage());
       case "esp-logs":
@@ -5028,6 +5166,9 @@
           // page updated. Restrict the skip to editable controls.
           if (from === document.activeElement &&
               /^(INPUT|TEXTAREA|SELECT)$/.test(from.tagName)) return false;
+          // A file input's chosen file lives only in the node: a patch sets its
+          // value to "" and the choice is gone (Drivers tab, live updates).
+          if (from.tagName === "INPUT" && from.type === "file") return false;
           // The top scrollbar is sized and scrolled by syncTopScrollbars; a patch
           // would clear its width and snap it back to the left edge.
           if (from.classList && from.classList.contains("table-scroll-top")) return false;
@@ -5313,6 +5454,57 @@
         if (state.mbus?.enabled) triggerSoftReload();
       } catch (error) {
         toast(error.message, true);
+      }
+      return;
+    }
+
+    if (action === "xdrv-upload") {
+      const input = document.getElementById("xdrv_file");
+      const file = input && input.files && input.files[0];
+      if (!file) {
+        toast(t("xdrv_pick_file", "Choose a .xmq file first."), true);
+        return;
+      }
+      const maxBytes = Number(state.xdrv?.max_bytes || 65536);
+      if (file.size > maxBytes) {
+        toast(xdrvReason("too_large"), true);
+        return;
+      }
+      const notNda = Boolean(state.xdrvNotNda);
+      state.xdrvBusy = true;
+      render();
+      try {
+        const content = await file.text();
+        const result = await postDrivers("upload", {content, nda: notNda ? "false" : "true"});
+        toast(t("xdrv_uploaded", "Driver {name} accepted.", {name: result.name || ""}));
+        if (input) input.value = "";
+        state.xdrvNotNda = false;
+        await loadDrivers(true);
+        triggerSoftReload(t("xdrv_reloading", "Starting the external instance with the new drivers..."));
+      } catch (error) {
+        toast(error.message, true);
+      } finally {
+        state.xdrvBusy = false;
+        render();
+      }
+      return;
+    }
+
+    if (action === "xdrv-delete") {
+      const name = target.dataset.name || "";
+      if (!name || !window.confirm(t("xdrv_delete_confirm", "Remove driver {name}? Meters set to it will be skipped.", {name}))) return;
+      state.xdrvBusy = true;
+      render();
+      try {
+        await postDrivers("delete", {name});
+        toast(t("xdrv_deleted", "Driver {name} removed.", {name}));
+        await loadDrivers(true);
+        triggerSoftReload();
+      } catch (error) {
+        toast(error.message, true);
+      } finally {
+        state.xdrvBusy = false;
+        render();
       }
       return;
     }
