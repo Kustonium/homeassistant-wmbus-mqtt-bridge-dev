@@ -916,9 +916,12 @@ def _latest_frames() -> dict:
 
 
 def _preview_values(fields: dict, n: int = 3) -> dict:
-    """A few readable values of a decode: numbers and short texts first."""
+    """A few numeric values of a decode, the meter reading first: total_*,
+    then current_*, then the rest in the driver's order."""
     out = {}
-    for k, v in fields.items():
+    rank = {k: (0 if k.startswith("total_") else 1 if k.startswith("current_") else 2, i)
+            for i, k in enumerate(fields)}
+    for k, v in sorted(fields.items(), key=lambda kv: rank[kv[0]]):
         if k in ("hex", "rssi_dbm") or v is None or isinstance(v, (dict, list)):
             continue
         if isinstance(v, (int, float)) and not isinstance(v, bool):
@@ -945,7 +948,11 @@ def external_driver_matches(decode: bool = True) -> dict:
     for name in accepted_external_drivers():
         mvts = driver_mvts(EXT_DRIVERS_DIR / f"{name}.xmq")
         meters = []
-        for mid, (raw, ts) in sorted(frames.items(), key=lambda kv: kv[1][1], reverse=True):
+        # The user's own meters first (they are what a switch is for), then
+        # the newest frames: the trial decodes go to those.
+        order = sorted(frames.items(), key=lambda kv: kv[1][1], reverse=True)
+        order.sort(key=lambda kv: kv[0] not in configured)
+        for mid, (raw, ts) in order:
             h = headers[mid]
             if not h or (h[1], h[2], h[3]) not in mvts:
                 continue
