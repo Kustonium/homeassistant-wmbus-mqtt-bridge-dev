@@ -2094,6 +2094,11 @@ def factory_reset() -> tuple[bool, str]:
     return True, msg
 
 
+# LR1121 developer capture: no use to anyone else (other boards never send
+# those events), so the settings form offers it only while it is on.
+HIDDEN_UNLESS_ON = {"esp_diag_history_enabled"}
+
+
 def config_options_spec() -> list[dict]:
     """Parse the scalar add-on options from config.yaml (schema + defaults) and
     merge the current values from options.json. Drives the editable Settings
@@ -2134,6 +2139,10 @@ def config_options_spec() -> list[dict]:
         if not m:
             continue
         key, raw_type = m.group(1), m.group(2).strip()
+        # Developer-only options: shown only while they are on, so they can
+        # be turned off here but are not offered to everyone.
+        if key in HIDDEN_UNLESS_ON and cur.get(key) is not True:
+            continue
         optional = raw_type.endswith("?")
         t = raw_type[:-1] if optional else raw_type
         spec: dict = {"key": key, "optional": optional, "secret": "password" in key}
