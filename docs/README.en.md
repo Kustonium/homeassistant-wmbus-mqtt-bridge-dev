@@ -82,6 +82,7 @@ flowchart LR
    ```
    https://github.com/Kustonium/homeassistant-wmbus-mqtt-bridge
    ```
+   Or in one click: [![Add repository to my Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FKustonium%2Fhomeassistant-wmbus-mqtt-bridge)
 2. **Install** "wMBus MQTT Bridge", click **Start** (with the default `meters: []`
    the add-on enters **LISTEN mode** and only listens).
 3. **Open the WebUI** (Info → OPEN WEB UI).
