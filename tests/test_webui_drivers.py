@@ -115,6 +115,41 @@ class Drivers(unittest.TestCase):
             webui._decode_with_driver("aabb", "hydrodigit", "03264950", "")
             self.assertFalse(any(a.startswith("--driversdir") for a in run.call_args[0][0]))
 
+    def test_report_analyses_with_the_meters_external_driver(self):
+        webui.EXT_DRIVERS_DIR.joinpath("external_good.xmq").write_text("driver{}", encoding="utf-8")
+        seen = []
+
+        def run(argv, **_kw):
+            seen.append(argv)
+            return mock.Mock(stdout="dll-mfct (KAM)\n", stderr="", returncode=0)
+
+        raw = "2E44" + "2D2C" + "50492603" + "1B16" + "00" * 10
+        with mock.patch.object(webui, "_resolve_full_raw_for_id", return_value=(raw, "")), \
+                mock.patch.object(webui.subprocess, "run", side_effect=run):
+            ok, res = webui.candidate_issue_report("03264950")
+        self.assertTrue(ok, res)
+        argv = next(a for a in seen if any(str(x).startswith("--analyze") for x in a))
+        dd = [i for i, x in enumerate(argv) if str(x).startswith("--driversdir=")]
+        an = [i for i, x in enumerate(argv) if str(x).startswith("--analyze")]
+        self.assertTrue(dd and an and dd[0] < an[0], argv)  # loaded before --analyze names it
+        self.assertEqual(argv[an[0]], "--analyze=external_good")
+
+    def test_report_of_a_builtin_meter_is_unchanged(self):
+        self.options({"custom_drivers_enabled": True,
+                      "meters": [{"id": "W", "meter_id": "03264950", "type": "kamwater"}]})
+        seen = []
+
+        def run(argv, **_kw):
+            seen.append(argv)
+            return mock.Mock(stdout="", stderr="", returncode=0)
+
+        with mock.patch.object(webui, "_resolve_full_raw_for_id", return_value=("2E442D2C", "")), \
+                mock.patch.object(webui.subprocess, "run", side_effect=run):
+            webui.candidate_issue_report("03264950")
+        argv = next(a for a in seen if any(str(x).startswith("--analyze") for x in a))
+        self.assertFalse(any(str(x).startswith("--driversdir=") for x in argv))
+        self.assertIn("--analyze", argv)
+
 
 class Matches(unittest.TestCase):
     HYDRO = (ROOT / "tests" / "fixtures" / "hydrodigit" / "03264950.hex").read_text().strip()

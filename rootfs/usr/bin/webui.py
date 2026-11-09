@@ -466,11 +466,23 @@ def candidate_issue_report(meter_id: str) -> tuple[bool, dict]:
         if isinstance(last_json, dict):
             mtype = str(last_json.get("media") or "").strip() or "unknown"
 
-    analyze_arg = f"--analyze={key}" if key else "--analyze"
+    # A meter on an external_* driver is analysed with that driver: the
+    # built-in one it takes over would list the fields the user replaced.
+    # --driversdir before --analyze, because wmbusmeters loads the directory
+    # while it reads the arguments and checks the driver name in --analyze
+    # right there. Only an accepted copy, as for the decoder.
+    head = [WMBUSMETERS_BIN]
+    forced = ""
+    if driver.startswith("external_") and re.fullmatch(r"[A-Za-z0-9_]+", driver) \
+            and (EXT_DRIVERS_DIR / f"{driver}.xmq").is_file():
+        head.append(f"--driversdir={EXT_DRIVERS_DIR}")
+        forced = driver
+    analyze_spec = ":".join(p for p in (forced, key) if p)
+    analyze_arg = f"--analyze={analyze_spec}" if analyze_spec else "--analyze"
     analyze_output = ""
     try:
         proc = subprocess.run(
-            [WMBUSMETERS_BIN, analyze_arg, raw],
+            [*head, analyze_arg, raw],
             capture_output=True, text=True, timeout=20,
         )
         analyze_output = (proc.stdout or "") + (proc.stderr or "")
@@ -493,6 +505,8 @@ def candidate_issue_report(meter_id: str) -> tuple[bool, dict]:
         if key
         else "--- wmbusmeters --analyze output ---"
     )
+    if forced:
+        analyze_note = analyze_note[:-4] + f" (custom driver {forced}) ---"
     # wmbusmeters asks every issue for its version and the setup. bridge.sh
     # records at start: the binary's --version ("wmbusmeters: HEAD_3.0.0 with
     # local changes" for the add-on's detached, patched checkout), the build's
