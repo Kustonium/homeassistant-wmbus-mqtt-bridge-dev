@@ -1,3 +1,8 @@
+## 1.6.14-dev.469
+
+### Fixed
+- hide esp_diag_history_enabled, an LR1121 developer capture (9d37db1)
+
 ## 1.6.14-dev.468
 
 ### Fixed
