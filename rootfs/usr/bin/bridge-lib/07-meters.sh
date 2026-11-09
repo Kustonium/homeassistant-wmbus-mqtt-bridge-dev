@@ -49,6 +49,19 @@ status_meter_seen() {
   ) || true
   id="$(normalize_meter_id "${_id_raw}")"
   [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]] || return 0
+  # The value is picked without the fields the user unticked
+  # (exclude_fields): they are not published, so they are not the meter's
+  # value either. The last JSON stored below stays whole for the Fields tab.
+  local pick_line="${json_line}" _k _drop=()
+  if [[ -n "${METER_EXCLUDE_FIELDS[${id,,}]:-}" ]]; then
+    while IFS= read -r _k; do
+      case "${_k}" in _|id|name|meter|media|timestamp|device_date_time|rssi|lqi) continue ;; esac
+      field_excluded_for_meter "${id}" "${_k}" && _drop+=("${_k}")
+    done < <(jq -r 'keys_unsorted[]' <<<"${json_line}" 2>/dev/null || true)
+    if (( ${#_drop[@]} )); then
+      pick_line="$(jq -c 'reduce $ARGS.positional[] as $k (.; del(.[$k]))' --args "${_drop[@]}" <<<"${json_line}" 2>/dev/null || printf '%s' "${json_line}")"
+    fi
+  fi
   value_parts="$(jq -rc '
     [to_entries[]
       | select((.value|type)=="number")
@@ -60,7 +73,7 @@ status_meter_seen() {
     | sort_by(.order)
     | map(del(.order))
     | if length > 0 then . else empty end
-  ' <<<"${json_line}" 2>/dev/null || true)"
+  ' <<<"${pick_line}" 2>/dev/null || true)"
   # Prefer the cumulative METER READING (what's shown on the meter's own
   # display) as the primary value — total_m3, total_energy_consumption_kwh,
   # etc. Consistent across media: water shows total_m3, electricity shows
@@ -69,7 +82,7 @@ status_meter_seen() {
   # lists total_active_partial_3phase_kwh = 0 before the positive total) and
   # fault/alarm counters on the first pass; if an
   # electricity meter only publishes consumption tariffs, sum them below.
-  IFS=$'\t' read -r value_key value < <(_select_primary_meter_value "${json_line}") || true
+  IFS=$'\t' read -r value_key value < <(_select_primary_meter_value "${pick_line}") || true
   if [[ -z "${value_key}" ]]; then
     # Some electricity meters publish only per-tariff import registers. When
     # the aggregate total is missing, sum consumption tariffs and expose that
@@ -81,7 +94,7 @@ status_meter_seen() {
           | select(.key|test("^total_energy_consumption_tariff_[0-9]+_kwh$";"i"))
           | .value] as $vals
         | if ($vals|length) > 0 then "total_energy_consumption_kwh\t\($vals|add)" else empty end
-      ' <<<"${json_line}" 2>/dev/null | head -n 1
+      ' <<<"${pick_line}" 2>/dev/null | head -n 1
     ) || true
   fi
   if [[ -z "${value_key}" ]]; then
@@ -95,7 +108,7 @@ status_meter_seen() {
     # media keep the historical instantaneous fallback.
     local prev_key prev_val prev_parts
     IFS=$'\t' read -r prev_key prev_val prev_parts < <(awk -F '\t' -v id="${id}" '$1==id {print $5 "\t" $6 "\t" $13; exit}' "${STATUS_METERS_FILE}" 2>/dev/null || true)
-    if [[ -n "${prev_key}" ]] \
+    if [[ -n "${prev_key}" ]] && ! field_excluded_for_meter "${id}" "${prev_key}" \
        && printf '%s' "${prev_key}" | grep -qiE '(^total|_m3$|kwh|wh$|energy|volume)' \
        && ! printf '%s' "${prev_key}" | grep -qiE '(last_month|last_year|previous_month|previous_year|previous|prev|at_history|history|historic|billing|due_date|target|backflow|fraud|leak|tamper|alarm|production|tariff|partial|negative|reactive)'; then
       value_key="${prev_key}"
@@ -106,7 +119,7 @@ status_meter_seen() {
       media_lc="$(printf '%s' "${media}" | tr '[:upper:]' '[:lower:]')"
       meter_lc="$(printf '%s' "${meter}" | tr '[:upper:]' '[:lower:]')"
       if [[ "${media_lc}" == *electric* || "${media_lc}" == *energy* || "${meter_lc}" == *electric* ]] \
-         || jq -e 'any(to_entries[]; (.key | test("(energy|power|voltage|current).*(_kwh|_wh|_kw|_w|_v|_a)$"; "i")))' <<<"${json_line}" >/dev/null 2>&1; then
+         || jq -e 'any(to_entries[]; (.key | test("(energy|power|voltage|current).*(_kwh|_wh|_kw|_w|_v|_a)$"; "i")))' <<<"${pick_line}" >/dev/null 2>&1; then
         value_key=""
         value=""
       else
@@ -116,9 +129,9 @@ status_meter_seen() {
           | select(.key|test("(_kw$|_w$|_m3h$|_l_h$|_c$|_rh$|_bar$)";"i"))
           | select(.key|test("(average|last_|previous|history|historic|minimum|maximum|min_|max_)";"i")|not)
           | .key
-        ' <<<"${json_line}" 2>/dev/null | head -n 1 || true)"
+        ' <<<"${pick_line}" 2>/dev/null | head -n 1 || true)"
         if [[ -n "${value_key}" ]]; then
-          value="$(jq -r --arg k "${value_key}" '.[$k] // empty' <<<"${json_line}" 2>/dev/null || true)"
+          value="$(jq -r --arg k "${value_key}" '.[$k] // empty' <<<"${pick_line}" 2>/dev/null || true)"
         else
           # Preserve the real JSON field name together with the fallback
           # numeric value. The WebUI derives units from suffixes such as _c,
@@ -126,7 +139,7 @@ status_meter_seen() {
           # displayed a correct number without its unit (e.g. piigth 23.52
           # instead of 23.52 °C).
           IFS=$'\t' read -r value_key value < <(
-            jq -r 'to_entries[] | select((.value|type)=="number") | [.key, .value] | @tsv' <<<"${json_line}" 2>/dev/null | head -n 1
+            jq -r 'to_entries[] | select((.value|type)=="number") | [.key, .value] | @tsv' <<<"${pick_line}" 2>/dev/null | head -n 1
           ) || true
         fi
       fi

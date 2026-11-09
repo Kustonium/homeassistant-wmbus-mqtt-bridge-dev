@@ -1110,5 +1110,33 @@ class BandSecurityTest(unittest.TestCase):
                                 ["90830781", "T1", "0", "0", "1", "0"]])
 
 
+
+class ExcludedValueTest(unittest.TestCase):
+    """The meter's value skips the fields the user unticked (exclude_fields)."""
+
+    LINE = json.dumps({"_": "telegram", "id": "03264950", "media": "water", "meter": "external_x",
+                       "total_m3": 12.5, "target_m3": 11.0, "flow_temperature_c": 9})
+
+    def test_unticked_total_is_not_the_value(self):
+        line = bl.without_excluded(self.LINE, "total_m3")
+        self.assertNotIn("total_m3", json.loads(line))
+        self.assertEqual(json.loads(line)["id"], "03264950")
+        key, _value, _parts = bl.meter_value(line, "water", "external_x", None)
+        self.assertNotEqual(key, "total_m3")
+
+    def test_patterns_are_case_insensitive_globs(self):
+        self.assertTrue(bl.field_excluded("TOTAL_*", "total_m3"))
+        self.assertFalse(bl.field_excluded("total_*", "target_m3"))
+
+    def test_no_patterns_leaves_the_line_alone(self):
+        self.assertIs(bl.without_excluded(self.LINE, ""), self.LINE)
+        key, value, _ = bl.meter_value(self.LINE, "water", "external_x", None)
+        self.assertEqual((key, value), ("total_m3", "12.5"))
+
+    def test_metadata_is_never_dropped(self):
+        line = bl.without_excluded(self.LINE, "*")
+        self.assertEqual(set(json.loads(line)), {"_", "id", "media", "meter"})
+
+
 if __name__ == "__main__":
     unittest.main()

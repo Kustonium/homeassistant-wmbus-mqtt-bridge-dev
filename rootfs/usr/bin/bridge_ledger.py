@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import fnmatch
 import glob
 import json
 import math
@@ -3121,6 +3122,31 @@ def tariff_parts(line: str) -> str:
     return ""
 
 
+def field_excluded(patterns: str, key: str) -> bool:
+    """08-discovery-helpers.sh field_excluded_for_meter for one meter's
+    patterns: a glob per word, case-insensitive."""
+    k = key.lower()
+    return any(fnmatch.fnmatchcase(k, p.lower()) for p in patterns.split())
+
+
+def without_excluded(line: str, patterns: str) -> str:
+    """The decoded telegram without the fields its meter's exclude_fields
+    match (the metadata stays), for picking the meter's value. Unchanged
+    without patterns or when the line is not one JSON object."""
+    if not patterns.split():
+        return line
+    try:
+        obj = json.loads(line)
+    except ValueError:
+        return line
+    if not isinstance(obj, dict):
+        return line
+    kept = {k: v for k, v in obj.items() if k in _META_KEYS or not field_excluded(patterns, k)}
+    if len(kept) == len(obj):
+        return line
+    return json.dumps(kept, ensure_ascii=False, separators=(",", ":"))
+
+
 def meter_value(line: str, media: str, meter: str, prev: Optional[List[str]]) -> Tuple[str, str, str]:
     """status_meter_seen's (value_key, value, value_parts)."""
     parts = tariff_parts(line)
@@ -3287,7 +3313,14 @@ class DecodeBook:
             return
         prev = next((_bash_read_tabs("\t".join(_field(_fields(ln), n) for n in (5, 6, 13)), 3)
                      for ln in _read_lines(a.meters_file) if _first_field(ln) == _b(mid)), None)
-        key, value, parts = meter_value(line, media, meter, prev)
+        # A field the user unticked (exclude_fields) is not published, so it
+        # is not the meter's value either: picked from the telegram without
+        # it. The last JSON below stays whole - the Fields tab lists every
+        # field, the unticked ones included.
+        patterns = self.excludes.get(mid.lower(), "")
+        if prev is not None and prev[0] and field_excluded(patterns, prev[0]):
+            prev = None
+        key, value, parts = meter_value(without_excluded(line, patterns), media, meter, prev)
         record_seen(a.seen_file, mid, "meter")
         last_seen = iso_now()
         stats = seen_stats(a.seen_file, mid)
