@@ -1021,6 +1021,16 @@ def _re_quantile(values: list, q: float) -> float:
     return v[min(len(v) - 1, max(0, int(round(q * (len(v) - 1)))))]
 
 
+def _re_diag_mode(lines: list) -> str:
+    """diagnostic_mode from a board's diag/config lines ("diagnostic_mode:
+    normal (CHANGED, default: off)"), "" when the line is not there."""
+    for line in lines or []:
+        m = re.match(r"\s*diagnostic_mode:\s*([A-Za-z_]+)", str(line))
+        if m:
+            return m.group(1)
+    return ""
+
+
 def _re_pct(invalid: int, total: int):
     return round(100.0 * invalid / total, 1) if total >= RE_MIN_SYMBOLS else None
 
@@ -1035,6 +1045,7 @@ def radio_env_payload(now: int | None = None) -> dict:
     lt_now = time.localtime(now)
     hod, dtype = lt_now.tm_hour, _re_day_type(now)
     first = min(r[0] for rows in boards.values() for r in rows)
+    configs = _esp_diag_config()
     out = []
     for name, rows in sorted(boards.items()):
         by = {r[0]: r for r in rows}
@@ -1063,7 +1074,11 @@ def radio_env_payload(now: int | None = None) -> dict:
         meters = prev[3] if prev is not None else (cur[3] if cur else None)
         b = {"name": name, "frames_h": None if f_now is None else round(f_now), "meters": meters,
              "sym_pct": sym_now, "sym_typ_pct": sym_typ, "typ": None, "typ_lo": None, "typ_hi": None,
-             "samples": len(typ), "ratio": None, "_sym_t": sym_tot, "_sym_i": sym_inv}
+             "samples": len(typ), "ratio": None, "_sym_t": sym_tot, "_sym_i": sym_inv,
+             # The board's own setting when it published one; otherwise only
+             # whether 60 s summaries reached us in the last two hours.
+             "diag_mode": _re_diag_mode((configs.get(name) or {}).get("lines")),
+             "summaries": sym_tot > 0}
         if now - last > RE_SILENT_S:
             b["state"] = "silent"
         elif len(typ) < RE_MIN_SAMPLES or f_now is None:

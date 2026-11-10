@@ -485,8 +485,11 @@ bez takiego porównania niewiele mówi.
   których słychać dalekie liczniki** (ramki -90 dBm i słabsze).
 
 Wartości typowe potrzebują trzech wcześniejszych dni tego samego typu; do tego
-czasu zakładka mówi, że zbiera dane. Odsetek błędnych symboli wymaga
-`diagnostic_mode` na ESP (podsumowanie co 60 s). Liczby są trzymane per płytka
+czasu zakładka mówi, że zbiera dane. Odsetek błędnych symboli i werdykty kolizje/zakłócenia
+wymagają `diagnostic_mode: normal` na ESP (podsumowanie co 60 s); przykładowe
+konfiguracje mają go włączonego. Bez niego reszta zakładki działa na
+odebranych ramkach, a tabela płytek pokazuje `diagnostic_mode` każdej płytki z
+podpowiedzią przy tych, gdzie jest wyłączony. Liczby są trzymane per płytka
 i godzina przez 15 dni w `/data/radio_env_hours.json` (kilka KB). Tylko
 wyświetlanie: niczego nie zmienia w odbiorze.
 

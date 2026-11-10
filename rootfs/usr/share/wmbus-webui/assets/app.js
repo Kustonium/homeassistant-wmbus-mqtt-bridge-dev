@@ -4488,7 +4488,8 @@
     const hasSym = x.sym_pct !== null && x.sym_pct !== undefined;
     const symTyp = (x.sym_typ_pct !== null && x.sym_typ_pct !== undefined)
       ? t("re_typical", "typically {range}", {range: `${x.sym_typ_pct}%`})
-      : hasSym ? t("re_typical_pending", "typical: collecting data") : t("re_no_sym", "no diagnostic summaries");
+      : hasSym ? t("re_typical_pending", "typical: collecting data")
+        : t("re_no_sym", "Turn on diagnostic_mode: normal on the boards to see invalid symbols.");
     const hh = String(x.hour ?? "").padStart(2, "0");
     const top = `<div class="card" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;">
       <div><div class="hint">${escapeHtml(t("re_now", "Now ({time}, {day})", {time: `${hh}:00`, day: dayType}))}</div>
@@ -4529,6 +4530,13 @@
         silent: ["bad", t("re_s_silent", "no frames")],
       }[b.state] || ["muted", b.state];
     };
+    const diagPill = (b) => {
+      const m = String(b.diag_mode || "");
+      if (m === "off") return `<span class="pill warn">off</span>`;
+      if (m) return `<span class="pill ok">${escapeHtml(m)}</span>`;
+      return b.summaries ? `<span class="pill ok">${escapeHtml(t("re_diag_on", "on"))}</span>` : `<span class="hint">—</span>`;
+    };
+    const diagOff = asArray(x.boards).filter(b => b.diag_mode === "off" || (!b.diag_mode && !b.summaries));
     const boardRows = asArray(x.boards).map(b => {
       const p = statePill(b);
       return `<tr>
@@ -4536,6 +4544,7 @@
         <td>${escapeHtml(fmt(b.frames_h))}${b.typ !== null && b.typ !== undefined ? ` <span class="hint">/ ${escapeHtml(String(b.typ))}</span>` : ""}</td>
         <td>${escapeHtml(fmt(b.meters))}</td>
         <td>${escapeHtml(b.sym_pct === null || b.sym_pct === undefined ? "—" : `${b.sym_pct}%`)}</td>
+        <td>${diagPill(b)}</td>
         <td><span class="pill ${p[0]}">${escapeHtml(p[1])}</span></td>
       </tr>`;
     }).join("");
@@ -4544,8 +4553,9 @@
       <div class="table-wrap"><table>
         <thead><tr><th>${escapeHtml(t("re_col_board", "Board"))}</th><th>${escapeHtml(t("re_col_frames", "Frames/h"))}</th>
           <th>${escapeHtml(t("re_col_meters", "Meters"))}</th><th>${escapeHtml(t("re_col_sym", "Invalid symbols"))}</th>
-          <th>${escapeHtml(t("re_col_state", "State"))}</th></tr></thead>
+          <th>diagnostic_mode</th><th>${escapeHtml(t("re_col_state", "State"))}</th></tr></thead>
         <tbody>${boardRows}</tbody></table></div>
+      ${diagOff.length ? `<p class="hint">${escapeHtml(t("re_diag_off_hint", "{boards}: diagnostic_mode is off, so no 60 s summaries: no invalid-symbol rate and no collisions or interference verdict. Frames, meters, the map and far meters still work. To get it, set diagnostic_mode: normal in the board's YAML.", {boards: diagOff.map(b => b.name).join(", ")}))}</p>` : ""}
       ${asArray(x.boards).length > 1 ? `<p class="hint">${escapeHtml(t("re_boards_hint", "A change on one board points at that board (antenna, placement, configuration). On all boards at once, at the air."))}</p>` : ""}
     </div>`;
 

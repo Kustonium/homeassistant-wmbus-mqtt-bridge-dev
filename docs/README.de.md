@@ -495,8 +495,10 @@ einer Platine, eine Wochenendnacht etwa 3000.
 - **Dichtekarte** der Woche nach Stunden, **Tabelle pro Platine** und die
   **Stunden, in denen ferne Zähler zu hören sind** (Frames -90 dBm und schwächer).
 
-Typische Werte brauchen drei frühere Tage derselben Art. Die Symbolfehlerrate
-braucht `diagnostic_mode` am ESP. Die Zählungen liegen 15 Tage lang in
+Typische Werte brauchen drei frühere Tage derselben Art. Die Symbolfehlerrate und die Bewertungen
+Kollisionen/Störungen brauchen `diagnostic_mode: normal` am ESP; die
+Beispielkonfigurationen haben es an. Ohne es funktioniert der Rest des Tabs, und
+die Tabelle zeigt den `diagnostic_mode` jeder Platine. Die Zählungen liegen 15 Tage lang in
 `/data/radio_env_hours.json` (einige KB). Nur Anzeige.
 
 ### Diagnose-Tab

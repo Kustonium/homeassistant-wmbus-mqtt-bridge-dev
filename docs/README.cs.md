@@ -466,8 +466,9 @@ dnech stejného typu: pracovní den nebo víkend, vybráno automaticky.
 - **Mapa hustoty** týdne po hodinách, **tabulka desek** a **hodiny, kdy jsou
   slyšet vzdálené měřiče** (rámce -90 dBm a slabší).
 
-Typické hodnoty potřebují tři dřívější dny stejného typu. Podíl chybných symbolů
-vyžaduje `diagnostic_mode` na ESP. Počty se drží 15 dní v
+Typické hodnoty potřebují tři dřívější dny stejného typu. Podíl chybných symbolů a verdikty kolize/rušení
+vyžadují `diagnostic_mode: normal` na ESP; ukázkové konfigurace ho mají zapnutý.
+Bez něj zbytek záložky funguje a tabulka ukazuje `diagnostic_mode` každé desky. Počty se drží 15 dní v
 `/data/radio_env_hours.json` (několik KB). Jen zobrazení.
 
 ### Záložka Diagnostika

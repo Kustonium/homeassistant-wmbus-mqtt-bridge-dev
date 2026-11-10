@@ -487,8 +487,11 @@ that comparison.
   when far meters are heard** (frames at -90 dBm or weaker).
 
 Typical values need three earlier days of the same kind; until then the tab
-says it is collecting data. The invalid-symbol rate needs `diagnostic_mode` on
-the ESP (the 60 s summary). The counts are kept per board and hour for 15 days
+says it is collecting data. The invalid-symbol rate and the collisions and
+interference verdicts need `diagnostic_mode: normal` on the ESP (the 60 s
+summary); the example configs have it on. Without it the rest of the tab works
+from the received frames, and the board table shows each board's
+`diagnostic_mode` with a hint for the boards where it is off. The counts are kept per board and hour for 15 days
 in `/data/radio_env_hours.json` (a few kilobytes). Display only: nothing in
 reception changes.
 
