@@ -4482,14 +4482,17 @@
         : asArray(x.boards).length > 1 ? t("re_v_hint_all", "All boards agree.") : "";
     const fmt = (v) => (v === null || v === undefined) ? "—" : String(v);
     const typ = (x.head_typ_lo !== null && x.head_typ_lo !== undefined)
-      ? t("re_typical", "typically {range}", {range: `${x.head_typ_lo}–${x.head_typ_hi}`}) : "";
+      ? t("re_typical", "typically {range}", {range: `${x.head_typ_lo}–${x.head_typ_hi}`})
+      : t("re_typical_pending", "typical: collecting data");
+    const hasSym = x.sym_pct !== null && x.sym_pct !== undefined;
     const symTyp = (x.sym_typ_pct !== null && x.sym_typ_pct !== undefined)
-      ? t("re_typical", "typically {range}", {range: `${x.sym_typ_pct}%`}) : t("re_no_sym", "no diagnostic summaries");
+      ? t("re_typical", "typically {range}", {range: `${x.sym_typ_pct}%`})
+      : hasSym ? t("re_typical_pending", "typical: collecting data") : t("re_no_sym", "no diagnostic summaries");
     const hh = String(x.hour ?? "").padStart(2, "0");
     const top = `<div class="card" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;">
       <div><div class="hint">${escapeHtml(t("re_now", "Now ({time}, {day})", {time: `${hh}:00`, day: dayType}))}</div>
         <div style="font-size:22px;font-weight:600;">${escapeHtml(t("re_frames_h", "{n} frames/h", {n: fmt(x.head_frames_h)}))}</div>
-        <div class="hint">${escapeHtml(typ)}${x.head && asArray(x.boards).length > 1 ? ` · ${escapeHtml(x.head)}` : ""}</div></div>
+        <div class="hint">${escapeHtml([typ, asArray(x.boards).length > 1 ? x.head : ""].filter(Boolean).join(" · "))}</div></div>
       <div><div class="hint">${escapeHtml(t("re_sym", "Invalid 3-of-6 symbols"))}</div>
         <div style="font-size:22px;font-weight:600;">${escapeHtml(x.sym_pct === null || x.sym_pct === undefined ? "—" : `${x.sym_pct}%`)}</div>
         <div class="hint">${escapeHtml(symTyp)}</div></div>
@@ -4552,7 +4555,8 @@
       <div style="display:flex;align-items:flex-end;gap:2px;height:60px;">${far.map((v, h) =>
         `<div title="${escapeHtml(`${String(h).padStart(2, "0")}:00 · ${v === null ? "—" : v}/h`)}" style="flex:1;border-radius:2px 2px 0 0;background:${typeof v === "number" ? "#1D9E75" : "transparent"};height:${typeof v === "number" ? Math.max(2, Math.round(56 * v / farPeak)) : 0}px;"></div>`).join("")}</div>
       <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px;"><span>00</span><span>06</span><span>12</span><span>18</span><span>23</span></div>
-      ${best ? `<p>${escapeHtml(t("re_far_best", "Best: {day} {range}. Looking for a far meter? Leave the search running then.", {day: dayType, range: best}))}</p>` : ""}
+      ${best ? `<p>${escapeHtml(t("re_far_best", "Best: {day} {range}. Looking for a far meter? Leave the search running then.", {day: dayType, range: best}))}</p>`
+        : `<p class="hint">${escapeHtml(t("re_far_pending", "No full hours stored yet. The chart fills in hour by hour."))}</p>`}
     </div>`;
 
     return `<div class="re-page">
