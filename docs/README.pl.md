@@ -430,6 +430,7 @@ encja nie powstaje.
 | `type_other` | str? | gdy `type=other` | Niestandardowa nazwa sterownika |
 | `key` | str? | gdy szyfrowany | 32-znakowy klucz AES (HEX) |
 | `exclude_fields` | str? | nie | Wzorce (globy) pól, które mają **nie** dostać encji w Home Assistant — np. `consumption_at_history_*, history_*_date`. Oddzielane przecinkami lub spacjami; puste publikuje wszystkie pola. |
+| `value_field` | str? | nie | Pole pokazywane jako wartość licznika na zakładce Liczniki (np. `total_m3`), wybierane w panelu Pola. Puste albo pole, którego telegram nie niesie jako liczby, oznacza wybór automatyczny. Tylko wyświetlanie: encje i MQTT się nie zmieniają. |
 | `calculated_fields` | str? | nie | Dodatkowe pola liczone przez **wmbusmeters** z telegramu, rozdzielone średnikami, każde jako `nazwa=formuła` — np. `difftemp_c=flow_temperature_c - return_temperature_c`. Liczy dekoder; wynik jest zwykłym polem i dostaje encję jak każde inne. |
 | `static_fields` | str? | nie | Stałe wartości doczepione do licznika, rozdzielone średnikami, każda jako `nazwa=wartość` — np. `location=kuchnia; apartment=12`. Dekoder wstawia je do telegramu **jako tekst** (`apartment=12` przyjdzie jako `"12"`), więc widać je w atrybutach encji i jako encje diagnostyczne: to etykieta, nie pomiar. |
 

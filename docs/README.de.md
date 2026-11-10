@@ -442,6 +442,7 @@ Entität angelegt.
 | `type_other` | str? | bei `type=other` | Eigener Treibername |
 | `key` | str? | bei verschlüsselt | 32-Zeichen-AES-Schlüssel (HEX) |
 | `exclude_fields` | str? | nein | Glob-Muster für Felder, die **keine** Home-Assistant-Entität bekommen sollen — z. B. `consumption_at_history_*, history_*_date`. Durch Kommas oder Leerzeichen getrennt; leer veröffentlicht alle Felder. |
+| `value_field` | str? | nein | Das Feld, das im Tab Zähler als Wert des Zählers angezeigt wird (z. B. `total_m3`), gewählt im Feld-Panel. Leer, oder ein Feld, das das Telegramm nicht als Zahl enthält, nutzt die automatische Wahl. Nur Anzeige: Entitäten und MQTT ändern sich nicht. |
 | `calculated_fields` | str? | nein | Zusätzliche Felder, die **wmbusmeters** aus dem Telegramm berechnet, durch Semikolon getrennt, je `name=formel` — z. B. `difftemp_c=flow_temperature_c - return_temperature_c`. Gerechnet wird im Decoder; das Ergebnis ist ein normales Feld und wird zur Entität wie jedes andere. |
 | `static_fields` | str? | nein | Feste Werte für diesen Zähler, durch Semikolon getrennt, je `name=wert` — z. B. `location=kueche; apartment=12`. Der Decoder schreibt sie **als Text** ins Telegramm (`apartment=12` kommt als `"12"` an), sie erscheinen also in den Entitätsattributen und als Diagnose-Entitäten: ein Etikett, keine Messung. |
 

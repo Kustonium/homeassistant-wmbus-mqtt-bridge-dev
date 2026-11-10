@@ -1908,7 +1908,8 @@ def update_meter_in_options(meter_id: str, driver: str, key: str | None = None,
                             exclude_fields: str | None = None,
                             calculated_fields: str | None = None,
                             static_fields: str | None = None,
-                            meter_name: str | None = None) -> tuple[bool, str]:
+                            meter_name: str | None = None,
+                            value_field: str | None = None) -> tuple[bool, str]:
     """Change the driver (and optionally the AES key) of an existing meter.
 
     Same Supervisor-first persistence as add/remove_meter_from_options. The
@@ -1999,6 +2000,12 @@ def update_meter_in_options(meter_id: str, driver: str, key: str | None = None,
             entry["static_fields"] = static_fields
         else:
             entry.pop("static_fields", None)
+    # The field shown as the meter's value; empty = the automatic choice.
+    if value_field is not None:
+        if value_field:
+            entry["value_field"] = value_field
+        else:
+            entry.pop("value_field", None)
     options["meters"] = meters
 
     token = os.environ.get("SUPERVISOR_TOKEN", "")
@@ -4996,9 +5003,17 @@ class Handler(BaseHTTPRequestHandler):
                     return
             else:
                 meter_name = None
+            # Absent = leave it; present but empty = back to the automatic choice.
+            if 'value_field' in params:
+                value_field = (params.get('value_field') or [''])[0].strip()
+                if value_field and not re.fullmatch(r"[A-Za-z0-9_]{1,64}", value_field):
+                    self._send_json(400, {"ok": False, "message": "Invalid value_field."})
+                    return
+            else:
+                value_field = None
             ok, msg = update_meter_in_options(meter_id, driver, key or None, exclude_fields,
                                               calculated_fields, static_fields,
-                                              meter_name=meter_name)
+                                              meter_name=meter_name, value_field=value_field)
             self._send_json(200 if ok else 400, {"ok": ok, "message": msg})
             return
         if path.endswith('/api/factory-reset'):

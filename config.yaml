@@ -195,6 +195,11 @@ schema:
       # "consumption_at_history_*, history_*_date"). Empty publishes every
       # field, which is the behaviour of every version before this option.
       exclude_fields: str?
+      # The decoded field the WebUI shows as the meter's value (e.g.
+      # "total_m3"), set from the Fields panel. Empty, or a field the
+      # telegram does not carry as a number, falls back to the automatic
+      # choice. Display only: what is published does not change.
+      value_field: str?
       # Extra fields wmbusmeters computes from the telegram, semicolon
       # separated, each "name=formula" (e.g.
       # "difftemp_c=flow_temperature_c-return_temperature_c"). The decoder owns

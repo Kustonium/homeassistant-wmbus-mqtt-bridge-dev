@@ -1138,5 +1138,18 @@ class ExcludedValueTest(unittest.TestCase):
         self.assertEqual(set(json.loads(line)), {"_", "id", "media", "meter"})
 
 
+    def test_chosen_field_wins_when_the_telegram_carries_it(self):
+        self.assertEqual(bl.chosen_value(self.LINE, "flow_temperature_c")[:2], ("flow_temperature_c", "9"))
+
+    def test_chosen_field_missing_or_not_a_number_falls_back(self):
+        self.assertEqual(bl.chosen_value(self.LINE, "no_such_field"), ("", "", ""))
+        self.assertEqual(bl.chosen_value(self.LINE, "media"), ("", "", ""))
+        self.assertEqual(bl.chosen_value(self.LINE, ""), ("", "", ""))
+
+    def test_an_unticked_field_cannot_be_chosen(self):
+        line = bl.without_excluded(self.LINE, "flow_*")
+        self.assertEqual(bl.chosen_value(line, "flow_temperature_c"), ("", "", ""))
+
+
 if __name__ == "__main__":
     unittest.main()

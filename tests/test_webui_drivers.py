@@ -151,6 +151,25 @@ class Drivers(unittest.TestCase):
         self.assertIn("--analyze", argv)
 
 
+    def test_value_field_is_saved_kept_and_cleared(self):
+        os.environ.pop("SUPERVISOR_TOKEN", None)
+        self.options({"meters": [{"id": "W", "meter_id": "03264950", "type": "kamwater",
+                                  "exclude_fields": "history_*"}]})
+
+        def entry():
+            return json.loads((BASE / "options.json").read_text(encoding="utf-8"))["meters"][0]
+
+        ok, msg = webui.update_meter_in_options("03264950", "kamwater", value_field="total_m3")
+        self.assertTrue(ok, msg)
+        self.assertEqual(entry()["value_field"], "total_m3")
+        self.assertEqual(entry()["exclude_fields"], "history_*")
+        # Another change (no value_field passed) leaves it alone.
+        webui.update_meter_in_options("03264950", "kamwater", exclude_fields="")
+        self.assertEqual(entry()["value_field"], "total_m3")
+        webui.update_meter_in_options("03264950", "kamwater", value_field="")
+        self.assertNotIn("value_field", entry())
+
+
 class Matches(unittest.TestCase):
     HYDRO = (ROOT / "tests" / "fixtures" / "hydrodigit" / "03264950.hex").read_text().strip()
     KAM = (ROOT / "tests" / "fixtures" / "kamwater" / "53119425.hex").read_text().strip()

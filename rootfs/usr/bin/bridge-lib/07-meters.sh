@@ -82,7 +82,16 @@ status_meter_seen() {
   # lists total_active_partial_3phase_kwh = 0 before the positive total) and
   # fault/alarm counters on the first pass; if an
   # electricity meter only publishes consumption tariffs, sum them below.
-  IFS=$'\t' read -r value_key value < <(_select_primary_meter_value "${pick_line}") || true
+  # The field the user picked in the Fields panel (value_field), when this
+  # telegram carries it as a number; otherwise the automatic choice.
+  value_key=""
+  value=""
+  local _vf="${METER_VALUE_FIELD[${id,,}]:-}"
+  if [[ -n "${_vf}" ]]; then
+    value="$(jq -r --arg k "${_vf}" 'if (.[$k]|type)=="number" then .[$k] else empty end' <<<"${pick_line}" 2>/dev/null || true)"
+    [[ -n "${value}" ]] && value_key="${_vf}"
+  fi
+  [[ -n "${value_key}" ]] || IFS=$'\t' read -r value_key value < <(_select_primary_meter_value "${pick_line}") || true
   if [[ -z "${value_key}" ]]; then
     # Some electricity meters publish only per-tariff import registers. When
     # the aggregate total is missing, sum consumption tariffs and expose that
@@ -300,6 +309,7 @@ refresh_meter_files() {
       --external-drivers-status="${STATUS_CUSTOM_DRIVERS_FILE:-}" \
       --loglevel="${LOGLEVEL:-}")"
     METER_EXCLUDE_FIELDS=()
+    METER_VALUE_FIELD=()
     OFFICIAL_METERS_COUNT=0
     EXTERNAL_METERS_COUNT=0
     SEARCH_USING_TEMP_METERS="false"
@@ -311,6 +321,7 @@ refresh_meter_files() {
             OFFICIAL_METERS_COUNT|EXTERNAL_METERS_COUNT|SEARCH_USING_TEMP_METERS|SEARCH_TEMP_METERS_LOADED) printf -v "${_a}" '%s' "${_b}" ;;
           esac ;;
         exclude) METER_EXCLUDE_FIELDS["${_a}"]="${_b}" ;;
+        value) METER_VALUE_FIELD["${_a}"]="${_b}" ;;
         search) write_search_status "${_a}" "${_b}" ;;
         rc) _rc="${_a}" ;;
       esac
@@ -362,7 +373,7 @@ _refresh_meter_files_bash() {
     write_search_status "listen" "listen_mode"
   else
     local loaded_count=0
-    local meter_json file friendly_name driver driver_other mid_raw key mid exclude_fields calculated_fields calculated_lines static_fields static_lines
+    local meter_json file friendly_name driver driver_other mid_raw key mid exclude_fields value_field calculated_fields calculated_lines static_fields static_lines
     while IFS= read -r meter_json; do
       friendly_name="$(echo "${meter_json}" | jq -r '.id // "meter"')"
       driver="$(echo "${meter_json}" | jq -r '.type // "auto"')"
@@ -374,6 +385,7 @@ _refresh_meter_files_bash() {
       exclude_fields="$(echo "${meter_json}" | jq -r '.exclude_fields // empty' | tr ',' ' ')"
       calculated_fields="$(echo "${meter_json}" | jq -r '.calculated_fields // empty')"
       static_fields="$(echo "${meter_json}" | jq -r '.static_fields // empty')"
+      value_field="$(echo "${meter_json}" | jq -r '.value_field // empty')"
 
       if [[ -z "${key}" || "${key}" == "null" ]]; then
         key=""
@@ -410,6 +422,9 @@ _refresh_meter_files_bash() {
 
       if [[ -n "${exclude_fields}" && "${exclude_fields}" != "null" ]]; then
         METER_EXCLUDE_FIELDS["${mid,,}"]="${exclude_fields}"
+      fi
+      if [[ "${value_field}" =~ ^[A-Za-z0-9_]+$ ]]; then
+        METER_VALUE_FIELD["${mid,,}"]="${value_field}"
       fi
 
       # Built before the redirect below: build_calculated_field_lines warns

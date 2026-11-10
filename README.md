@@ -282,6 +282,7 @@ Files under `./config/etc/` are **auto-generated on startup** — do not edit th
 | `type_other` | Custom driver name — only when `type` is `other` |
 | `key` | Encryption key in HEX; leave empty if the meter is not encrypted |
 | `exclude_fields` | Patterns for fields that should get NO entity in HA, separated by commas or spaces (e.g. `consumption_at_history_*, history_*_date`). Empty publishes everything |
+| `value_field` | The decoded field shown as the meter's value on the Meters tab (e.g. `total_m3`), picked in the Fields panel. Empty, or a field the telegram does not carry as a number, uses the automatic choice. Display only |
 
 > ℹ️ The full option list (e.g. `discovery_prefix`, `discovery_retain`, `state_retain`, `debug_every_n`, `search_delta_mode`, `search_min_delta_m3`) is in `config.yaml` and the full documentation: [docs/README.en.md](docs/README.en.md).
 
