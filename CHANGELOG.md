@@ -1,3 +1,12 @@
+## 1.6.14-dev.470
+
+### Added
+- pick the field a meter shows as its value (ea3f6e0)
+
+### Fixed
+- a meter's shown value skips the fields the user unticked (0bed515)
+- the Report button analyses a meter with its external driver (f9719a7)
+
 ## 1.6.14-dev.469
 
 ### Fixed
