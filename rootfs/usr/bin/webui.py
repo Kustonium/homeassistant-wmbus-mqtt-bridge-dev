@@ -1001,6 +1001,7 @@ RE_MIN_SAMPLES = 3          # earlier days of the same kind before "typical" mea
 RE_MIN_SYMBOLS = 200        # fewer 3-of-6 symbols give no error rate
 RE_FEWER, RE_MORE = 0.7, 1.4
 RE_SILENT_S = 2 * 3600
+RE_GONE_S = 24 * 3600       # silent this long: unplugged, not shown at all
 
 
 def _re_day_type(ts: int) -> str:
@@ -1039,6 +1040,8 @@ def radio_env_payload(now: int | None = None) -> dict:
         by = {r[0]: r for r in rows}
         cur, prev = by.get(cur_hour), by.get(cur_hour - 3600)
         last = max((r[0] for r in rows), default=0)
+        if now - last > RE_GONE_S:
+            continue
         # Counting may have started mid-hour (add-on start): the rate is
         # taken over the time actually counted, never the whole hour.
         counted = max(1, now - (cur[6] if cur is not None and len(cur) > 6 else cur_hour))
@@ -1081,9 +1084,15 @@ def radio_env_payload(now: int | None = None) -> dict:
                 b["state"] = "normal"
         out.append(b)
 
-    known = [b for b in out if b["state"] not in ("learning", "silent")]
+    # A silent board is a finding too: one dead board among working ones is
+    # "only <board> differs", all of them silent is its own verdict.
+    known = [b for b in out if b["state"] != "learning"]
     odd = [b for b in known if b["state"] != "normal"]
-    if not known:
+    if not out:
+        return {"ok": True, "empty": True}
+    if known and all(b["state"] == "silent" for b in known):
+        verdict, odd_board = "silent", ""
+    elif not known:
         verdict, odd_board = "learning", ""
     elif len(known) >= 2 and len(odd) == 1:
         verdict, odd_board = "one_board", odd[0]["name"]

@@ -102,9 +102,10 @@ class Payload(unittest.TestCase):
         self.assertEqual(p["verdict"], "collisions")
 
     def test_silent_board(self):
-        self.write({"a": self.history(1000)})
+        self.write({"a": self.history(1000) + [[T - 3 * H, 900, 5, 50, 0, 0]]})
         p = webui.radio_env_payload(T + 60)
         self.assertEqual(p["boards"][0]["state"], "silent")
+        self.assertEqual(p["verdict"], "silent")
 
     def test_heatmap_and_far_meters(self):
         boards = {"a": self.history(1000, weak=40) + [[T - 5 * H, 100, 2, 10, 0, 0]]}
@@ -114,6 +115,22 @@ class Payload(unittest.TestCase):
         self.assertEqual(p["heat"][tue][10], 1000)
         self.assertEqual(p["far"][10], 40)
         self.assertIn(10, p["far_best"])
+
+    def test_one_dead_board_is_a_finding(self):
+        boards = {n: self.history(1000) + [[T - H, 1000, 5, 50, 10000, 100]] for n in ("a", "b")}
+        boards["dead"] = self.history(1000)        # last heard a day ago, minus a bit
+        boards["dead"][-1][0] = T - 20 * H
+        self.write(boards, {n: {"hour": T, "frames": 0} for n in ("a", "b")})
+        p = webui.radio_env_payload(T + 60)
+        self.assertEqual((p["verdict"], p["odd_board"]), ("one_board", "dead"))
+
+    def test_a_board_gone_for_a_day_is_not_shown(self):
+        boards = {n: self.history(1000) + [[T - H, 1000, 5, 50, 10000, 100]] for n in ("a", "b")}
+        boards["gone"] = [[T - 3 * D, 900, 1, 10, 0, 0]]
+        self.write(boards, {n: {"hour": T, "frames": 0} for n in ("a", "b")})
+        p = webui.radio_env_payload(T + 60)
+        self.assertNotIn("gone", [b["name"] for b in p["boards"]])
+        self.assertEqual(p["verdict"], "normal")
 
     def test_empty(self):
         self.write({})

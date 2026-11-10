@@ -4474,6 +4474,7 @@
       interference: ["bad", t("re_v_interference", "Interference likely")],
       one_board: ["warn", t("re_v_one_board", "Only {board} differs", {board: x.odd_board || ""})],
       learning: ["muted", t("re_v_learning", "Collecting data")],
+      silent: ["bad", t("re_v_silent", "No frames from the boards")],
     }[x.verdict] || ["muted", t("re_v_learning", "Collecting data")];
     const verdictHint = x.verdict === "one_board"
       ? t("re_v_hint_board", "The board, not the air: antenna, placement or configuration.")
