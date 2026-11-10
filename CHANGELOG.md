@@ -1,3 +1,8 @@
+## 1.6.17-dev.481
+
+### Fixed
+- Radio environment names the best far-meter hours only with data (ce60ddb)
+
 ## 1.6.17-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
