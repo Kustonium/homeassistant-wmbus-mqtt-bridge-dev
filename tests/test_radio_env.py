@@ -160,5 +160,33 @@ class Hooks(unittest.TestCase):
         self.assertIsNone(radio_env._INSTANCE)
 
 
+
+class StartedMidHour(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.path = os.path.join(self.dir.name, "hours.json")
+        self.now = os.path.join(self.dir.name, "now.json")
+
+    def test_a_partial_first_hour_is_not_stored(self):
+        env = radio_env.RadioEnv(self.path, self.now)
+        env.frame("a", "1", -80, T + 900)          # started 15 min into the hour
+        env.frame("a", "1", -80, T + H + 10)       # next hour: counted from its start
+        env.frame("a", "1", -80, T + 2 * H + 10)
+        rows = json.loads(Path(self.path).read_text())["boards"]["a"]
+        self.assertEqual([r[0] for r in rows], [T + H])
+
+    def test_rate_uses_the_time_actually_counted(self):
+        webui.RADIO_ENV_FILE.write_text(json.dumps({"v": 1, "boards": {}}))
+        webui.RADIO_ENV_NOW_FILE.write_text(json.dumps({"v": 1, "boards": {
+            "a": {"hour": T, "start": T + 900, "frames": 1}}}))
+        b = webui.radio_env_payload(T + 1000)["boards"][0]
+        self.assertIsNone(b["frames_h"])             # under 10 minutes counted
+        webui.RADIO_ENV_NOW_FILE.write_text(json.dumps({"v": 1, "boards": {
+            "a": {"hour": T, "start": T + 900, "frames": 100}}}))
+        b = webui.radio_env_payload(T + 900 + 1200)["boards"][0]
+        self.assertEqual(b["frames_h"], 300)         # 100 frames in 20 minutes
+
+
 if __name__ == "__main__":
     unittest.main()

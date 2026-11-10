@@ -32,6 +32,9 @@ from typing import Any, Dict, List, Optional
 KEEP_DAYS = 15
 WEAK_DBM = -90
 NOW_WRITE_EVERY_S = 60
+# An hour whose counting started later than this into it (the add-on was
+# started or restarted mid-hour) is not stored: it would pull "typical" down.
+PARTIAL_HOUR_S = 300
 _ROW = ("hour", "frames", "weak", "meters", "sym_total", "sym_invalid")
 
 
@@ -73,7 +76,8 @@ class RadioEnv:
             for board, c in now["boards"].items():
                 if isinstance(c, dict) and isinstance(c.get("hour"), int):
                     self.cur[str(board)] = {
-                        "hour": c["hour"], "frames": int(c.get("frames") or 0),
+                        "hour": c["hour"], "start": int(c.get("start") or c["hour"]),
+                        "frames": int(c.get("frames") or 0),
                         "weak": int(c.get("weak") or 0), "meters": set(c.get("meter_ids") or []),
                         "sym_total": int(c.get("sym_total") or 0),
                         "sym_invalid": int(c.get("sym_invalid") or 0)}
@@ -88,12 +92,15 @@ class RadioEnv:
             else:
                 return c  # a late message for an older hour: counted where we are
         if c is None:
-            c = {"hour": hour, "frames": 0, "weak": 0, "meters": set(), "sym_total": 0, "sym_invalid": 0}
+            c = {"hour": hour, "start": ts, "frames": 0, "weak": 0, "meters": set(), "sym_total": 0,
+                 "sym_invalid": 0}
             self.cur[board] = c
         return c
 
     def _close(self, board: str, c: Dict[str, Any], ts: int) -> None:
         rows = self.rows.setdefault(board, [])
+        if c.get("start", c["hour"]) - c["hour"] > PARTIAL_HOUR_S:
+            return
         rows.append([c["hour"], c["frames"], c["weak"], len(c["meters"]), c["sym_total"], c["sym_invalid"]])
         cutoff = ts - KEEP_DAYS * 86400
         self.rows[board] = [r for r in rows if r[0] >= cutoff]
@@ -104,7 +111,8 @@ class RadioEnv:
             return
         self.now_written = ts
         _write_json(self.now_path, {"v": 1, "updated": int(ts), "boards": {
-            b: {"hour": c["hour"], "frames": c["frames"], "weak": c["weak"], "meters": len(c["meters"]),
+            b: {"hour": c["hour"], "start": c.get("start", c["hour"]), "frames": c["frames"],
+                "weak": c["weak"], "meters": len(c["meters"]),
                 "meter_ids": sorted(c["meters"]), "sym_total": c["sym_total"], "sym_invalid": c["sym_invalid"]}
             for b, c in self.cur.items()}})
 
@@ -162,8 +170,9 @@ def instance() -> Optional[RadioEnv]:
 
 def load(path: str, now_path: str = "") -> Dict[str, List[List[int]]]:
     """For the WebUI: closed hours per board, plus the hour in progress as a
-    last row (meters as a count). An hour in progress older than the current
-    hour is a closed one the collector has not yet rolled over."""
+    last row (meters as a count) with a 7th element, the time its counting
+    started. An hour in progress older than the current hour is a closed one
+    the collector has not yet rolled over."""
     boards: Dict[str, List[List[int]]] = {}
     data = _read_json(path)
     if isinstance(data, dict) and isinstance(data.get("boards"), dict):
@@ -180,5 +189,5 @@ def load(path: str, now_path: str = "") -> Dict[str, List[List[int]]]:
                 continue
             rows.append([c["hour"], int(c.get("frames") or 0), int(c.get("weak") or 0),
                          int(c.get("meters") or 0), int(c.get("sym_total") or 0),
-                         int(c.get("sym_invalid") or 0)])
+                         int(c.get("sym_invalid") or 0), int(c.get("start") or c["hour"])])
     return boards

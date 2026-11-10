@@ -1039,12 +1039,15 @@ def radio_env_payload(now: int | None = None) -> dict:
         by = {r[0]: r for r in rows}
         cur, prev = by.get(cur_hour), by.get(cur_hour - 3600)
         last = max((r[0] for r in rows), default=0)
+        # Counting may have started mid-hour (add-on start): the rate is
+        # taken over the time actually counted, never the whole hour.
+        counted = max(1, now - (cur[6] if cur is not None and len(cur) > 6 else cur_hour))
         # Frames over the last 60 minutes: this hour so far plus the rest
-        # taken from the previous hour.
-        if prev is not None:
+        # taken from the previous hour, when that one was counted in full.
+        if prev is not None and (cur is None or counted >= elapsed - 60):
             f_now = (cur[1] if cur else 0) + prev[1] * (3600 - elapsed) / 3600
-        elif cur is not None and elapsed >= 600:
-            f_now = cur[1] * 3600 / elapsed
+        elif cur is not None and counted >= 600:
+            f_now = cur[1] * 3600 / counted
         else:
             f_now = None
         same = [r for r in rows if r[0] < cur_hour - 3600
