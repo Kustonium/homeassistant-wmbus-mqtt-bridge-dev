@@ -4492,7 +4492,8 @@
     const top = `<div class="card" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;">
       <div><div class="hint">${escapeHtml(t("re_now", "Now ({time}, {day})", {time: `${hh}:00`, day: dayType}))}</div>
         <div style="font-size:22px;font-weight:600;">${escapeHtml(t("re_frames_h", "{n} frames/h", {n: fmt(x.head_frames_h)}))}</div>
-        <div class="hint">${escapeHtml([typ, asArray(x.boards).length > 1 ? x.head : ""].filter(Boolean).join(" · "))}</div></div>
+        <div class="hint">${escapeHtml(typ)}</div>
+        ${x.head && asArray(x.boards).length > 1 ? `<div class="hint">${escapeHtml(t("re_head_board", "board that hears the most: {board}", {board: x.head}))}</div>` : ""}</div>
       <div><div class="hint">${escapeHtml(t("re_sym", "Invalid 3-of-6 symbols"))}</div>
         <div style="font-size:22px;font-weight:600;">${escapeHtml(x.sym_pct === null || x.sym_pct === undefined ? "—" : `${x.sym_pct}%`)}</div>
         <div class="hint">${escapeHtml(symTyp)}</div></div>
