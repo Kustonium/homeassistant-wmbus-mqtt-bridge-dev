@@ -114,7 +114,18 @@ class Payload(unittest.TestCase):
         tue = time.localtime(T - 7 * D).tm_wday
         self.assertEqual(p["heat"][tue][10], 1000)
         self.assertEqual(p["far"][10], 40)
-        self.assertIn(10, p["far_best"])
+        self.assertEqual(p["far_best"], [])        # three days of one hour: no advice yet
+
+    def test_far_best_needs_most_of_the_day(self):
+        rows = []
+        for d in (1, 6, 7, 8):                      # Mon, Wed, Tue, Mon before: working days
+            for h in range(24):
+                ts = T - d * D - 10 * H + h * H
+                rows.append([ts, 100, 40 if h < 5 or h >= 21 else 5, 10, 0, 0])
+        rows.sort()
+        self.write({"a": rows + [[T - H, 100, 5, 10, 0, 0]]}, {"a": {"hour": T, "frames": 0}})
+        p = webui.radio_env_payload(T + 60)
+        self.assertEqual(p["far_best"], [0, 1, 2, 3, 4, 21, 22, 23])
 
     def test_one_dead_board_is_a_finding(self):
         boards = {n: self.history(1000) + [[T - H, 1000, 5, 50, 10000, 100]] for n in ("a", "b")}
