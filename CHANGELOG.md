@@ -1,3 +1,10 @@
+## 1.6.18-dev.495
+
+### Other (review)
+- decoded count and last decoded time kept in runtime files, so status.json no longer shows 0 (336dfaf)
+- boards in the Panel flow and the Boards tab in alphabetical order, so they no longer jump with whichever spoke last (6b9a845)
+- DEC tile shows the age of its newest reading instead of pipeline.decoded_count (which the RAW counter resets to 0) (9121e71)
+
 ## 1.6.18-dev.493
 
 ### Other (review)
