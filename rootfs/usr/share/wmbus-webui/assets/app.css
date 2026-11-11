@@ -2170,3 +2170,38 @@ th.sortable:hover {
 }
 .flow-ninst { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 [data-href] { cursor: pointer; }
+
+/* M-Bus page as steps, top-down (port -> mode -> find -> meters -> polling),
+   joined by a line like the Panel flow. --c is the step's state colour. */
+.mbus-steps { display: flex; flex-direction: column; }
+.mbus-step { display: flex; gap: 12px; align-items: flex-start; }
+.mbus-step-num { width: 30px; height: 30px; flex: none; border-radius: 50%; display: flex; align-items: center;
+  justify-content: center; font-weight: 700; color: #0f161c; background: var(--c); margin-top: 8px; }
+.mbus-step-box { flex: 1; min-width: 0; border: 1.5px solid var(--c); border-radius: 12px;
+  background: color-mix(in srgb, var(--c) 8%, transparent); }
+.mbus-step.mbus-step-locked .mbus-step-box { border-style: dashed; }
+.mbus-step-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; background: none;
+  border: 0; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+.mbus-step-title { font-weight: 700; font-size: 15px; }
+.mbus-step-pill { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; color: var(--c, #9eafba);
+  background: color-mix(in srgb, var(--c, #9eafba) 16%, transparent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.mbus-step-chev { margin-left: auto; color: #8ea4b1; }
+.mbus-step-body { padding: 0 14px 12px; }
+.mbus-step-body > .card { margin: 6px 0 0; }
+.mbus-lock-note { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; margin-bottom: 8px;
+  border-radius: 8px; background: color-mix(in srgb, #f0b03c 12%, transparent); color: #f0c46a; font-size: 13px; }
+.mbus-step.mbus-step-locked .mbus-scan-section { opacity: .6; }
+.mbus-rail { width: 30px; display: flex; justify-content: center; }
+.mbus-rail span { width: 2px; height: 16px; background: #3a4752; }
+.mbus-mode { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.mbus-mode-tile { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 10px;
+  border: 1px dashed #3a4752; color: #9eafba; font-size: 13px; }
+.mbus-mode-tile strong { color: #e8eef2; font-size: 14px; }
+.mbus-mode-tile.current { border: 1.5px solid var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); color: #cfdbe3; }
+.mbus-mode-tile .btn { align-self: flex-start; }
+.mbus-step-end { display: flex; flex-direction: column; gap: 2px; margin-left: 42px; padding: 10px 14px; border-radius: 12px;
+  border: 1.5px dashed #9ad94a; color: #9ad94a; font-weight: 700; text-decoration: none; }
+.mbus-step-end span { color: #9eafba; font-weight: 400; font-size: 13px; }
+.mbus-tools { margin-top: 14px; border: 1px solid #2a3540; border-radius: 12px; }
+.mbus-tools > .card { margin: 0 12px 12px; }
+.mbus-page > .mbus-untested { font-size: 12px; color: #9eafba; }

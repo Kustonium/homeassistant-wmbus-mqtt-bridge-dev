@@ -388,7 +388,8 @@ class MBusWebUITest(unittest.TestCase):
                 # Guarded: with polling off there is nothing to reload, and a
                 # reload briefly interrupts radio decoding.
                 self.assertIn("if (state.mbus?.enabled) triggerSoftReload();", handler)
-        engine = source.split('if (action === "mbus-save-engine")', 1)[1]
+        # The old Apply button and the M-Bus steps' mode buttons share one handler.
+        engine = source.split('if (action === "mbus-save-engine" || action === "mbus-engine-set")', 1)[1]
         engine = engine.split("if (action ===", 1)[0]
         # The switch itself: reload whichever way it was moved.
         self.assertIn("triggerSoftReload();", engine)
