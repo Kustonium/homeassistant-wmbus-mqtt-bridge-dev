@@ -145,7 +145,7 @@ Verfügbar in **5 Sprachen** (EN/PL/DE/CS/SK) — Umschalter oben rechts.
 
 | Tab | Zweck |
 |---|---|
-| **PANEL** | Dashboard: die Pipeline ESP→MQTT→wmbusmeters→HA (klickbare Kacheln) + Statistik. |
+| **PANEL** | Dashboard: Live-Fluss von jeder ESP-Platine (eigene Farbe, Antenne, Linienbreite = Frames/min) über MQTT und wmbusmeters zu HA (Knoten anklicken für Details) und eine Kachel je Zähler; Zeigen auf einen Zähler hebt die Platinen hervor, die ihn hören. |
 | **ZÄHLER** | Deine konfigurierten Zähler: Wert, letztes Telegramm, **EMPFANG**. |
 | **EMPFANG / SUCHE** | Erkannte Kandidaten + konfigurierte „on air"; hier Zähler hinzufügen/entfernen und angezeigte Werte filtern. |
 | **LOGS / ESP-LOGS** | Runtime-Ereignisse und ESP-Empfänger-Diagnose. |

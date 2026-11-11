@@ -144,7 +144,7 @@ Available in **5 languages** (EN/PL/DE/CS/SK) — switcher in the top-right corn
 
 | Tab | Purpose |
 |---|---|
-| **PANEL** | Dashboard: the ESP→MQTT→wmbusmeters→HA pipeline (clickable tiles) + statistics. |
+| **PANEL** | Dashboard: a live flow from every ESP board (own colour, antenna, line width = frames/min) through MQTT and wmbusmeters to HA (click a node for details), and a tile per meter; hovering a meter highlights the boards that hear it. |
 | **METERS** | Your configured meters: value, last telegram, **RECEPTION**. |
 | **RECEIVING / SEARCH** | Detected candidates + configured-on-air; add/remove meters and filter displayed values here. |
 | **LOGS / ESP LOGS** | Runtime events and ESP receiver diagnostics. |

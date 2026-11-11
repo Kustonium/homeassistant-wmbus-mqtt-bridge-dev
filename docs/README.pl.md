@@ -146,7 +146,7 @@ Dostępny w **5 językach** (EN/PL/DE/CS/SK) — przełącznik w prawym górnym 
 
 | Zakładka | Po co |
 |---|---|
-| **PANEL** | Dashboard: pipeline ESP→MQTT→wmbusmeters→HA (klikalne kafelki) + statystyki. |
+| **PANEL** | Dashboard: przepływ na żywo od każdej płytki ESP (własny kolor, antena, grubość linii = ramki/min) przez MQTT i wmbusmeters do HA (kliknięcie węzła pokazuje szczegóły) oraz kafelek każdego licznika; najechanie na licznik podświetla płytki, które go słyszą. |
 | **LICZNIKI** | Twoje skonfigurowane liczniki: wartość, ostatni telegram, **ODBIÓR**. |
 | **ODBIERANE / SZUKAJ** | Wykryci kandydaci + skonfigurowane w eterze; tu dodajesz/usuwasz liczniki i filtrujesz pokazane wartości. |
 | **LOGI / LOGI ESP** | Zdarzenia runtime i diagnostyka odbiorników ESP. |

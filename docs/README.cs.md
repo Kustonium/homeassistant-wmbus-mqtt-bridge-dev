@@ -144,7 +144,7 @@ Dostupné v **5 jazycích** (EN/PL/DE/CS/SK) — přepínač vpravo nahoře.
 
 | Záložka | K čemu |
 |---|---|
-| **PANEL** | Dashboard: pipeline ESP→MQTT→wmbusmeters→HA (klikatelné dlaždice) + statistiky. |
+| **PANEL** | Dashboard: živý tok z každé desky ESP (vlastní barva, anténa, tloušťka čáry = rámce/min) přes MQTT a wmbusmeters do HA (kliknutím na uzel podrobnosti) a dlaždice každého měřiče; najetí na měřič zvýrazní desky, které ho slyší. |
 | **MĚŘIČE** | Tvé nakonfigurované měřiče: hodnota, poslední telegram, **PŘÍJEM**. |
 | **PŘÍJEM / HLEDÁNÍ** | Detekovaní kandidáti + nakonfigurované „v éteru"; zde přidáš/odebereš měřiče a filtruješ zobrazené hodnoty. |
 | **LOGY / ESP LOGY** | Runtime události a diagnostika ESP přijímačů. |
