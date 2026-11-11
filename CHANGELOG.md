@@ -1,3 +1,8 @@
+## 1.6.19-dev.500
+
+### Other (review)
+- radio env says 'no frames from the boards' only when every board is silent (6b916e5)
+
 ## 1.6.19-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
