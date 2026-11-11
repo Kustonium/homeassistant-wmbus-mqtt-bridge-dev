@@ -4568,17 +4568,33 @@
     </div>`;
 
     const heat = asArray(x.heat);
-    const peak = Math.max(1, ...heat.flat().filter(v => typeof v === "number"));
+    // Colour by where the hour sits among the filled cells: green = quietest,
+    // yellow = median, red = busiest (linear between them).
+    const heatVals = heat.flat().filter(v => typeof v === "number").sort((a, b) => a - b);
+    const hMin = heatVals.length ? heatVals[0] : 0;
+    const hMax = heatVals.length ? heatVals[heatVals.length - 1] : 0;
+    const hMed = heatVals.length ? (heatVals.length % 2 ? heatVals[(heatVals.length - 1) / 2]
+      : (heatVals[heatVals.length / 2 - 1] + heatVals[heatVals.length / 2]) / 2) : 0;
+    const HC = [[63, 185, 80], [210, 170, 40], [235, 80, 70]];
+    const mix = (a, b, f) => `rgb(${a.map((c, i) => Math.round(c + (b[i] - c) * f)).join(",")})`;
+    const heatColor = v => {
+      if (hMax <= hMin) return mix(HC[1], HC[1], 0);
+      if (v <= hMed) return mix(HC[0], HC[1], hMed > hMin ? (v - hMin) / (hMed - hMin) : 1);
+      return mix(HC[1], HC[2], hMax > hMed ? (v - hMed) / (hMax - hMed) : 1);
+    };
     const days = [0, 1, 2, 3, 4, 5, 6].map(i => t(`re_wd_${i}`, ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][i]));
     const heatRows = heat.map((row, wd) => `<div style="font-size:11px;color:var(--muted);">${escapeHtml(days[wd])}</div>` +
       asArray(row).map((v, h) => typeof v === "number"
-        ? `<div title="${escapeHtml(`${days[wd]} ${String(h).padStart(2, "0")}:00 · ${v}/h`)}" style="height:14px;border-radius:2px;background:#378ADD;opacity:${(0.12 + 0.88 * v / peak).toFixed(2)};"></div>`
+        ? `<div title="${escapeHtml(`${days[wd]} ${String(h).padStart(2, "0")}:00 · ${v}/h`)}" style="height:14px;border-radius:2px;background:${heatColor(v)};"></div>`
         : `<div style="height:14px;border-radius:2px;border:1px dashed #2a3a3a;"></div>`).join("")).join("");
     const heatCard = `<div class="card">
       <h3>${escapeHtml(t("re_heatmap", "Air density: week × hour"))}</h3>
       <div style="display:grid;grid-template-columns:30px repeat(24,minmax(0,1fr));gap:2px;align-items:center;">${heatRows}</div>
       <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin:4px 0 0 32px;"><span>00</span><span>06</span><span>12</span><span>18</span><span>23</span></div>
-      <p class="hint">${escapeHtml(t("re_heatmap_hint", "Darker = more frames per hour. Empty cells: no data yet."))}</p>
+      ${heatVals.length ? `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin-top:8px;">${[
+        ["re_heat_min", "min", hMin, HC[0]], ["re_heat_median", "median", hMed, HC[1]], ["re_heat_max", "max", hMax, HC[2]]]
+        .map(([k, d, v, c]) => `<span><span style="display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:-2px;background:${mix(c, c, 0)};"></span> ${escapeHtml(t(k, d))} ${Math.round(v)}/h</span>`).join("")}</div>` : ""}
+      <p class="hint">${escapeHtml(t("re_heatmap_hint", "Green = quietest hour, yellow = median, red = busiest (frames per hour). Empty cells: no data yet."))}</p>
     </div>`;
 
     const statePill = (b) => {
