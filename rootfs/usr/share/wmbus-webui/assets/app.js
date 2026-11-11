@@ -1016,6 +1016,13 @@
       state.data.i18n = previousI18n;
     }
     state.error = "";
+    // An M-Bus scan result lives only in this page; once the add-on has
+    // started again it describes a bus as it was before, so it goes.
+    const started = Number(state.data?.model?.bridge_start_epoch || 0);
+    if (state.mbusScan && !state.mbusScan.running && started && state.mbusScan.bridgeStart
+        && started !== state.mbusScan.bridgeStart) {
+      state.mbusScan = null;
+    }
   }
 
   // A failed refresh used to replace the page with its error until a manual
@@ -5975,7 +5982,8 @@
       const lo = Math.min(from, to), hi = Math.max(from, to);
       const results = [];
       state.mbusScan = {running: true, results: [], found: [], from: lo, to: hi,
-                        at: lo, nextFirst: from, nextLast: to};
+                        at: lo, nextFirst: from, nextLast: to,
+                        bridgeStart: Number(state.data?.model?.bridge_start_epoch || 0)};
       render();
       let cursor = lo, failed = "";
       while (cursor <= hi) {
