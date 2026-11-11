@@ -2180,7 +2180,7 @@
     const H = Math.max(colH, instH, 170) + 40;
     const cy = H / 2, top = (H - colH) / 2, itop = (H - instH) / 2;
     // Columns: boards | MQTT | instances | decode / Received | HA
-    const BX = 44, BW = 190, MX = 290, MW = 130, IX = 480, IW = 210, DX = 750, DW = 140, HX = 935, HW = 110, NH = 70;
+    const BX = 44, BW = 190, MX = 290, MW = 130, IX = 480, IW = 210, DX = 750, DW = 140, HX = 935, HW = 150, NH = 70;
     const W = HX + HW + 10;
     const maxRate = Math.max(1, ...devs.map((d) => Number(d.frames_h) || 0));
     const nodeColor = (st, own) => st === "ok" ? own : FLOW_STATE[st] || FLOW_STATE.unknown;
@@ -2225,8 +2225,8 @@
         <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="${color}" fill-opacity="0.14" stroke="${color}"/>
         ${ic(x + 16, y + 18, color)}
         <text class="flow-t" x="${x + 36}" y="${y + 18}" dominant-baseline="central">${escapeHtml(flowClip(title, Math.floor((w - 40) / 8)))}</text>
-        <text class="flow-s" x="${x + 12}" y="${y + 39}" dominant-baseline="central" fill="${color}">${escapeHtml(flowClip(l1, Math.floor(w / 7.2)))}</text>
-        ${l2 ? `<text class="flow-s2" x="${x + 12}" y="${y + 55}" dominant-baseline="central">${escapeHtml(flowClip(l2, Math.floor(w / 6.4)))}</text>` : ""}
+        <text class="flow-s" x="${x + 12}" y="${y + 39}" dominant-baseline="central" fill="${color}">${escapeHtml(flowClip(l1, Math.floor((w - 24) / 7.6)))}</text>
+        ${l2 ? `<text class="flow-s2" x="${x + 12}" y="${y + 55}" dominant-baseline="central">${escapeHtml(flowClip(l2, Math.floor((w - 24) / 6.4)))}</text>` : ""}
       </g>`;
     const ws = (k) => `data-action="open-workspace" data-ws="${k}"`;
     const curve = (x1, y1, x2, y2, color, moving, dash, width = 3) =>
