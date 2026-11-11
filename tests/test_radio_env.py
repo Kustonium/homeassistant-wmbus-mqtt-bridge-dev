@@ -135,6 +135,18 @@ class Payload(unittest.TestCase):
         p = webui.radio_env_payload(T + 60)
         self.assertEqual((p["verdict"], p["odd_board"]), ("one_board", "dead"))
 
+    def test_one_silent_board_among_learning_ones_is_not_all_silent(self):
+        # Prod 12.11: five boards still learning (no three earlier days), one
+        # board silent (moved to another broker). The silent one was the only
+        # "known" board, so the verdict said no frames from the boards at all.
+        boards = {n: [[T - H, 1000, 5, 50, 10000, 100]] for n in ("a", "b")}
+        boards["moved"] = [[T - 20 * H, 900, 5, 50, 0, 0]]
+        self.write(boards, {n: {"hour": T, "frames": 0} for n in ("a", "b")})
+        p = webui.radio_env_payload(T + 60)
+        self.assertEqual({b["name"]: b["state"] for b in p["boards"]},
+                         {"a": "learning", "b": "learning", "moved": "silent"})
+        self.assertEqual((p["verdict"], p["odd_board"]), ("one_board", "moved"))
+
     def test_a_board_gone_for_a_day_is_not_shown(self):
         boards = {n: self.history(1000) + [[T - H, 1000, 5, 50, 10000, 100]] for n in ("a", "b")}
         boards["gone"] = [[T - 3 * D, 900, 1, 10, 0, 0]]
