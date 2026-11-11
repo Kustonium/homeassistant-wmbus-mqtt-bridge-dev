@@ -1,3 +1,9 @@
+## 1.6.18-dev.496
+
+### Other (review)
+- Panel flow DEC counts its own radio meters (not total minus wired), instance tiles wide enough for the last-reading text, short M-Bus input label (50df796)
+- decoded count and last decoded time kept in runtime files, so status.json no longer shows 0 (336dfaf)
+
 ## 1.6.18-dev.495
 
 ### Other (review)
