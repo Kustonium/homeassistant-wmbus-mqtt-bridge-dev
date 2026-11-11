@@ -2162,3 +2162,5 @@ th.sortable:hover {
   .flow-ant.on .w1, .flow-ant.on .w2, .flow-nb-ant.on { animation: flow-wave 1.4s ease-in-out infinite; }
   .flow-ant.on .w2 { animation-delay: .35s; }
 }
+.flow-ninst { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+[data-href] { cursor: pointer; }

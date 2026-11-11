@@ -4253,6 +4253,9 @@ def status_model(data: dict) -> dict:
         "mqtt_ok": mqtt_ok,
         "raw_ok": raw_ok,
         "wmbus_ok": wmbus_ok,
+        # Panel flow: the wmbusmeters instance for meters on external drivers
+        # ({state: running|exited|crash_loop|disabled|no_meters, meters}).
+        "external_instance": read_json(STATUS_EXTERNAL_INSTANCE_FILE),
         "decoded_ok": decoded_ok,
         "discovery_ok": discovery_ok,
         "ha_presence": ha_presence,

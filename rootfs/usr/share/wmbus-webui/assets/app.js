@@ -1674,6 +1674,8 @@
              sub: brokerLabel || ((mqtt.host || "—") + (mqtt.port ? ":" + mqtt.port : ""))},
       wmbus: {state: nodeState(wmbusOk, wmbusWarn), text: wmbusLabel, sub: wmbusLine,
               title: t("pipeline_wmbus_tooltip", "received / decoded")},
+      instances: flowInstances(model, {nodeState, wmbusOk, meterCount, candidateCount, decodedCount,
+                                       wiredRunning, wiredAnswering, wiredTotal, wiredAll}),
       ha: {state: haLink === "ok" ? nodeState(true, false) : haLink === "not_created" ? nodeState(false, false) : "unknown",
            text: haText, sub: `${meterCount} ${t("pipeline_ha_entities_short", "entit.")}`},
     };
@@ -1681,7 +1683,6 @@
       <section class="section">
         ${flowChips(flow, model)}
         ${flowDiagram(flow)}
-        ${wiredPipeline}
         ${pipelineWorkspace(model)}
       </section>
     `;
@@ -2105,21 +2106,85 @@
     </div>`;
   }
 
+  // The wmbusmeters instances the add-on runs, as the code wires them
+  // (bridge-lib/12-pipeline.sh, 11-listen.sh, 15-external.sh, 14-mbus.sh):
+  //   dec   the main instance, your configured meters -> decode stage -> HA
+  //         (with no meters configured it only listens, for Received)
+  //   ext   meters on external_* drivers; its JSON goes through a FIFO into
+  //         the same decode stage
+  //   list  pure listen, no meters: the candidates on Received / Search
+  //   mbus  wired M-Bus, its own serial input, publishes its meters itself
+  // Each one: {key, color, title, purpose, state, status, to: "decode" |
+  // "candidates" | "ha", input: "raw" | "mbus"}.
+  function flowInstances(model, c) {
+    const data = state.data || {};
+    const out = [];
+    const running = (ok) => ok ? t("flow_st_running", "running") : t("flow_st_stopped", "stopped");
+    const extMeters = asArray(data.meters).filter((m) => String(m.driver || "").startsWith("external_")).length;
+    out.push({
+      key: "dec", color: "#f0b03c", title: "wmbusmeters · DEC",
+      purpose: c.meterCount > 0
+        ? t("flow_inst_dec", "your meters ({n})", {n: Math.max(0, c.meterCount - extMeters - (c.wiredRunning ? c.wiredTotal : 0))})
+        : t("flow_inst_dec_zero", "listening, no meters yet"),
+      state: c.nodeState(c.wmbusOk, false),
+      status: `${running(c.wmbusOk)} · ${t("flow_decoded", "{n} decoded", {n: c.decodedCount})}`,
+      to: c.meterCount > 0 ? "decode" : "candidates", input: "raw",
+    });
+    const ext = model.external_instance || {};
+    if (["running", "exited", "crash_loop"].includes(ext.state)) {
+      out.push({
+        key: "ext", color: "#ff6fa5", title: "wmbusmeters · EXT",
+        purpose: t("flow_inst_ext", "custom drivers ({n})", {n: Number(ext.meters) || extMeters}),
+        state: ext.state === "running" ? "ok" : "bad",
+        status: ext.state === "running" ? t("flow_st_running", "running")
+          : ext.state === "crash_loop" ? t("flow_st_crash", "stopped after repeated crashes") : t("flow_st_exited", "exited"),
+        to: "decode", input: "raw",
+      });
+    }
+    if (c.meterCount > 0) {
+      const fresh = asArray(data.candidates).some((r) => {
+        const ts = r && r.last_seen ? Date.parse(r.last_seen) : NaN;
+        return Number.isFinite(ts) && Date.now() - ts < 5 * 60 * 1000;
+      });
+      out.push({
+        key: "list", color: "#2fd3a6", title: "wmbusmeters · LIST",
+        purpose: t("flow_inst_list", "listening for other meters"),
+        state: fresh ? "ok" : "warn",
+        status: `${fresh ? t("flow_st_running", "running") : t("flow_st_idle", "nothing heard for 5 min")} · ${t("flow_candidates_sub", "{n} visible", {n: c.candidateCount})}`,
+        to: "candidates", input: "raw",
+      });
+    }
+    if (c.wiredRunning) {
+      out.push({
+        key: "mbus", color: "#9ad94a", title: "wmbusmeters · M-Bus",
+        purpose: t("flow_inst_mbus", "wired meters ({n})", {n: c.wiredTotal}),
+        state: c.nodeState(c.wiredAll, c.wiredAnswering > 0),
+        status: t("pipeline_wired_answering", "{x} of {y} answer").replace("{x}", String(c.wiredAnswering)).replace("{y}", String(c.wiredTotal)),
+        to: "ha", input: "mbus",
+      });
+    }
+    return out;
+  }
+
   function flowDiagram(o) {
     const devs = asArray(o.devices);
     const colors = flowColors();
     const focus = !!state.flowFocus;
-    if (!devs.length) {
-      return `<div class="empty" style="margin-top:10px;">${escapeHtml(t("flow_no_boards", "No ESP board heard yet."))}</div>`;
-    }
-    const n = devs.length;
-    const compact = n > 8;
+    const inst = asArray(o.instances);
+    const n = Math.max(1, devs.length);
+    const compact = devs.length > 8;
     const bh = compact ? 30 : 46, gap = compact ? 6 : 10;
-    const colH = n * bh + (n - 1) * gap;
-    const H = Math.max(colH, 150) + 30;
-    const cy = H / 2, top = (H - colH) / 2;
-    const BX = 44, BW = 196, MX = 330, MW = 150, WX = 530, WW = 170, HX = 745, HW = 145, NH = 74;
+    const colH = devs.length ? n * bh + (n - 1) * gap : 0;
+    const IH = 64, IG = 16;
+    const instH = inst.length * IH + Math.max(0, inst.length - 1) * IG;
+    const H = Math.max(colH, instH, 170) + 40;
+    const cy = H / 2, top = (H - colH) / 2, itop = (H - instH) / 2;
+    // Columns: boards | MQTT | instances | decode / Received | HA
+    const BX = 44, BW = 190, MX = 290, MW = 130, IX = 480, IW = 210, DX = 750, DW = 140, HX = 935, HW = 110, NH = 70;
+    const W = HX + HW + 10;
     const maxRate = Math.max(1, ...devs.map((d) => Number(d.frames_h) || 0));
+    const nodeColor = (st, own) => st === "ok" ? own : FLOW_STATE[st] || FLOW_STATE.unknown;
+    const iy = (i) => itop + i * (IH + IG) + IH / 2;
     let boards = "", lines = "";
     devs.forEach((d, i) => {
       const info = flowBoardInfo(d, o.stale);
@@ -2128,7 +2193,7 @@
       const c = info.live ? own : info.warn ? FLOW_STATE.warn : FLOW_STATE.unknown;
       const hl = flowFocused("board", d.name) ? " hl" : "";
       const ey = cy + (n > 1 ? (i / (n - 1) - 0.5) * 40 : 0);
-      const path = `M${BX + BW} ${my} C${BX + BW + 50} ${my} ${MX - 50} ${ey} ${MX} ${ey}`;
+      const path = `M${BX + BW} ${my} C${BX + BW + 40} ${my} ${MX - 40} ${ey} ${MX} ${ey}`;
       const name = escapeHtml(d.name);
       lines += info.live
         ? `<path class="flow-line flow-dots${hl}" data-board="${name}" d="${path}" stroke="${c}" stroke-width="${(1.5 + 4.5 * info.rate / maxRate).toFixed(1)}" style="--d:${(2.6 - 1.8 * info.rate / maxRate).toFixed(2)}s"/>`
@@ -2143,39 +2208,84 @@
           ${compact
             ? `<text class="flow-t" x="${BX + 12}" y="${my}" dominant-baseline="central">${escapeHtml(flowClip(d.name, 14))}<tspan class="flow-s" fill="${c}"> ${info.live ? escapeHtml(info.rateTxt ? info.rateTxt + "/min" : "") : "—"}</tspan></text>`
             : `<text class="flow-t" x="${BX + 12}" y="${y + 17}" dominant-baseline="central">${escapeHtml(flowClip(d.name, 20))}</text>
-               <text class="flow-s" x="${BX + 12}" y="${y + 34}" dominant-baseline="central" fill="${c}">${escapeHtml(flowClip(info.sub, 26))}</text>`}
+               <text class="flow-s" x="${BX + 12}" y="${y + 34}" dominant-baseline="central" fill="${c}">${escapeHtml(flowClip(info.sub, 25))}</text>`}
         </g>`;
     });
-    const nodeColor = (st, own) => st === "ok" ? own : FLOW_STATE[st] || FLOW_STATE.unknown;
     const icon = {
       mqtt: (x, y, c) => `<g fill="${c}" stroke="${c}" stroke-width="1.2"><circle cx="${x}" cy="${y}" r="3.5"/><circle cx="${x + 9}" cy="${y - 7}" r="2.3"/><circle cx="${x + 9}" cy="${y + 7}" r="2.3"/><line x1="${x}" y1="${y}" x2="${x + 9}" y2="${y - 7}"/><line x1="${x}" y1="${y}" x2="${x + 9}" y2="${y + 7}"/></g>`,
-      wmbus: (x, y, c) => `<g stroke="${c}" fill="none" stroke-width="1.8" stroke-linecap="round"><circle cx="${x + 4}" cy="${y}" r="4.5"/><line x1="${x + 4}" y1="${y - 9}" x2="${x + 4}" y2="${y - 7}"/><line x1="${x + 4}" y1="${y + 7}" x2="${x + 4}" y2="${y + 9}"/><line x1="${x - 5}" y1="${y}" x2="${x - 3}" y2="${y}"/><line x1="${x + 11}" y1="${y}" x2="${x + 13}" y2="${y}"/></g>`,
+      gear: (x, y, c) => `<g stroke="${c}" fill="none" stroke-width="1.8" stroke-linecap="round"><circle cx="${x + 4}" cy="${y}" r="4.5"/><line x1="${x + 4}" y1="${y - 9}" x2="${x + 4}" y2="${y - 7}"/><line x1="${x + 4}" y1="${y + 7}" x2="${x + 4}" y2="${y + 9}"/><line x1="${x - 5}" y1="${y}" x2="${x - 3}" y2="${y}"/><line x1="${x + 11}" y1="${y}" x2="${x + 13}" y2="${y}"/></g>`,
       ha: (x, y, c) => `<g stroke="${c}" fill="none" stroke-width="1.8" stroke-linejoin="round"><path d="M${x - 4} ${y + 1} L${x + 4} ${y - 7} L${x + 12} ${y + 1}"/><path d="M${x - 2} ${y} L${x - 2} ${y + 8} L${x + 10} ${y + 8} L${x + 10} ${y}"/></g>`,
+      list: (x, y, c) => `<g stroke="${c}" fill="none" stroke-width="1.8" stroke-linecap="round"><circle cx="${x + 3}" cy="${y - 1}" r="5"/><line x1="${x + 7}" y1="${y + 3}" x2="${x + 11}" y2="${y + 7}"/></g>`,
+      plug: (x, y, c) => `<g stroke="${c}" fill="none" stroke-width="1.8" stroke-linecap="round"><rect x="${x - 3}" y="${y - 4}" width="12" height="8" rx="2"/><line x1="${x}" y1="${y - 8}" x2="${x}" y2="${y - 4}"/><line x1="${x + 6}" y1="${y - 8}" x2="${x + 6}" y2="${y - 4}"/><line x1="${x + 3}" y1="${y + 4}" x2="${x + 3}" y2="${y + 9}"/></g>`,
     };
-    const node = (key, x, w, n2) => {
-      const c = nodeColor(n2.state, FLOW_NODE[key]);
-      const open = state.workspace === key;
-      const title = key === "mqtt" ? "MQTT" : key === "wmbus" ? "wmbusmeters" : "HA";
-      return `<g class="flow-node" data-action="open-workspace" data-ws="${key}">
-          <title>${escapeHtml(title)} · ${escapeHtml(n2.text)} · ${escapeHtml(n2.sub)}${n2.title ? ` (${escapeHtml(n2.title)})` : ""}</title>
-          <rect x="${x}" y="${cy - NH / 2}" width="${w}" height="${NH}" rx="10" fill="${c}" fill-opacity="0.14" stroke="${c}" stroke-width="${open ? 2.5 : 1}"/>
-          ${icon[key](x + 16, cy - 15, c)}
-          <text class="flow-t" x="${x + 36}" y="${cy - 15}" dominant-baseline="central">${title}</text>
-          <text class="flow-s" x="${x + 12}" y="${cy + 6}" dominant-baseline="central" fill="${c}">${escapeHtml(flowClip(n2.text, Math.floor(w / 7.2)))}</text>
-          <text class="flow-s2" x="${x + 12}" y="${cy + 23}" dominant-baseline="central">${escapeHtml(flowClip(n2.sub, Math.floor(w / 6.6)))}</text>
-        </g>`;
-    };
-    const link = (x1, x2, key) => {
-      const c = nodeColor(o[key].state, FLOW_NODE[key]);
-      const moving = o.rate > 0 && o[key].state === "ok";
-      return `<path class="flow-line${moving ? " flow-dots" : ""}" d="M${x1} ${cy} L${x2} ${cy}" stroke="${c}" stroke-width="3"${moving ? "" : ` stroke-dasharray="5 5"`} style="--d:0.9s"/>
-        <text class="flow-s2" x="${(x1 + x2) / 2}" y="${cy - 10}" text-anchor="middle">${o.rate}/min</text>`;
-    };
-    const wide = `<svg class="flow-svg flow-root${focus ? " focus" : ""}" viewBox="0 0 900 ${H}" role="img" aria-label="${escapeHtml(t("flow_aria", "Frames from the boards through MQTT and wmbusmeters to Home Assistant"))}">
-        ${lines}${boards}
-        ${node("mqtt", MX, MW, o.mqtt)}${link(MX + MW, WX, "mqtt")}
-        ${node("wmbus", WX, WW, o.wmbus)}${link(WX + WW, HX, "wmbus")}
-        ${node("ha", HX, HW, o.ha)}
+    // A box with an icon, a title and two lines; ws opens the drill-down,
+    // href goes to a tab instead.
+    const box = (x, y, w, h, color, ic, title, l1, l2, link, tip) => `<g class="flow-node" ${link}>
+        <title>${escapeHtml(tip || [title, l1, l2].filter(Boolean).join(" · "))}</title>
+        <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="${color}" fill-opacity="0.14" stroke="${color}"/>
+        ${ic(x + 16, y + 18, color)}
+        <text class="flow-t" x="${x + 36}" y="${y + 18}" dominant-baseline="central">${escapeHtml(flowClip(title, Math.floor((w - 40) / 8)))}</text>
+        <text class="flow-s" x="${x + 12}" y="${y + 39}" dominant-baseline="central" fill="${color}">${escapeHtml(flowClip(l1, Math.floor(w / 7.2)))}</text>
+        ${l2 ? `<text class="flow-s2" x="${x + 12}" y="${y + 55}" dominant-baseline="central">${escapeHtml(flowClip(l2, Math.floor(w / 6.4)))}</text>` : ""}
+      </g>`;
+    const ws = (k) => `data-action="open-workspace" data-ws="${k}"`;
+    const curve = (x1, y1, x2, y2, color, moving, dash, width = 3) =>
+      `<path class="flow-line${moving ? " flow-dots" : ""}" d="M${x1} ${y1} C${(x1 + x2) / 2} ${y1} ${(x1 + x2) / 2} ${y2} ${x2} ${y2}" stroke="${color}" stroke-width="${width}"${moving ? "" : dash ? ` stroke-dasharray="5 5"` : ""} style="--d:0.9s"/>`;
+    const moving = o.rate > 0 && !o.stale;
+    const mqC = nodeColor(o.mqtt.state, FLOW_NODE.mqtt);
+    let mid = "";
+    // MQTT -> each radio instance (the same RAW stream reaches all of them)
+    const decIdx = [], candIdx = [];
+    inst.forEach((it, i) => {
+      const y = iy(i);
+      const c = nodeColor(it.state, it.color);
+      if (it.input === "raw") mid += curve(MX + MW, cy, IX, y, mqC, moving && it.state === "ok", true, 2.5);
+      if (it.to === "decode") decIdx.push(i);
+      if (it.to === "candidates") candIdx.push(i);
+      mid += box(IX, y - IH / 2, IW, IH, c, it.key === "list" ? icon.list : it.key === "mbus" ? icon.plug : icon.gear,
+        it.title, it.purpose, it.status, it.key === "mbus" ? `data-action="flow-go" data-href="#mbus"` : it.key === "ext" ? `data-action="flow-go" data-href="#drivers"` : ws("wmbus"));
+    });
+    // Wired M-Bus has its own input, drawn under MQTT.
+    const mbusI = inst.findIndex((it) => it.input === "mbus");
+    if (mbusI >= 0) {
+      const y = iy(mbusI), c = nodeColor(inst[mbusI].state, inst[mbusI].color);
+      mid += box(MX, y - 26, MW, 52, c, icon.plug, "M-Bus", t("flow_mbus_in", "serial bus"), "", `data-action="flow-go" data-href="#mbus"`)
+        + curve(MX + MW, y, IX, y, c, inst[mbusI].state === "ok", true, 2.5);
+    }
+    // Decode stage (one process for DEC and EXT) and Received / Search.
+    const decY = decIdx.length ? decIdx.reduce((a2, i) => a2 + iy(i), 0) / decIdx.length : null;
+    const candY = candIdx.length ? candIdx.reduce((a2, i) => a2 + iy(i), 0) / candIdx.length : null;
+    const DC = "#ffa64d", CC = "#4fd6ff";
+    let haY = decY !== null ? decY : cy;
+    if (decY !== null) {
+      decIdx.forEach((i) => {
+        const it = inst[i];
+        mid += curve(IX + IW, iy(i), DX, decY, nodeColor(it.state, it.color), moving && it.state === "ok", true);
+        if (it.key === "ext") mid += `<text class="flow-s2" x="${(IX + IW + DX) / 2}" y="${(iy(i) + decY) / 2 + 14}" text-anchor="middle">FIFO</text>`;
+      });
+      mid += box(DX, decY - NH / 2, DW, NH, DC, icon.gear, t("flow_decode", "decoding"), t("flow_decode_sub", "status + discovery"), "", ws("wmbus"));
+      const haC = nodeColor(o.ha.state, FLOW_NODE.ha);
+      mid += curve(DX + DW, decY, HX, haY, haC, moving && o.ha.state === "ok", true)
+        + `<text class="flow-s2" x="${(DX + DW + HX) / 2}" y="${haY - 10}" text-anchor="middle">${o.rate}/min</text>`;
+    }
+    if (candY !== null) {
+      candIdx.forEach((i) => {
+        const it = inst[i];
+        mid += curve(IX + IW, iy(i), DX, candY, nodeColor(it.state, it.color), moving && it.state === "ok", true);
+      });
+      mid += box(DX, candY - NH / 2, DW, NH, CC, icon.list, t("flow_candidates", "Received"),
+        t("flow_candidates_sub", "{n} visible", {n: Number((state.data || {}).model?.candidate_count || 0)}), "", `data-action="flow-go" data-href="#discover"`);
+    }
+    if (mbusI >= 0) {
+      // Under the decode and Received boxes, then up into HA from below.
+      const it = inst[mbusI], y = iy(mbusI), c = nodeColor(it.state, it.color), on = it.state === "ok";
+      mid += `<path class="flow-line${on ? " flow-dots" : ""}" d="M${IX + IW} ${y} L${HX + HW / 2 - 8} ${y} Q${HX + HW / 2} ${y} ${HX + HW / 2} ${y - 8} L${HX + HW / 2} ${haY + NH / 2}" stroke="${c}" stroke-width="3"${on ? "" : ` stroke-dasharray="5 5"`} style="--d:0.9s"/>`;
+    }
+    const haC = nodeColor(o.ha.state, FLOW_NODE.ha);
+    mid += box(HX, haY - NH / 2, HW, NH, haC, icon.ha, "HA", o.ha.text, o.ha.sub, ws("ha"));
+    const mqttBox = box(MX, cy - NH / 2, MW, NH, mqC, icon.mqtt, "MQTT", o.mqtt.text, o.mqtt.sub, ws("mqtt"));
+    const wide = `<svg class="flow-svg flow-root${focus ? " focus" : ""}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(t("flow_aria", "Frames from the boards through MQTT and wmbusmeters to Home Assistant"))}">
+        ${lines}${mid}${boards}${mqttBox}
       </svg>`;
     const narrowBoards = devs.map((d) => {
       const info = flowBoardInfo(d, o.stale);
@@ -2184,16 +2294,17 @@
       return `<button type="button" class="flow-nb${info.live ? "" : " off"}${flowFocused("board", d.name) ? " hl" : ""}" data-board="${escapeHtml(d.name)}" data-action="open-workspace" data-ws="esp" style="--c:${c}">
           <span class="flow-nb-ant${info.live ? " on" : ""}">📡</span><span class="flow-nb-name">${escapeHtml(d.name)}</span><span class="flow-nb-sub">${escapeHtml(info.sub)}</span></button>`;
     }).join("");
-    const narrowNode = (key, label) => {
-      const c = nodeColor(o[key].state, FLOW_NODE[key]);
-      return `<button type="button" class="flow-nn" data-action="open-workspace" data-ws="${key}" style="--c:${c}"><strong>${label}</strong><span>${escapeHtml(o[key].text)}</span><span class="flow-nn-sub">${escapeHtml(o[key].sub)}</span></button>`;
-    };
-    const arrow = `<div class="flow-na">↓ ${escapeHtml(String(o.rate))}/min</div>`;
+    const nn = (c, title, l1, l2, attrs) => `<button type="button" class="flow-nn" ${attrs} style="--c:${c}"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(l1)}</span>${l2 ? `<span class="flow-nn-sub">${escapeHtml(l2)}</span>` : ""}</button>`;
+    const arrow = (txt) => `<div class="flow-na">↓${txt ? " " + escapeHtml(txt) : ""}</div>`;
+    const narrowInst = inst.map((it) => nn(nodeColor(it.state, it.color), it.title, it.purpose, it.status,
+      it.key === "mbus" ? `data-action="flow-go" data-href="#mbus"` : it.key === "ext" ? `data-action="flow-go" data-href="#drivers"` : ws("wmbus"))).join("");
     const narrow = `<div class="flow-narrow">
-        <div class="flow-nboards flow-root${focus ? " focus" : ""}">${narrowBoards}</div>
-        ${arrow}${narrowNode("mqtt", "MQTT")}${arrow}${narrowNode("wmbus", "wmbusmeters")}${arrow}${narrowNode("ha", "HA")}
+        ${devs.length ? `<div class="flow-nboards flow-root${focus ? " focus" : ""}">${narrowBoards}</div>${arrow(`${o.rate}/min`)}` : ""}
+        ${nn(mqC, "MQTT", o.mqtt.text, o.mqtt.sub, ws("mqtt"))}${arrow("")}
+        <div class="flow-ninst">${narrowInst}</div>${arrow("")}
+        ${nn(nodeColor(o.ha.state, FLOW_NODE.ha), "HA", o.ha.text, o.ha.sub, ws("ha"))}
       </div>`;
-    return `<div class="flow-wrap">${wide}${narrow}
+    return `<div class="flow-wrap">${devs.length ? "" : `<div class="hint" style="margin-bottom:6px;">${escapeHtml(t("flow_no_boards", "No ESP board heard yet."))}</div>`}${wide}${narrow}
       <p class="hint" style="margin:6px 0 0;">${escapeHtml(t("flow_legend", "Line colour = board, width = frames per minute, dots = traffic. Dashed grey = silent. Hover over a meter to see which boards hear it. Click a node for details."))}</p></div>`;
   }
 
@@ -6522,6 +6633,12 @@
       } catch (error) {
         toast(error.message, true);
       }
+      return;
+    }
+
+    // Panel flow node that leads to another tab (Received, M-Bus, Drivers).
+    if (action === "flow-go") {
+      window.location.hash = target.dataset.href;
       return;
     }
 
