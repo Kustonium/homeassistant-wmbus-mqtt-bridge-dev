@@ -253,9 +253,7 @@ _decode_consume_bash() {
   while IFS= read -r line; do
     if [[ "${line}" == \{*\"_\":\"telegram\"* ]]; then
       STATUS_WMBUSMETERS_RUNNING="true"
-      STATUS_DECODED_COUNT=$((STATUS_DECODED_COUNT + 1))
-      # shellcheck disable=SC2034
-      STATUS_LAST_DECODED_SEEN="$(iso_now)"
+      status_store_decoded "$(iso_now)"
       status_add_event "ok" "Decoded telegram received"
       write_status_json
       status_mark_search_decoded_no_aes "${line}"
@@ -328,7 +326,7 @@ _decode_stage() {
       --discovery-prefix="${DISCOVERY_PREFIX:-}" --search-mode="${SEARCH_MODE:-false}" \
       --loglevel="${LOGLEVEL:-}" --mqtt-host="${MQTT_HOST:-}" --mqtt-port="${MQTT_PORT:-}" \
       --mqtt-connected="${STATUS_MQTT_CONNECTED}" --wmbusmeters-running="${STATUS_WMBUSMETERS_RUNNING}" \
-      --decoded-count="${STATUS_DECODED_COUNT}" --last-decoded-seen="${STATUS_LAST_DECODED_SEEN}" \
+      --decoded-count-file="${STATUS_DECODED_COUNT_FILE}" --last-decoded-file="${STATUS_LAST_DECODED_FILE}" \
       --last-error="${STATUS_LAST_ERROR}" --last-event="${STATUS_LAST_EVENT}" \
       --discovery-published="${STATUS_DISCOVERY_PUBLISHED}" \
       --discovery-published-at="${STATUS_DISCOVERY_PUBLISHED_AT}" \
@@ -349,9 +347,8 @@ _decode_stage() {
       case "${_act}" in
         publish)
           STATUS_WMBUSMETERS_RUNNING="true"
-          STATUS_DECODED_COUNT="${_a}"
-          # shellcheck disable=SC2034
-          STATUS_LAST_DECODED_SEEN="${_b}"
+          # _a/_b (count, last decoded): already in STATUS_DECODED_COUNT_FILE
+          # and STATUS_LAST_DECODED_FILE, which write_status_json reads.
           STATUS_LAST_EVENT="${_c}"
           publish_decoded_json "${_d}" ;;
         pub) mqtt_pub "${_a}" "${_b}" "${_c}" ;;

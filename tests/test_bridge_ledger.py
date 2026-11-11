@@ -423,6 +423,58 @@ class TrackerBookTest(unittest.TestCase):
         self.assertFalse(self.files["devices"].exists())  # awk on a missing file writes nothing
 
 
+class DecodedCountFileTest(unittest.TestCase):
+    """The decoded count lives in files the decode stage writes; the RAW
+    counter, another process, writes status.json for every telegram and must
+    show that count, not the 0 it was started with (prod: "10580802 / 0")."""
+
+    def setUp(self) -> None:
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.d = Path(self.dir.name)
+        (self.d / "decoded_count").write_text("41\n")
+        (self.d / "last_decoded").write_text("2026-10-02T09:00:00+00:00\n")
+
+    def files(self):
+        return [f"--decoded-count-file={self.d / 'decoded_count'}",
+                f"--last-decoded-file={self.d / 'last_decoded'}"]
+
+    def test_raw_counter_writes_the_decode_stages_count(self):
+        d = self.d
+        (d / "preview").mkdir()
+        (d / "last").mkdir()
+        (d / "meters").mkdir()
+        args = bl._parser().parse_args([
+            "raw", *(f"--{n}-file={d / n}" for n in (
+                "raw-count", "last-raw", "recent-raw", "broker-error", "events", "candidates",
+                "rate", "rate-history", "status-json", "discovery-flag",
+                "seen", "candidate-raw", "candidate-analysis")),
+            f"--meter-dir={d / 'meters'}", f"--preview-meter-dir={d / 'preview'}",
+            f"--preview-last-dir={d / 'last'}", *self.files()])
+        book = bl.RawBook(args, io.StringIO())
+        book.status_json("7", "T")
+        book.deferred.flush()
+        pipe = json.loads((d / "status-json").read_text())["pipeline"]
+        self.assertEqual((pipe["raw_count"], pipe["decoded_count"], pipe["last_decoded_seen"]),
+                         (7, 41, "2026-10-02T09:00:00+00:00"))
+
+    def test_decode_stage_goes_on_from_the_file_and_writes_it(self):
+        d = self.d
+        args = bl._parser().parse_args([
+            "decode", *(f"--{n}-file={d / n}" for n in (
+                "status-json", "raw-count", "last-raw", "discovery-flag", "events", "meters",
+                "meter-last-json", "key-problem", "seen")),
+            "--publisher-port=0", *self.files()])
+        book = bl.DecodeBook(args, out=io.StringIO(), err=io.StringIO())
+        (d / "decoded_count").write_text("100\n")  # a restarted stage, or another writer
+        book.store_decoded()
+        self.assertEqual((d / "decoded_count").read_text(), "101\n")
+        self.assertNotEqual(book.last_decoded, "2026-10-02T09:00:00+00:00")
+        self.assertEqual((d / "last_decoded").read_text(), book.last_decoded + "\n")
+        book.write_status()
+        self.assertEqual(json.loads((d / "status-json").read_text())["pipeline"]["decoded_count"], 101)
+
+
 class RawBookRequestTest(unittest.TestCase):
     """Work handed to bash only when the bash code would get past its own checks:
     an extra request is invisible in the files, but costs a bash call."""

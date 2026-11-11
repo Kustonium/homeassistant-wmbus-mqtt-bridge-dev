@@ -89,6 +89,13 @@ STATUS_EVENTS_FILE="${RUNTIME}/status_events.tsv"
 STATUS_SEEN_FILE="${RUNTIME}/status_seen.tsv"
 STATUS_RAW_COUNT_FILE="${RUNTIME}/status_raw_count.txt"
 STATUS_LAST_RAW_FILE="${RUNTIME}/status_last_raw_seen.txt"
+# The decoded count and last decoded time, kept in files like the RAW count:
+# only the decode stage (bridge_ledger.py decode, or _decode_consume_bash)
+# counts, but every status.json writer (write_status_json, the RAW counter, the
+# decode stage) runs in its own process or subshell with its own copy of
+# STATUS_DECODED_COUNT, so each of them reads these files instead.
+STATUS_DECODED_COUNT_FILE="${RUNTIME}/status_decoded_count.txt"
+STATUS_LAST_DECODED_FILE="${RUNTIME}/status_last_decoded_seen.txt"
 STATUS_RECENT_RAW_FILE="${RUNTIME}/status_recent_raw.tsv"
 STATUS_CANDIDATE_ANALYSIS_FILE="${RUNTIME}/status_candidate_analysis.tsv"
 STATUS_CANDIDATE_RAW_FILE="${RUNTIME}/status_candidate_raw.tsv"
@@ -229,7 +236,7 @@ STATUS_MQTT_CONNECTED="false"
 STATUS_WMBUSMETERS_RUNNING="false"
 # shellcheck disable=SC2034
 STATUS_RAW_COUNT=0
-# shellcheck disable=SC2034  # read by _decode_stage / _decode_consume_bash (12-pipeline.sh)
+# shellcheck disable=SC2034  # a copy: status_load_decoded sets it from STATUS_DECODED_COUNT_FILE
 STATUS_DECODED_COUNT=0
 # shellcheck disable=SC2034
 STATUS_DISCOVERY_PUBLISHED="false"
@@ -237,7 +244,7 @@ STATUS_DISCOVERY_PUBLISHED="false"
 STATUS_DISCOVERY_PUBLISHED_AT=""
 # shellcheck disable=SC2034
 STATUS_LAST_RAW_SEEN=""
-# shellcheck disable=SC2034  # read by _decode_stage / _decode_consume_bash (12-pipeline.sh)
+# shellcheck disable=SC2034  # a copy: status_load_decoded sets it from STATUS_LAST_DECODED_FILE
 STATUS_LAST_DECODED_SEEN=""
 STATUS_LAST_ERROR=""
 # shellcheck disable=SC2034
@@ -309,6 +316,8 @@ mkdir -p "${RUNTIME}/.preview_attempts" 2>/dev/null || true
 # replaces it.
 touch "${STATUS_CANDIDATE_VALUES_FILE}" 2>/dev/null || true
 [[ -f "${STATUS_RAW_COUNT_FILE}" ]] || echo "0" > "${STATUS_RAW_COUNT_FILE}"
+[[ -f "${STATUS_DECODED_COUNT_FILE}" ]] || echo "0" > "${STATUS_DECODED_COUNT_FILE}"
+touch "${STATUS_LAST_DECODED_FILE}" 2>/dev/null || true
 
 # Record bridge start time for the WebGUI rate denominator fix.
 printf '%s\n' "$(epoch_now)" > "${STATUS_BRIDGE_START_FILE}" 2>/dev/null || true

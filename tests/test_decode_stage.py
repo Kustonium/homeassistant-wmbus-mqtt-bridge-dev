@@ -149,6 +149,9 @@ class DecodeStageTests(unittest.TestCase):
             "\"${STATUS_METER_LAST_JSON_FILE}\" \"${STATUS_CANDIDATES_FILE}\" \"${SNIPPET_STATE}\"",
             "printf '12345678\\tkey_missing\\told\\n' > \"${STATUS_METER_KEY_PROBLEM_FILE}\"",
             "printf '41\\n' > \"${STATUS_RAW_COUNT_FILE}\"; printf '2026-10-02T09:59:59+00:00\\n' > \"${STATUS_LAST_RAW_FILE}\"",
+            # Counted before (a restarted stage): both sides go on from it,
+            # not from the STATUS_DECODED_COUNT=0 the subshell inherits.
+            "printf '7\\n' > \"${STATUS_DECODED_COUNT_FILE}\"",
             f"printf '{0 if zero == 'true' else 1}\\n' > \"${{STATUS_OFFICIAL_METERS_COUNT_FILE}}\"",
             "RAW_TOPIC='wmbus/+/telegram' STATE_PREFIX=wmbusmeters DISCOVERY_PREFIX=homeassistant",
             "SEARCH_MODE=false LOGLEVEL=normal MQTT_HOST=broker MQTT_PORT=1883 STATUS_MQTT_CONNECTED=true",
@@ -231,10 +234,22 @@ class DecodeStageTests(unittest.TestCase):
         self.assertIn("00089907\tprad\tamiplus\telectricity\ttotal_energy_consumption_kwh\t", meters)
         self.assertNotIn("12345678", out["status_meter_key_problem.tsv"])
         self.assertIn("87654321\tkey_invalid", out["status_meter_key_problem.tsv"])
-        self.assertEqual(out["status.json"]["pipeline"]["decoded_count"], len(golden_lines()) + 13)
+        self.assertEqual(out["status.json"]["pipeline"]["decoded_count"], 7 + len(golden_lines()) + 13)
+        self.assertEqual(out["status_decoded_count.txt"], f"{7 + len(golden_lines()) + 13}\n")
+        self.assertEqual(out["status_last_decoded_seen.txt"], ISO + "\n")
         self.assertIn("00067609\tmbus_p9\tnemo\telectricity\ttotal_active_positive_3phase_kwh\t6735835\t",
                       meters)
         self.assertTrue(any(b"target_*" in f for f in out["frames"]))
+
+    def test_other_writers_show_the_decode_stages_count(self):
+        # write_status_json from a shell whose STATUS_DECODED_COUNT is still
+        # the 0 bridge.sh started with (the main shell, the RAW counter's).
+        for side, stage in (("bash", "_decode_consume_bash false"), ("py", "_decode_stage false")):
+            with self.subTest(side=side):
+                out = self.run_side(side, CORPUS[:3], "false", stage=(
+                    f"{{ {stage}; STATUS_DECODED_COUNT=0; STATUS_LAST_DECODED_SEEN=''; write_status_json; }}"))
+                pipe = out["status.json"]["pipeline"]
+                self.assertEqual((pipe["decoded_count"], pipe["last_decoded_seen"]), (10, ISO))
 
     def test_zero_meter_listen(self):
         listen = (FIXTURES / "listen" / "wmbusmeters-listen.txt").read_text().splitlines()
