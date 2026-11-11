@@ -211,6 +211,8 @@ STATUS_ESP_RX_CLOCK_FILE="${RUNTIME}/status_esp_rx_clock.tsv"
 # Retained per-source snapshot of the effective ESP configuration.
 # One JSON map source -> {radio, lines, epoch}; refreshed once per ESP boot.
 STATUS_ESP_CONFIG_FILE="${RUNTIME}/status_esp_config.json"
+# <board>/diag/settings per board (esp_books.DiagEventsBook), for the Boards tab.
+STATUS_ESP_SETTINGS_FILE="${RUNTIME}/status_esp_settings.json"
 SEARCH_MATCHES_FILE="${BASE}/search_matches.tsv"
 SEARCH_STATUS_FILE="${BASE}/search_status.json"
 # discovery_published flag — file-backed (see write_status_json). The raw-counter
@@ -286,6 +288,8 @@ mkdir -p "${RUNTIME}/.preview_attempts" 2>/dev/null || true
 : > "${STATUS_ESP_RX_BOOTS_FILE}" 2>/dev/null || true
 : > "${STATUS_ESP_RX_CLOCK_FILE}" 2>/dev/null || true
 : > "${STATUS_ESP_CONFIG_FILE}" 2>/dev/null || true
+# Retained on the broker: emptied here, filled again when the books subscribe.
+: > "${STATUS_ESP_SETTINGS_FILE}" 2>/dev/null || true
 # HA presence is session-scoped to the current broker. Clear stale state so a
 # previous run's "online" cannot mask a now-foreign broker until the retained
 # birth message (if any) re-arrives on subscribe.

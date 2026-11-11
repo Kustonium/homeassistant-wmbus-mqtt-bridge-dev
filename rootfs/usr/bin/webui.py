@@ -169,6 +169,7 @@ STATUS_ESP_RX_SEQUENCE_FILE = RUNTIME / "status_esp_rx_sequence.tsv"
 STATUS_ESP_RX_BOOTS_FILE = RUNTIME / "status_esp_rx_boots.tsv"
 STATUS_ESP_RX_CLOCK_FILE = RUNTIME / "status_esp_rx_clock.tsv"
 STATUS_ESP_CONFIG_FILE = RUNTIME / "status_esp_config.json"
+STATUS_ESP_SETTINGS_FILE = RUNTIME / "status_esp_settings.json"
 ESP_RF_RX_HISTORY_FILE = BASE / "esp_rf_rx_history.jsonl"
 # Isolated dev-radio evidence (fifo_sample and pipeline_drop). Unlike the
 # ordinary /rx metadata this can include raw radio bytes by explicit design.
@@ -4446,8 +4447,52 @@ def _esp_diag_config() -> dict:
         }
     return out
 
+# ---------------------------------------------------------------------------
+# Board settings (firmware runtime_settings.h): what a board announces on
+# <board>/diag/settings, and the command the Boards tab sends to change it.
+# ---------------------------------------------------------------------------
+BOARD_SETTING_VALUES = {"listen_mode": ("t1", "c1", "both", "s1", "yaml")}
+_BOARD_NAME_RE = re.compile(r"[A-Za-z0-9_.-]{1,64}")
+
+
+def _esp_settings() -> dict:
+    try:
+        with open(STATUS_ESP_SETTINGS_FILE, encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def board_setting_send(board: str, key: str, value: str) -> tuple[bool, str]:
+    """Publish <wmbus/board>/set/<key> through the persistent MQTT publisher
+    (not retained: the board ignores a value already in effect anyway)."""
+    import socket
+    board, key, value = str(board or ""), str(key or ""), str(value or "").strip().lower()
+    if not _BOARD_NAME_RE.fullmatch(board):
+        return False, "invalid board"
+    if key not in BOARD_SETTING_VALUES or value not in BOARD_SETTING_VALUES[key]:
+        return False, "invalid setting"
+    announced = _esp_settings().get(board)
+    if not isinstance(announced, dict) or not isinstance(announced.get(key), dict):
+        return False, "this board does not take settings from the add-on"
+    if value in (announced[key].get("unsupported") or []):
+        return False, f"{value} is not supported on this board"
+    try:
+        port = int((RUNTIME / "mqtt_publisher.port").read_text(encoding="utf-8").split()[0])
+    except (OSError, ValueError, IndexError):
+        return False, "the MQTT publisher is not running"
+    topic, payload = f"wmbus/{board}/set/{key}".encode(), value.encode()
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as s:
+            s.sendall(b"PUB 0 %d %s\n" % (len(payload), topic) + payload + b"\n")
+    except OSError as exc:
+        return False, f"could not send: {exc}"
+    return True, "sent"
+
+
 def _esp_diag_payload() -> dict:
-    """Per-board diagnostics for the Diagnostics tab."""
+    """Per-board diagnostics for the Boards tab (formerly Diagnostics)."""
     now = int(time.time())
     seq_rows = {
         str(r.get("source") or ""): r
@@ -4460,6 +4505,7 @@ def _esp_diag_payload() -> dict:
     boots = _esp_diag_boots()
     clocks = _esp_diag_clock()
     configs = _esp_diag_config()
+    board_settings = _esp_settings()
 
     frames: dict[str, int] = {}
     meters: dict[str, int] = {}
@@ -4526,6 +4572,8 @@ def _esp_diag_payload() -> dict:
             "reboot_median_interval_s": reboot["median_interval_s"],
             "status": status,
             "config": configs.get(name) or {},
+            # None: the board has not announced settings (older firmware).
+            "settings": board_settings.get(name),
             "clock": clocks.get(name) or {},
             "reasons": reasons,
         })
@@ -4994,6 +5042,7 @@ class Handler(BaseHTTPRequestHandler):
             '/api/mbus/detect-driver',
             '/api/drivers', '/api/drivers/upload', '/api/drivers/delete', '/api/drivers/matches',
             '/api/radio-env',
+            '/api/esp-setting',
         )
         if any(path.endswith(suffix) for suffix in api_suffixes):
             return path
@@ -5147,6 +5196,11 @@ class Handler(BaseHTTPRequestHandler):
             # fallback, "error" on raised exception). Re-logging here would
             # double-stamp status_events.tsv in the same second.
             ok, msg = remove_meter_from_options(meter_id)
+            self._send_json(200 if ok else 400, {"ok": ok, "message": msg})
+            return
+        if path.endswith('/api/esp-setting'):
+            ok, msg = board_setting_send((params.get('board') or [''])[0], (params.get('key') or [''])[0],
+                                         (params.get('value') or [''])[0])
             self._send_json(200 if ok else 400, {"ok": ok, "message": msg})
             return
         if path.endswith('/api/update-meter'):

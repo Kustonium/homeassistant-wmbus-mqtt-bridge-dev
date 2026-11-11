@@ -205,6 +205,7 @@ _mqtt_publisher_books() {
     --arg boot_file "${RUNTIME:-${BASE}}/status_esp_boot.json" \
     --arg esp_log_file "${WEBUI_LOG_DIR:+${WEBUI_LOG_DIR}/status_esp_log.tsv}" \
     --arg config_file "${STATUS_ESP_CONFIG_FILE}" --arg diag_hist "${ESP_DIAG_HISTORY_FILE}" \
+    --arg settings_file "${STATUS_ESP_SETTINGS_FILE:-}" \
     --arg broker_info "${STATUS_BROKER_INFO_FILE}" \
     --argjson diag_hist_on "$([[ "${ESP_DIAG_HISTORY_ENABLED:-false}" == "true" ]] && echo true || echo false)" \
     --arg ha_topic "${DISCOVERY_PREFIX:-homeassistant}/status" --arg presence_file "${STATUS_HA_PRESENCE_FILE:-}" '
@@ -223,7 +224,7 @@ _mqtt_publisher_books() {
        # wmbus/<board>/diag as well.
        diag_events: {filter: "wmbus/+/diag/#", no_retained: false, format: "retained",
                      events_file: $events_file, suggestion_file: $suggestion_file,
-                     boot_file: $boot_file, config_file: $config_file,
+                     boot_file: $boot_file, config_file: $config_file, settings_file: $settings_file,
                      history_file: $diag_hist, history_enabled: $diag_hist_on},
        # The $SYS filters are fixed in esp_books.BrokerInfoBook.FILTERS.
        broker_info: {no_retained: false, info_file: $broker_info},

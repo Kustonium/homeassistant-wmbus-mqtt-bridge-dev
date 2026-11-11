@@ -473,7 +473,14 @@ zapnutý. Bez neho zvyšok záložky funguje a tabuľka ukazuje `diagnostic_mode
 každej dosky. Počty sa držia 15 dní v
 `/data/radio_env_hours.json` (niekoľko KB). Len zobrazenie.
 
-### Záložka Diagnostika
+### Záložka Dosky (predtým Diagnostika)
+
+Hore dlaždica každej dosky s nastaveniami, ktoré doska dovolí meniť z doplnku:
+zatiaľ režim príjmu (T1, C1, oba, S1). Kliknutie ho pošle doske, tá ho uloží do
+flash a reštartuje sa (asi 10 s). Doska bez `<doska>/diag/settings` má sivú
+dlaždicu s vysvetlením. Pod dlaždicami diagnostika ako doteraz.
+
+#### Záložka Diagnostika
 
 Tabuľka podľa dosiek: rámce, merače, chýbajúce udalosti, reštarty za posledných
 24 hodín a čas od posledného rámca, plus jeden stav na dosku. Pod ňou karta

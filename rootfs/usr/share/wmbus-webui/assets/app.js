@@ -3329,6 +3329,69 @@
       </div>`;
   }
 
+  // Board tiles (Boards tab): one per board the add-on hears, drawn from what
+  // the board announces on <board>/diag/settings. Without it the board runs
+  // firmware that cannot take settings: the tile is greyed out and says so.
+  function boardTile(d) {
+    const name = String(d.name || "?");
+    const s = d.settings;
+    const pending = (state.bsPending || {})[name];
+    const head = (pill) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <strong>${escapeHtml(name)}</strong>${pill}</div>`;
+    if (!s || typeof s !== "object" || !s.listen_mode) {
+      return `<div class="card" style="opacity:0.6;margin:0;">
+        ${head(`<span class="pill muted">${escapeHtml(t("bs_old_fw", "older firmware"))}</span>`)}
+        <p class="hint" style="margin:8px 0 0;">${escapeHtml(t("bs_no_settings", "This board does not announce settings (no diag/settings), so the add-on cannot change them. Rebuild it with the current component."))}</p>
+      </div>`;
+    }
+    const lm = s.listen_mode || {};
+    const value = String(lm.value || "");
+    const unsupported = asArray(lm.unsupported);
+    const weak = asArray(lm.weak);
+    let pill = `<span class="pill ok">${escapeHtml(t("bs_online", "online"))}</span>`;
+    let note = "";
+    if (pending) {
+      if (pending.value === value || (pending.value === "yaml" && lm.source === "yaml")) {
+        delete state.bsPending[name];
+      } else if (Date.now() - pending.at > 90000) {
+        pill = `<span class="pill bad">${escapeHtml(t("bs_no_confirm", "not confirmed"))}</span>`;
+        note = t("bs_pending_slow", "No confirmation from the board yet. Check that it is online.");
+      } else {
+        pill = `<span class="pill warn">${escapeHtml(t("bs_restarting", "restarting…"))}</span>`;
+        note = t("bs_pending", "Sent. The board stores it and restarts (about 10 s).");
+      }
+    }
+    const label = (o) => o === "both" ? t("bs_both", "both") : o.toUpperCase();
+    const buttons = asArray(lm.options).map(o => {
+      const on = o === value;
+      const off = unsupported.includes(o) || !!(state.bsPending || {})[name];
+      return `<button class="btn${on ? " primary" : ""}" style="padding:4px 10px;font-size:12px;" data-action="board-set"
+        data-board="${escapeHtml(name)}" data-key="listen_mode" data-value="${escapeHtml(o)}"
+        ${off || on ? "disabled" : ""}>${escapeHtml(label(o))}${weak.includes(o) ? " ⚠" : ""}</button>`;
+    }).join("");
+    const hints = [];
+    if (weak.includes("s1")) hints.push(t("bs_weak_s1", "S1 works on this chip, with weaker sensitivity."));
+    if (unsupported.includes("s1")) hints.push(t("bs_unsupported_s1", "S1 is not available on this chip."));
+    const source = lm.source === "stored"
+      ? `${escapeHtml(t("bs_source_stored", "stored on the board"))} · <a href="#" data-action="board-set" data-board="${escapeHtml(name)}" data-key="listen_mode" data-value="yaml">${escapeHtml(t("bs_reset", "back to YAML ({value})", {value: label(String(lm.yaml || "both"))}))}</a>`
+      : escapeHtml(t("bs_source_yaml", "from YAML"));
+    return `<div class="card" style="margin:0;">
+      ${head(pill)}
+      <div class="hint" style="margin:6px 0;">${escapeHtml(String(s.radio || ""))} · ${escapeHtml(t("bs_listen_mode", "Listen mode"))}: <strong>${escapeHtml(label(value))}</strong> (${source})</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">${buttons}</div>
+      ${note ? `<p class="hint" style="margin:6px 0 0;">${escapeHtml(note)}</p>` : ""}
+      ${hints.length ? `<p class="hint" style="margin:6px 0 0;">${escapeHtml(hints.join(" "))}</p>` : ""}
+    </div>`;
+  }
+
+  function boardTiles(devices) {
+    return `<section class="section">
+      <div class="section-head"><h2>${escapeHtml(t("bs_title", "Board settings"))}</h2>
+        <span class="hint">${escapeHtml(t("bs_apply_restart", "A change restarts the board (about 10 s)."))}</span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;">${devices.map(boardTile).join("")}</div>
+    </section>`;
+  }
+
   function espDiagPage() {
     const diag = (state.data || {}).esp_diag || {};
     const devices = asArray(diag.devices);
@@ -3359,10 +3422,10 @@
         <td>${diagStatusPill(d.status)}</td>
       </tr>`).join("");
 
-    return `
+    return `${boardTiles(devices)}
       <section class="section">
         <div class="section-head">
-          <h2>${escapeHtml(t("nav_diagnostics", "Diagnostics"))}</h2>
+          <h2>${escapeHtml(t("diag_section", "Diagnostics"))}</h2>
           <span>${summary}</span>
         </div>
         <table>
@@ -6017,6 +6080,26 @@
           toast(error.message, true);
           render();
         }
+      })();
+      return;
+    }
+
+    if (action === "board-set") {
+      event.preventDefault && event.preventDefault();
+      const board = target.dataset.board || "";
+      const key = target.dataset.key || "";
+      const value = target.dataset.value || "";
+      if (!board || !key || !value) return;
+      state.bsPending = state.bsPending || {};
+      (async () => {
+        try {
+          await postApi("esp-setting", {board, key, value});
+          state.bsPending[board] = {value, at: Date.now()};
+          toast(t("bs_pending", "Sent. The board stores it and restarts (about 10 s)."));
+        } catch (error) {
+          toast(error.message, true);
+        }
+        render();
       })();
       return;
     }
