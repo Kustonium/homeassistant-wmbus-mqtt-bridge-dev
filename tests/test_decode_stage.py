@@ -24,6 +24,7 @@ import socket
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -168,6 +169,11 @@ class DecodeStageTests(unittest.TestCase):
         subprocess.run(["bash", "-c", script], check=True, timeout=300,
                        env=dict(os.environ, PYTHONPATH=clock, TZ="UTC", LEDGER_PREVIEW_IN_PYTHON="false",
                                 LEDGER_SEARCH_IN_PYTHON="false" if side == "bash" else "true"))
+        # bash's zero-meter LISTEN parser runs in a process substitution: the
+        # stage returns while it may still be writing seen_ids.txt and the log
+        # (on CI the last ID or the last lines were missing now and then).
+        # Read only once nothing under d has changed for a while.
+        self.settle(d)
         pub.close()
         out = {"frames": pub.frames,
                "log": sorted(Path(d, "log").read_text().replace(d, "D").splitlines())}
@@ -181,20 +187,40 @@ class DecodeStageTests(unittest.TestCase):
                 out[rel] = json.loads(text) if rel == "status.json" else text
         return out
 
+    @staticmethod
+    def settle(d, quiet_s=0.6, max_s=15.0):
+        def snap():
+            out = []
+            for root, _, files in os.walk(d):
+                for name in files:
+                    try:
+                        st = os.stat(os.path.join(root, name))
+                    except OSError:
+                        continue
+                    out.append((root, name, st.st_size, st.st_mtime_ns))
+            return sorted(out)
+        end = time.monotonic() + max_s
+        last, since = snap(), time.monotonic()
+        while time.monotonic() < end:
+            time.sleep(0.15)
+            cur = snap()
+            if cur != last:
+                last, since = cur, time.monotonic()
+            elif time.monotonic() - since >= quiet_s:
+                return
+
     def compare(self, corpus, zero="false", extra="", seed=None, stage=None):
         b = self.run_side("bash", corpus, zero, extra=extra, seed=seed, stage=stage)
         p = self.run_side("py", corpus, zero, extra=extra, seed=seed, stage=stage)
         self.assertEqual(sorted(p), sorted(b))
         for k in b:
-            if zero == "true" and k in ("status_events.tsv", "status_seen.tsv", "log"):
+            if zero == "true" and k in ("status_events.tsv", "status_seen.tsv"):
                 # Written by both of bash's processes - the decode loop and
                 # the zero-meter LISTEN parser it ran apart - in whatever order
                 # they raced, and the events file is cut to its last 40 rows:
                 # which rows survive, even a doubled one, depends on that race
-                # (seen on CI). The log is the same race: how many of the
-                # parser's lines land before the stage ends varied between CI
-                # runs (7 lines short on 11.11). In one process they follow
-                # the input; checked in test_zero_meter_listen instead.
+                # (seen on CI). In one process they follow the input; checked
+                # in test_zero_meter_listen instead.
                 continue
             self.assertEqual(p[k], b[k], k)
         return p
