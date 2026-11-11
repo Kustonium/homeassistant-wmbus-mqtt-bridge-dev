@@ -2121,13 +2121,19 @@
     const out = [];
     const running = (ok) => ok ? t("flow_st_running", "running") : t("flow_st_stopped", "stopped");
     const extMeters = asArray(data.meters).filter((m) => String(m.driver || "").startsWith("external_")).length;
+    const reads = asArray(data.meters).filter((m) => m.source !== "mbus" && !String(m.driver || "").startsWith("external_"))
+      .map((m) => Date.parse(m.last_seen || "")).filter(Number.isFinite);
+    const lastRead = reads.length ? Math.max(...reads) : null;
     out.push({
       key: "dec", color: "#f0b03c", title: "wmbusmeters · DEC",
       purpose: c.meterCount > 0
         ? t("flow_inst_dec", "your meters ({n})", {n: Math.max(0, c.meterCount - extMeters - (c.wiredRunning ? c.wiredTotal : 0))})
         : t("flow_inst_dec_zero", "listening, no meters yet"),
       state: c.nodeState(c.wmbusOk, false),
-      status: `${running(c.wmbusOk)} · ${t("flow_decoded", "{n} decoded", {n: c.decodedCount})}`,
+      // The age of its newest reading, not pipeline.decoded_count: that
+      // counter is overwritten with 0 by the RAW counter's status writes.
+      status: `${running(c.wmbusOk)} · ${lastRead === null ? t("flow_no_reading", "no reading yet")
+        : t("flow_last_read", "last reading {age} ago", {age: fmtInterval(Math.max(0, Math.round((Date.now() - lastRead) / 1000)))})}`,
       to: c.meterCount > 0 ? "decode" : "candidates", input: "raw",
     });
     const ext = model.external_instance || {};
