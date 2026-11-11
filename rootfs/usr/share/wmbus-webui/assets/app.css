@@ -2085,3 +2085,19 @@ th.sortable:hover {
   margin: 0;
   padding: 14px 18px;
 }
+
+/* Board tiles (Boards tab): a clear frame per board; a board without
+   diag/settings gets a dashed, dimmed one. */
+.board-tile {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #5a6270;
+  border-radius: 10px;
+}
+.board-tile:not(.board-tile-off) {
+  border-color: var(--accent);
+}
+.board-tile-off {
+  opacity: 0.6;
+  border-style: dashed;
+}

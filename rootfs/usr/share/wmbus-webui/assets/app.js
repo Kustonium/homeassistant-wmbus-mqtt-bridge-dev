@@ -3339,7 +3339,7 @@
     const head = (pill) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
         <strong>${escapeHtml(name)}</strong>${pill}</div>`;
     if (!s || typeof s !== "object" || !s.listen_mode) {
-      return `<div class="card" style="opacity:0.6;margin:0;">
+      return `<div class="card board-tile board-tile-off">
         ${head(`<span class="pill muted">${escapeHtml(t("bs_old_fw", "older firmware"))}</span>`)}
         <p class="hint" style="margin:8px 0 0;">${escapeHtml(t("bs_no_settings", "This board does not announce settings (no diag/settings), so the add-on cannot change them. Rebuild it with the current component."))}</p>
       </div>`;
@@ -3375,7 +3375,7 @@
     const source = lm.source === "stored"
       ? `${escapeHtml(t("bs_source_stored", "stored on the board"))} · <a href="#" data-action="board-set" data-board="${escapeHtml(name)}" data-key="listen_mode" data-value="yaml">${escapeHtml(t("bs_reset", "back to YAML ({value})", {value: label(String(lm.yaml || "both"))}))}</a>`
       : escapeHtml(t("bs_source_yaml", "from YAML"));
-    return `<div class="card" style="margin:0;">
+    return `<div class="card board-tile">
       ${head(pill)}
       <div class="hint" style="margin:6px 0;">${escapeHtml(String(s.radio || ""))} · ${escapeHtml(t("bs_listen_mode", "Listen mode"))}: <strong>${escapeHtml(label(value))}</strong> (${source})</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">${buttons}</div>
