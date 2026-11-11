@@ -1,3 +1,9 @@
+## 1.6.18-dev.493
+
+### Other (review)
+- DEC tile shows the age of its newest reading instead of pipeline.decoded_count (which the RAW counter resets to 0) (9121e71)
+- Panel flow MQTT and decode tiles wide enough for broker name and 'status + discovery' (1ca4e74)
+
 ## 1.6.18-dev.492
 
 ### Other (review)
