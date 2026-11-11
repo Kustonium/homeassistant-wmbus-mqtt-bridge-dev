@@ -2105,3 +2105,60 @@ th.sortable:hover {
   opacity: 0.6;
   border-style: dashed;
 }
+
+/* Panel flow: boards → MQTT → wmbusmeters → HA (wide SVG), told top-down in
+   HTML on narrow screens; meter tiles below. Colours come inline per board. */
+.flow-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.flow-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
+  padding: 4px 10px; border-radius: 999px; color: var(--c);
+  background: color-mix(in srgb, var(--c) 14%, transparent); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); }
+.flow-chip-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+.flow-wrap { background: #0f161c; border: 1px solid #22303a; border-radius: 12px; padding: 12px 14px; }
+.flow-svg { display: block; width: 100%; height: auto; }
+.flow-svg .flow-t { fill: #e8eef2; font-size: 14px; font-weight: 600; }
+.flow-svg .flow-s { font-size: 12px; font-weight: 600; }
+.flow-svg .flow-s2 { fill: #8ea4b1; font-size: 11px; }
+.flow-line { fill: none; transition: opacity .2s; }
+.flow-dots { stroke-dasharray: 2 10; stroke-linecap: round; }
+.flow-board, .flow-node { cursor: pointer; transition: opacity .2s; }
+.flow-node:hover rect, .flow-board:hover rect { fill-opacity: .26; }
+.flow-root.focus [data-board]:not(.hl) { opacity: .18; }
+.flow-narrow { display: none; }
+@media (max-width: 700px) {
+  .flow-svg { display: none; }
+  .flow-narrow { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+}
+.flow-nboards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.flow-nb, .flow-nn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+  padding: 8px 10px; border-radius: 10px; color: #e8eef2; cursor: pointer; font: inherit;
+  background: color-mix(in srgb, var(--c) 14%, transparent); border: 1px solid var(--c); transition: opacity .2s; }
+.flow-nb.off { border-style: dashed; }
+.flow-nb-name { font-weight: 600; }
+.flow-nb-sub, .flow-nn span { font-size: 12px; color: var(--c); }
+.flow-nn .flow-nn-sub { color: #8ea4b1; font-size: 11px; }
+.flow-na { text-align: center; font-size: 12px; color: #8ea4b1; }
+.meter-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+.meter-tile { position: relative; padding: 12px 14px; border-radius: 12px; cursor: pointer;
+  background: color-mix(in srgb, var(--c) 12%, #0f161c); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
+  transition: opacity .2s, transform .2s; }
+.meter-tile.late { border-color: #f0b03c; box-shadow: inset 0 0 0 1px #f0b03c; }
+.meter-tile.hl { transform: translateY(-2px); border-color: var(--c); }
+.meter-tiles.focus .meter-tile:not(.hl) { opacity: .3; }
+.mt-head { display: flex; align-items: center; gap: 6px; font-weight: 600; color: #e8eef2; }
+.mt-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mt-link { color: #8ea4b1; text-decoration: none; padding: 0 2px; }
+.mt-link:hover { color: var(--c); }
+.mt-id { font-size: 11px; color: #8ea4b1; font-family: var(--mono, monospace); }
+.mt-value { font-size: 26px; font-weight: 700; color: var(--c); margin: 6px 0 2px; line-height: 1.15; }
+.mt-unit { font-size: 13px; color: #9eafba; font-weight: 600; }
+.mt-foot { font-size: 12px; color: #9eafba; }
+.mt-dots { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+.mt-dot { width: 10px; height: 10px; border-radius: 50%; }
+.mt-heard { font-size: 11px; color: #8ea4b1; margin-left: 4px; }
+@keyframes flow-move { to { stroke-dashoffset: -24; } }
+@keyframes flow-wave { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: no-preference) {
+  .flow-dots { animation: flow-move var(--d, 1.2s) linear infinite; }
+  .flow-ant.on .w1, .flow-ant.on .w2, .flow-nb-ant.on { animation: flow-wave 1.4s ease-in-out infinite; }
+  .flow-ant.on .w2 { animation-delay: .35s; }
+}

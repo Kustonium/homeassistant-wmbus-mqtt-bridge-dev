@@ -186,13 +186,15 @@ class DecodeStageTests(unittest.TestCase):
         p = self.run_side("py", corpus, zero, extra=extra, seed=seed, stage=stage)
         self.assertEqual(sorted(p), sorted(b))
         for k in b:
-            if zero == "true" and k in ("status_events.tsv", "status_seen.tsv"):
+            if zero == "true" and k in ("status_events.tsv", "status_seen.tsv", "log"):
                 # Written by both of bash's processes - the decode loop and
                 # the zero-meter LISTEN parser it ran apart - in whatever order
                 # they raced, and the events file is cut to its last 40 rows:
                 # which rows survive, even a doubled one, depends on that race
-                # (seen on CI). In one process they follow the input; checked
-                # in test_zero_meter_listen instead.
+                # (seen on CI). The log is the same race: how many of the
+                # parser's lines land before the stage ends varied between CI
+                # runs (7 lines short on 11.11). In one process they follow
+                # the input; checked in test_zero_meter_listen instead.
                 continue
             self.assertEqual(p[k], b[k], k)
         return p

@@ -87,20 +87,6 @@
     webui_cancel: "cancel_label",
   };
 
-  // Dashboard view selector — persisted in localStorage so the user keeps
-  // their preferred lens across reloads. "pipeline" = data-flow diagram with
-  // clickable nodes; "stats" = speed-dial + sparkline + funnel.
-  const LS_VIEW_KEY = "wmbus.dashboardView";
-  function loadDashboardView() {
-    try {
-      const v = window.localStorage.getItem(LS_VIEW_KEY);
-      return (v === "stats" || v === "pipeline") ? v : "pipeline";
-    } catch (_) { return "pipeline"; }
-  }
-  function saveDashboardView(v) {
-    try { window.localStorage.setItem(LS_VIEW_KEY, v); } catch (_) {}
-  }
-
   // Candidate table order, clickable column headers like a spreadsheet. The
   // default is by ID: the backend order follows the newest telegram, so with
   // live updates the rows kept moving under the reader. Persisted per browser.
@@ -155,8 +141,11 @@
     toast: null,
     liveConnected: false,
     mediaFilter: "all",
-    // Dashboard view ("pipeline" | "stats") — segmented control on PANEL.
-    dashboardView: loadDashboardView(),
+    // Panel flow diagram: which meter or board is highlighted (hover, or a
+    // tap that pins it on a phone). {kind: "meter", id, boards} | {kind:
+    // "board", name} | null.
+    flowFocus: null,
+    flowPinned: false,
     // Drill-down workspace when a pipeline node is clicked. null = no drill-down.
     workspace: null,  // "esp" | "mqtt" | "wmbus" | "ha" | null
     // IDs ticked for bulk removal in the configured-meters panel. Persisted in
@@ -1475,27 +1464,6 @@
   }
 
   // ──────────────────────────────────────────────────────────────────────
-  // Dashboard view toggle — Pipeline vs Statystyki
-  // Segmented control that switches the top-of-PANEL section between the
-  // data-flow diagram (with drill-down nodes) and the speed-dial + funnel +
-  // sparkline view. User preference persists in localStorage.
-  // ──────────────────────────────────────────────────────────────────────
-  function dashboardViewToggle() {
-    const v = state.dashboardView;
-    const btn = (key, label, icon) => `
-      <button class="view-toggle-btn ${v === key ? "active" : ""}"
-              data-action="dashboard-view" data-view="${key}" type="button">
-        ${icon} ${escapeHtml(label)}
-      </button>`;
-    return `
-      <div class="view-toggle">
-        ${btn("pipeline", t("view_pipeline", "Pipeline"), "🔌")}
-        ${btn("stats",    t("view_stats",    "Statystyki"), "📊")}
-      </div>
-    `;
-  }
-
-  // ──────────────────────────────────────────────────────────────────────
   // Pipeline header — ESP → MQTT → wmbusmeters → HA
   // Each node shows a status dot and a one-line metric. Click drills down
   // into a workspace panel below. The horizontal arrows carry the current
@@ -1696,45 +1664,23 @@
         </div>
       </div>` : "";
 
+    const nodeState = (ok, warn) => bridgeStale ? "unknown" : ok ? "ok" : warn ? "warn" : "bad";
+    const flow = {
+      devices: espDevicesAll,
+      stale: bridgeStale,
+      rate: cur,
+      mqtt: {state: nodeState(!!model.mqtt_ok, false),
+             text: model.mqtt_ok ? t("pipeline_mqtt_online", "online") : t("pipeline_mqtt_offline", "offline"),
+             sub: brokerLabel || ((mqtt.host || "—") + (mqtt.port ? ":" + mqtt.port : ""))},
+      wmbus: {state: nodeState(wmbusOk, wmbusWarn), text: wmbusLabel, sub: wmbusLine,
+              title: t("pipeline_wmbus_tooltip", "received / decoded")},
+      ha: {state: haLink === "ok" ? nodeState(true, false) : haLink === "not_created" ? nodeState(false, false) : "unknown",
+           text: haText, sub: `${meterCount} ${t("pipeline_ha_entities_short", "entit.")}`},
+    };
     return `
       <section class="section">
-        <div class="pipeline">
-          <button class="${cls("esp")}" data-action="open-workspace" data-ws="esp" type="button">
-            <div class="pipeline-icon">📡</div>
-            <div class="pipeline-title">${escapeHtml(espTitle)}</div>
-            <div class="pipeline-meta">${dot(espOnline && !espSomeStale, (espOnline && espSomeStale) || espWarn, espOnline && hasLiveRate && espRateFromDiag && !espSomeStale)} ${escapeHtml(espStatus)}</div>
-            <div class="pipeline-sub">${escapeHtml(espVisibleLine)}</div>
-            <div class="pipeline-sub pipeline-device" title="${escapeHtml(primaryTopic || "")}">${escapeHtml(espDeviceLine)}</div>
-            ${(!bridgeStale && espSomeStale) ? `<div class="pipeline-sub" style="font-size:11px;color:#f3c84b;">⚠ ${escapeHtml(t("pipeline_esp_pulse_stopped", "pulse stopped"))}: ${escapeHtml(espStoppedNames)}</div>` : ""}
-            ${chevron("esp")}
-          </button>
-          <div class="pipeline-arrow"><span>${escapeHtml(rateLabel)}</span></div>
-          <button class="${cls("mqtt")}" data-action="open-workspace" data-ws="mqtt" type="button">
-            <div class="pipeline-icon">📨</div>
-            <div class="pipeline-title">MQTT</div>
-            <div class="pipeline-meta">${dot(!!model.mqtt_ok, false, !!model.mqtt_ok && hasLiveRate)} ${escapeHtml(model.mqtt_ok ? t("pipeline_mqtt_online", "online") : t("pipeline_mqtt_offline", "offline"))}</div>
-            <div class="pipeline-sub">${escapeHtml((mqtt.host || "—") + (mqtt.port ? ":" + mqtt.port : ""))}</div>
-            ${brokerLabel ? `<div class="pipeline-sub" style="font-size:11px;">${escapeHtml(brokerLabel)}</div>` : ""}
-            ${(model.mqtt_tls_intent === true && !model.mqtt_ok) ? `<div class="pipeline-sub" style="font-size:11px;color:#f3c84b;">⚠ TLS ${escapeHtml(t("tls_not_supported", "not supported"))} (1883)</div>` : ""}
-            ${chevron("mqtt")}
-          </button>
-          <div class="pipeline-arrow"><span>${escapeHtml(rateLabel)}</span></div>
-          <button class="${cls("wmbus")}" data-action="open-workspace" data-ws="wmbus" type="button">
-            <div class="pipeline-icon">⚙</div>
-            <div class="pipeline-title">wmbusmeters</div>
-            <div class="pipeline-meta">${dot(wmbusOk, wmbusWarn, wmbusOk && hasLiveRate)} ${escapeHtml(wmbusLabel)}</div>
-            <div class="pipeline-sub" title="${escapeHtml(t("pipeline_wmbus_tooltip", "received / decoded"))}">${escapeHtml(wmbusLine)}</div>
-            ${chevron("wmbus")}
-          </button>
-          <div class="pipeline-arrow"><span>${escapeHtml(rateLabel)}</span></div>
-          <button class="${cls("ha")}" data-action="open-workspace" data-ws="ha" type="button">
-            <div class="pipeline-icon">🏠</div>
-            <div class="pipeline-title">HA</div>
-            <div class="pipeline-meta">${haDot} ${escapeHtml(haText)}</div>
-            <div class="pipeline-sub">${meterCount} ${escapeHtml(t("pipeline_ha_entities_short", "entit."))}</div>
-            ${chevron("ha")}
-          </button>
-        </div>
+        ${flowChips(flow, model)}
+        ${flowDiagram(flow)}
         ${wiredPipeline}
         ${pipelineWorkspace(model)}
       </section>
@@ -2025,107 +1971,16 @@
     `;
   }
 
-  // ──────────────────────────────────────────────────────────────────────
-  // Stats view (alternative to pipeline) — speed dial + sparkline + funnel.
-  // Replaces the old mixed-style statsPanel. Funnel uses a consistent
-  // "max = candidate_count" baseline so the relative coverage is obvious.
-  // ──────────────────────────────────────────────────────────────────────
-  function statsViewSpeedDial(model) {
-    const cur  = Number(model.rate_current_min || 0);
-    const prev = Number(model.rate_prev_min || 0);
-    const avg  = Number(model.raw_per_min || 0);
-    const delta = cur - prev;
-    const trendColor = delta > 0 ? "#2de36f" : (delta < 0 ? "#ff646b" : "#8ea4b1");
-    const trendArrow = delta > 0 ? "↑" : (delta < 0 ? "↓" : "→");
-    const trendText  = `${delta > 0 ? "+" : ""}${delta}`;
-    const source = model.rate_source || "bridge";
-    const srcIcon  = source === "esp" ? "📡" : "⚙";
-
-    return `
-      <div class="speed-dial">
-        <div class="speed-dial-main">
-          <div class="speed-dial-value">${escapeHtml(String(cur))}</div>
-          <div class="speed-dial-unit">${escapeHtml(t("rate_tel_min", "tel / min"))}</div>
-        </div>
-        <div class="speed-dial-side">
-          <div>
-            <span style="color:${trendColor};font-weight:800;font-size:18px;">${trendArrow} ${escapeHtml(trendText)}</span>
-            <span style="font-size:11px;color:#8ea4b1;margin-left:6px;">${escapeHtml(t("rate_vs_prev", "vs previous"))} (${prev})</span>
-          </div>
-          <div style="font-size:11px;color:#8ea4b1;margin-top:6px;">
-            ${escapeHtml(t("rate_session_avg_label", "session avg"))}: <strong style="color:#cbd9e1;">${escapeHtml(String(avg))}</strong> ${escapeHtml(t("rate_tel_min", "tel / min"))}
-          </div>
-          <div style="font-size:10px;color:#4d6875;margin-top:4px;">
-            ${escapeHtml(t("rate_source_label", "Rate source"))}: <span style="color:${source === "esp" ? "#00bcd4" : "var(--muted)"};font-weight:700;">${srcIcon} ${escapeHtml(source)}</span>
-          </div>
-        </div>
-      </div>
-      <div style="margin-top:12px;">
-        <div style="font-size:11px;color:#8ea4b1;margin-bottom:4px;">${escapeHtml(t("sparkline_title", "Last 15 minutes"))}</div>
-        ${sparkline15min(model.rate_history_15m || [])}
-      </div>
-    `;
-  }
-
-  function statsViewFunnel(model) {
-    const candidates = Number(model.candidate_count || 0);
-    const meters     = Number(model.meter_count || 0);
-    // "Decodes live" = configured meters with at least one telegram in last 15 min.
-    // We approximate from session data — exact figure requires per-meter freshness check.
-    const liveMeters = asArray((state.data || {}).meters).filter(m => Number(m.seen_15m || 0) > 0).length;
-    const baseline   = Math.max(candidates, 1);
-    const pct1       = candidates > 0 ? Math.round((meters / candidates) * 100) : 0;
-    const pct2       = meters > 0     ? Math.round((liveMeters / meters) * 100) : 0;
-
-    const barW = (n) => Math.max(2, Math.round((n / baseline) * 100));
-    const row = (icon, label, value, pctOfTotal, pctOfPrev, pctLabel, color) => `
-      <div class="funnel-row">
-        <div class="funnel-row-head">
-          <span class="funnel-icon">${icon}</span>
-          <span class="funnel-label">${escapeHtml(label)}</span>
-          <span class="funnel-value">${escapeHtml(String(value))}</span>
-        </div>
-        <div class="funnel-bar"><span style="width:${pctOfTotal}%;background:${color};"></span></div>
-        ${pctLabel ? `<div class="funnel-pct">${escapeHtml(pctLabel)}</div>` : ""}
-      </div>`;
-    return `
-      <h3 style="margin:0 0 12px;font-size:14px;color:#cbd9e1;">🎯 ${escapeHtml(t("funnel_title", "Coverage"))}</h3>
-      ${row("📡", t("funnel_in_air",      "In air"),         candidates, 100,                  null, null, "#7e57c2")}
-      <div class="funnel-arrow">↓ ${pct1}% ${escapeHtml(t("funnel_of_air", "of air → configured"))}</div>
-      ${row("⚙",  t("funnel_configured",  "Configured"),     meters,     barW(meters),         null, null, "#26a69a")}
-      <div class="funnel-arrow">↓ ${pct2}% ${escapeHtml(t("funnel_of_conf", "of configured → live"))}</div>
-      ${row("✓",  t("funnel_live",        "Decodes live"),   liveMeters, barW(liveMeters),     null, null, "#2de36f")}
-    `;
-  }
-
-  function dashboardStatsView(model) {
-    return `
-      <section class="section">
-        <div class="card">
-          ${statsViewSpeedDial(model)}
-        </div>
-      </section>
-      <section class="section">
-        <div class="card">
-          ${statsViewFunnel(model)}
-        </div>
-      </section>
-    `;
-  }
-
   function dashboard() {
     const data = state.data || {};
     const model = data.model || {};
-    const recentMeters = asArray(data.meters).slice(0, 6);
+    const allMeters = asArray(data.meters);
     const meterCount = Number(model.meter_count || 0);
     const candidateCount = Number(model.candidate_count || 0);
 
     const pending = pendingMeters();
 
-    // Top section depends on selected dashboard view.
-    const topSection = state.dashboardView === "stats"
-      ? dashboardStatsView(model)
-      : pipelineHeader(model);
+    const topSection = pipelineHeader(model);
 
     // When the user has no configured meters yet, the meters table would
     // be empty and we'd be showing the candidates table separately — which
@@ -2152,24 +2007,253 @@
         </section>`
       : `
         <section class="section">
-          <div class="section-head"><h2>${escapeHtml(t("webui_recent_meters", "Recent meters"))}</h2><span>${recentMeters.length} ${escapeHtml(t("webui_shown", "shown"))}</span></div>
-          ${meterTable(recentMeters, false)}
+          <div class="section-head"><h2>${escapeHtml(t("webui_recent_meters", "Recent meters"))}</h2><span>${allMeters.length} ${escapeHtml(t("webui_shown", "shown"))}</span></div>
+          ${meterTiles(allMeters)}
         </section>`;
 
     return `
-      ${dashboardViewToggle()}
       ${topSection}
 
       ${dashboardPendingPanel(pending, model, data.analysis || {})}
 
       ${metersSection}
-
-      <section class="section">
-        <div class="section-head"><h2>${escapeHtml(t("recent_events_title", "Recent events"))}</h2><span>${asArray(data.events).length} ${escapeHtml(t("webui_total", "total"))}</span></div>
-        ${eventsList(asArray(data.events).slice(0, 8))}
-      </section>
     `;
   }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Panel flow: boards → MQTT → wmbusmeters → HA, drawn live.
+  // Every board the add-on hears gets a node, an antenna and a line in its
+  // own colour; the line's width follows its frames per minute and dots run
+  // along it while frames come in. A silent board turns dashed grey. On a
+  // phone the same story is told top-down in HTML (the SVG would shrink to
+  // unreadable text).
+  // ──────────────────────────────────────────────────────────────────────
+  const FLOW_PALETTE = ["#4aa3ff", "#2fd3a6", "#ff6fa5", "#ff8a4c", "#9ad94a", "#b08cff",
+                        "#ffd04a", "#4fd6ff", "#ff6b6b", "#7ee0c3", "#f0a3ff", "#d4b85a"];
+  const FLOW_NODE = {mqtt: "#a596ff", wmbus: "#f0b03c", ha: "#4aa3ff"};
+  const FLOW_STATE = {warn: "#f0b03c", bad: "#ff6b6b", unknown: "#7d8a96"};
+
+  // One colour per board, from its name: the same board keeps its colour on
+  // every reload and device. A clash moves the later name (alphabetically)
+  // to the next free colour.
+  function flowBoardColors(names) {
+    const out = new Map();
+    const taken = new Set();
+    [...new Set(names.filter(Boolean))].sort().forEach((n) => {
+      let h = 0;
+      for (const ch of n) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+      let i = h % FLOW_PALETTE.length;
+      for (let k = 0; k < FLOW_PALETTE.length && taken.has(i); k++) i = (i + 1) % FLOW_PALETTE.length;
+      taken.add(i);
+      out.set(n, FLOW_PALETTE[i]);
+    });
+    return out;
+  }
+
+  function flowColors() {
+    const data = state.data || {};
+    const names = asArray((data.esp || {}).devices).map((d) => d && d.name);
+    asArray(data.meters).forEach((m) => asArray(m.reception_esps).forEach((e) => names.push(e.esp)));
+    return flowBoardColors(names);
+  }
+
+  function flowClip(s, n) {
+    s = String(s || "");
+    return s.length > n ? s.slice(0, n - 1) + "…" : s;
+  }
+
+  function flowBoardInfo(d, stale) {
+    const live = !stale && d.health === "online";
+    const warn = !stale && d.health === "warn";
+    const fh = Number(d.frames_h);
+    const perMin = Number.isFinite(fh) && d.frames_h !== null ? fh / 60 : null;
+    const rateTxt = perMin === null ? "" : (perMin < 10 ? perMin.toFixed(1) : String(Math.round(perMin)));
+    const sub = live
+      ? (perMin === null ? t("flow_board_counting", "counting…")
+        : t("flow_board_sub", "{rate}/min · {m} meters", {rate: rateTxt, m: d.meters_heard ?? "—"}))
+      : t("flow_silent", "silent {age}", {age: fmtInterval(Number(d.telegram_age_s) || 0)});
+    return {live, warn, rate: Number.isFinite(fh) ? fh : 0, rateTxt, sub};
+  }
+
+  function flowFocused(kind, key) {
+    const f = state.flowFocus;
+    if (!f) return false;
+    if (kind === "board") return f.kind === "meter" ? f.boards.includes(key) : f.name === key;
+    return f.kind === "meter" ? f.id === key : asArray(key).includes(f.name);
+  }
+
+  function flowChips(o, model) {
+    const devs = asArray(o.devices);
+    const online = devs.filter((d) => d && d.health === "online").length;
+    const meters = asArray((state.data || {}).meters);
+    const late = meters.filter((m) => {
+      const ts = m.last_seen ? Date.parse(m.last_seen) : NaN;
+      if (!Number.isFinite(ts)) return false;
+      return meterRhythmStatus((Date.now() - ts) / 1000, m.avg_interval_s).label !== t("online_label", "online");
+    }).length;
+    const chip = (color, text) => `<span class="flow-chip" style="--c:${color}"><span class="flow-chip-dot"></span>${escapeHtml(text)}</span>`;
+    const boardsColor = o.stale ? FLOW_STATE.unknown : online === devs.length && online > 0 ? "#2fd3a6" : online > 0 ? FLOW_STATE.warn : FLOW_STATE.bad;
+    const stCol = (st, own) => st === "ok" ? own : FLOW_STATE[st] || FLOW_STATE.unknown;
+    return `<div class="flow-chips">
+      ${chip(boardsColor, t("flow_boards_live", "{n} of {m} boards sending", {n: online, m: devs.length}))}
+      ${chip("#4fd6ff", t("flow_frames_min", "{n} frames/min", {n: o.rate}))}
+      ${chip(stCol(o.mqtt.state, FLOW_NODE.mqtt), `MQTT ${o.mqtt.text}`)}
+      ${chip(stCol(o.ha.state, "#9ad94a"), o.ha.text)}
+      ${meters.length ? chip(late ? FLOW_STATE.warn : "#2fd3a6", late
+        ? t("flow_meters_late", "{n} meter(s) late", {n: late})
+        : t("flow_meters_on_time", "all meters on time")) : ""}
+    </div>`;
+  }
+
+  function flowDiagram(o) {
+    const devs = asArray(o.devices);
+    const colors = flowColors();
+    const focus = !!state.flowFocus;
+    if (!devs.length) {
+      return `<div class="empty" style="margin-top:10px;">${escapeHtml(t("flow_no_boards", "No ESP board heard yet."))}</div>`;
+    }
+    const n = devs.length;
+    const compact = n > 8;
+    const bh = compact ? 30 : 46, gap = compact ? 6 : 10;
+    const colH = n * bh + (n - 1) * gap;
+    const H = Math.max(colH, 150) + 30;
+    const cy = H / 2, top = (H - colH) / 2;
+    const BX = 44, BW = 196, MX = 330, MW = 150, WX = 530, WW = 170, HX = 745, HW = 145, NH = 74;
+    const maxRate = Math.max(1, ...devs.map((d) => Number(d.frames_h) || 0));
+    let boards = "", lines = "";
+    devs.forEach((d, i) => {
+      const info = flowBoardInfo(d, o.stale);
+      const y = top + i * (bh + gap), my = y + bh / 2;
+      const own = colors.get(d.name) || FLOW_STATE.unknown;
+      const c = info.live ? own : info.warn ? FLOW_STATE.warn : FLOW_STATE.unknown;
+      const hl = flowFocused("board", d.name) ? " hl" : "";
+      const ey = cy + (n > 1 ? (i / (n - 1) - 0.5) * 40 : 0);
+      const path = `M${BX + BW} ${my} C${BX + BW + 50} ${my} ${MX - 50} ${ey} ${MX} ${ey}`;
+      const name = escapeHtml(d.name);
+      lines += info.live
+        ? `<path class="flow-line flow-dots${hl}" data-board="${name}" d="${path}" stroke="${c}" stroke-width="${(1.5 + 4.5 * info.rate / maxRate).toFixed(1)}" style="--d:${(2.6 - 1.8 * info.rate / maxRate).toFixed(2)}s"/>`
+        : `<path class="flow-line${hl}" data-board="${name}" d="${path}" stroke="${c}" stroke-width="1.2" stroke-dasharray="5 5"/>`;
+      const dead = !info.live && !info.warn;
+      boards += `<g class="flow-ant${info.live ? " on" : ""}" transform="translate(22 ${my})" stroke="${c}" fill="none" stroke-width="1.6" stroke-linecap="round">
+          <line x1="0" y1="-2" x2="0" y2="${compact ? 8 : 12}"/><path class="w1" d="M-5 -5 A7 7 0 0 1 5 -5"/>${compact ? "" : `<path class="w2" d="M-9 -9 A12.7 12.7 0 0 1 9 -9"/>`}
+          ${dead ? `<line x1="-9" y1="-11" x2="9" y2="10" stroke="${FLOW_STATE.bad}"/>` : ""}</g>
+        <g class="flow-board${hl}" data-board="${name}" data-action="open-workspace" data-ws="esp">
+          <title>${name} · ${escapeHtml(info.sub)}</title>
+          <rect x="${BX}" y="${y}" width="${BW}" height="${bh}" rx="8" fill="${c}" fill-opacity="0.14" stroke="${c}"${info.live ? "" : ` stroke-dasharray="4 3"`}/>
+          ${compact
+            ? `<text class="flow-t" x="${BX + 12}" y="${my}" dominant-baseline="central">${escapeHtml(flowClip(d.name, 14))}<tspan class="flow-s" fill="${c}"> ${info.live ? escapeHtml(info.rateTxt ? info.rateTxt + "/min" : "") : "—"}</tspan></text>`
+            : `<text class="flow-t" x="${BX + 12}" y="${y + 17}" dominant-baseline="central">${escapeHtml(flowClip(d.name, 20))}</text>
+               <text class="flow-s" x="${BX + 12}" y="${y + 34}" dominant-baseline="central" fill="${c}">${escapeHtml(flowClip(info.sub, 26))}</text>`}
+        </g>`;
+    });
+    const nodeColor = (st, own) => st === "ok" ? own : FLOW_STATE[st] || FLOW_STATE.unknown;
+    const icon = {
+      mqtt: (x, y, c) => `<g fill="${c}" stroke="${c}" stroke-width="1.2"><circle cx="${x}" cy="${y}" r="3.5"/><circle cx="${x + 9}" cy="${y - 7}" r="2.3"/><circle cx="${x + 9}" cy="${y + 7}" r="2.3"/><line x1="${x}" y1="${y}" x2="${x + 9}" y2="${y - 7}"/><line x1="${x}" y1="${y}" x2="${x + 9}" y2="${y + 7}"/></g>`,
+      wmbus: (x, y, c) => `<g stroke="${c}" fill="none" stroke-width="1.8" stroke-linecap="round"><circle cx="${x + 4}" cy="${y}" r="4.5"/><line x1="${x + 4}" y1="${y - 9}" x2="${x + 4}" y2="${y - 7}"/><line x1="${x + 4}" y1="${y + 7}" x2="${x + 4}" y2="${y + 9}"/><line x1="${x - 5}" y1="${y}" x2="${x - 3}" y2="${y}"/><line x1="${x + 11}" y1="${y}" x2="${x + 13}" y2="${y}"/></g>`,
+      ha: (x, y, c) => `<g stroke="${c}" fill="none" stroke-width="1.8" stroke-linejoin="round"><path d="M${x - 4} ${y + 1} L${x + 4} ${y - 7} L${x + 12} ${y + 1}"/><path d="M${x - 2} ${y} L${x - 2} ${y + 8} L${x + 10} ${y + 8} L${x + 10} ${y}"/></g>`,
+    };
+    const node = (key, x, w, n2) => {
+      const c = nodeColor(n2.state, FLOW_NODE[key]);
+      const open = state.workspace === key;
+      const title = key === "mqtt" ? "MQTT" : key === "wmbus" ? "wmbusmeters" : "HA";
+      return `<g class="flow-node" data-action="open-workspace" data-ws="${key}">
+          <title>${escapeHtml(title)} · ${escapeHtml(n2.text)} · ${escapeHtml(n2.sub)}${n2.title ? ` (${escapeHtml(n2.title)})` : ""}</title>
+          <rect x="${x}" y="${cy - NH / 2}" width="${w}" height="${NH}" rx="10" fill="${c}" fill-opacity="0.14" stroke="${c}" stroke-width="${open ? 2.5 : 1}"/>
+          ${icon[key](x + 16, cy - 15, c)}
+          <text class="flow-t" x="${x + 36}" y="${cy - 15}" dominant-baseline="central">${title}</text>
+          <text class="flow-s" x="${x + 12}" y="${cy + 6}" dominant-baseline="central" fill="${c}">${escapeHtml(flowClip(n2.text, Math.floor(w / 7.2)))}</text>
+          <text class="flow-s2" x="${x + 12}" y="${cy + 23}" dominant-baseline="central">${escapeHtml(flowClip(n2.sub, Math.floor(w / 6.6)))}</text>
+        </g>`;
+    };
+    const link = (x1, x2, key) => {
+      const c = nodeColor(o[key].state, FLOW_NODE[key]);
+      const moving = o.rate > 0 && o[key].state === "ok";
+      return `<path class="flow-line${moving ? " flow-dots" : ""}" d="M${x1} ${cy} L${x2} ${cy}" stroke="${c}" stroke-width="3"${moving ? "" : ` stroke-dasharray="5 5"`} style="--d:0.9s"/>
+        <text class="flow-s2" x="${(x1 + x2) / 2}" y="${cy - 10}" text-anchor="middle">${o.rate}/min</text>`;
+    };
+    const wide = `<svg class="flow-svg flow-root${focus ? " focus" : ""}" viewBox="0 0 900 ${H}" role="img" aria-label="${escapeHtml(t("flow_aria", "Frames from the boards through MQTT and wmbusmeters to Home Assistant"))}">
+        ${lines}${boards}
+        ${node("mqtt", MX, MW, o.mqtt)}${link(MX + MW, WX, "mqtt")}
+        ${node("wmbus", WX, WW, o.wmbus)}${link(WX + WW, HX, "wmbus")}
+        ${node("ha", HX, HW, o.ha)}
+      </svg>`;
+    const narrowBoards = devs.map((d) => {
+      const info = flowBoardInfo(d, o.stale);
+      const own = colors.get(d.name) || FLOW_STATE.unknown;
+      const c = info.live ? own : info.warn ? FLOW_STATE.warn : FLOW_STATE.unknown;
+      return `<button type="button" class="flow-nb${info.live ? "" : " off"}${flowFocused("board", d.name) ? " hl" : ""}" data-board="${escapeHtml(d.name)}" data-action="open-workspace" data-ws="esp" style="--c:${c}">
+          <span class="flow-nb-ant${info.live ? " on" : ""}">📡</span><span class="flow-nb-name">${escapeHtml(d.name)}</span><span class="flow-nb-sub">${escapeHtml(info.sub)}</span></button>`;
+    }).join("");
+    const narrowNode = (key, label) => {
+      const c = nodeColor(o[key].state, FLOW_NODE[key]);
+      return `<button type="button" class="flow-nn" data-action="open-workspace" data-ws="${key}" style="--c:${c}"><strong>${label}</strong><span>${escapeHtml(o[key].text)}</span><span class="flow-nn-sub">${escapeHtml(o[key].sub)}</span></button>`;
+    };
+    const arrow = `<div class="flow-na">↓ ${escapeHtml(String(o.rate))}/min</div>`;
+    const narrow = `<div class="flow-narrow">
+        <div class="flow-nboards flow-root${focus ? " focus" : ""}">${narrowBoards}</div>
+        ${arrow}${narrowNode("mqtt", "MQTT")}${arrow}${narrowNode("wmbus", "wmbusmeters")}${arrow}${narrowNode("ha", "HA")}
+      </div>`;
+    return `<div class="flow-wrap">${wide}${narrow}
+      <p class="hint" style="margin:6px 0 0;">${escapeHtml(t("flow_legend", "Line colour = board, width = frames per minute, dots = traffic. Dashed grey = silent. Hover over a meter to see which boards hear it. Click a node for details."))}</p></div>`;
+  }
+
+  // Meter tiles under the flow: the value in the colour of its medium, how
+  // long ago it was heard, and a dot per board that hears it (board colours).
+  const FLOW_MEDIA = {water: "#4aa3ff", warm_water: "#ff8a4c", heat: "#ff6b6b", electricity: "#ffd04a", other: "#9eafba"};
+
+  function meterTiles(rows) {
+    if (!rows.length) return `<div class="empty">${escapeHtml(t("webui_no_meters", "No meters yet."))}</div>`;
+    const colors = flowColors();
+    const focus = !!state.flowFocus;
+    return `<div class="meter-tiles flow-root${focus ? " focus" : ""}">${rows.map((row) => {
+      const id = row.id || row.meter_id || "";
+      const {icon, mc} = mediaIcon(row.media || "", row.driver || "");
+      const c = FLOW_MEDIA[mc] || FLOW_MEDIA.other;
+      const ts = row.last_seen ? Date.parse(row.last_seen) : NaN;
+      const ageS = Number.isFinite(ts) ? (Date.now() - ts) / 1000 : Infinity;
+      const st = meterRhythmStatus(ageS, row.avg_interval_s);
+      const late = st.label !== t("online_label", "online");
+      const boards = [...new Set(asArray(row.reception_esps).map((e) => e && e.esp).filter(Boolean))];
+      const hasValue = !!(row.value && row.value !== "-");
+      const unit = unitFromKey(row.value_key || "");
+      const heard = row.source === "mbus"
+        ? `<span class="mt-heard">🔌 ${escapeHtml(row.source_label || "M-Bus")}</span>`
+        : boards.map((b) => `<span class="mt-dot" title="${escapeHtml(b)}" style="background:${colors.get(b) || FLOW_STATE.unknown}"></span>`).join("")
+          + (boards.length ? `<span class="mt-heard">${escapeHtml(t("flow_heard_by", "{n} boards", {n: boards.length}))}</span>` : "");
+      return `<div class="meter-tile${late ? " late" : ""}${flowFocused("meter", id) ? " hl" : ""}" data-action="flow-pin" data-meter="${escapeHtml(id)}" data-boards="${escapeHtml(boards.join(","))}" style="--c:${c}">
+          <div class="mt-head"><span class="mt-icon">${icon}</span><span class="mt-name">${escapeHtml(row.name || id)}</span><a class="mt-link" href="#meters" title="${escapeHtml(t("flow_open_meters", "Open in Meters"))}">↗</a></div>
+          <div class="mt-id">${escapeHtml(id)}${aesLockBadge(row)}</div>
+          <div class="mt-value">${escapeHtml(hasValue ? row.value : "—")}${unit ? ` <span class="mt-unit">${escapeHtml(unit)}</span>` : ""}</div>
+          <div class="mt-foot"><span style="color:${st.color}">${escapeHtml(st.label)}</span>${Number.isFinite(ageS) ? ` · ${escapeHtml(t("flow_ago", "{age} ago", {age: fmtInterval(Math.max(0, Math.round(ageS)))}))}` : ""}</div>
+          <div class="mt-dots">${heard}</div>
+          ${keyProblemPill(String(row.key_problem || ""))}
+        </div>`;
+    }).join("")}</div>`;
+  }
+
+  // Highlight without a re-render (hover): the same classes the render puts
+  // in from state.flowFocus, so a live update keeps them.
+  function applyFlowFocus() {
+    const f = state.flowFocus;
+    document.querySelectorAll(".flow-root").forEach((el) => el.classList.toggle("focus", !!f));
+    document.querySelectorAll("[data-board]").forEach((el) => el.classList.toggle("hl", flowFocused("board", el.dataset.board)));
+    document.querySelectorAll(".meter-tile").forEach((el) => el.classList.toggle("hl",
+      !!f && (f.kind === "meter" ? el.dataset.meter === f.id : (el.dataset.boards || "").split(",").includes(f.name))));
+  }
+
+  document.addEventListener("mouseover", (event) => {
+    if (state.route !== "dashboard" || state.flowPinned) return;
+    const tile = event.target.closest && event.target.closest(".meter-tile");
+    const board = !tile && event.target.closest && event.target.closest("[data-board]");
+    let f = null;
+    if (tile) f = {kind: "meter", id: tile.dataset.meter || "", boards: (tile.dataset.boards || "").split(",").filter(Boolean)};
+    else if (board) f = {kind: "board", name: board.dataset.board};
+    const same = JSON.stringify(f) === JSON.stringify(state.flowFocus);
+    if (!same) {
+      state.flowFocus = f;
+      applyFlowFocus();
+    }
+  });
 
   // Keys the bridge never turns into an entity — they identify the meter or the
   // reception rather than measuring anything. Mirrors the exclusion list in
@@ -6441,16 +6525,19 @@
       return;
     }
 
-    // Dashboard view switcher — pure client-side, persisted to localStorage.
-    if (action === "dashboard-view") {
-      const v = target.dataset.view || "pipeline";
-      if (v !== state.dashboardView) {
-        state.dashboardView = v;
-        saveDashboardView(v);
-        // Switching view also clears any open pipeline drill-down.
-        state.workspace = null;
-        render();
+    // Meter tile on the Panel: a tap pins the highlight of the boards that
+    // hear it (phones have no hover); a second tap on the same tile frees it.
+    if (action === "flow-pin") {
+      if (event.target.closest("a")) return;
+      const id = target.dataset.meter || "";
+      if (state.flowPinned && state.flowFocus && state.flowFocus.kind === "meter" && state.flowFocus.id === id) {
+        state.flowPinned = false;
+        state.flowFocus = null;
+      } else {
+        state.flowPinned = true;
+        state.flowFocus = {kind: "meter", id, boards: (target.dataset.boards || "").split(",").filter(Boolean)};
       }
+      applyFlowFocus();
       return;
     }
 
