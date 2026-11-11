@@ -1,3 +1,14 @@
+## 1.6.18-dev.491
+
+### Other (review)
+- Panel flow HA tile wide enough for its status in every language; node text clipped inside the box (5fb3560)
+- board tiles on the Boards tab use each board's colour from the Panel flow (7a818c9)
+- wait for bash's zero-meter LISTEN parser before reading the decode stage's files (47de911)
+- Panel flow shows every wmbusmeters instance (DEC, EXT, LIST, M-Bus) wired as in the code (81fdb20)
+- Panel becomes a live flow diagram (boards -> MQTT -> wmbusmeters -> HA) with meter tiles; Statistics view and event list removed (3c209aa)
+- radio env arrows show trend against typical, colours rank the boards (390613d)
+- radio env board table ranked green/yellow/red with arrows, 3-colour heatmap, capitalised labels (8c205a7)
+
 ## 1.6.18-dev.487
 
 ### Other (review)
