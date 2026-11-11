@@ -2124,10 +2124,21 @@
     const reads = asArray(data.meters).filter((m) => m.source !== "mbus" && !String(m.driver || "").startsWith("external_"))
       .map((m) => Date.parse(m.last_seen || "")).filter(Number.isFinite);
     const lastRead = reads.length ? Math.max(...reads) : null;
+    // Radio meters on built-in drivers: decoded ones plus those still
+    // waiting for their first telegram (wired and external ones have their
+    // own instance).
+    const radioIds = new Set(asArray(data.meters)
+      .filter((m) => m.source !== "mbus" && !String(m.driver || "").startsWith("external_"))
+      .map((m) => String(m.id || m.meter_id || "")));
+    asArray(data.pending_meters).forEach((m) => {
+      if (!String((m && m.driver) || "").startsWith("external_")) radioIds.add(String((m && (m.id || m.meter_id)) || ""));
+    });
+    radioIds.delete("");
+    const decMeters = radioIds.size;
     out.push({
       key: "dec", color: "#f0b03c", title: "wmbusmeters · DEC",
       purpose: c.meterCount > 0
-        ? t("flow_inst_dec", "your meters ({n})", {n: Math.max(0, c.meterCount - extMeters - (c.wiredRunning ? c.wiredTotal : 0))})
+        ? t("flow_inst_dec", "your meters ({n})", {n: decMeters})
         : t("flow_inst_dec_zero", "listening, no meters yet"),
       state: c.nodeState(c.wmbusOk, false),
       // The age of its newest reading, not pipeline.decoded_count: that
@@ -2186,7 +2197,7 @@
     const H = Math.max(colH, instH, 170) + 40;
     const cy = H / 2, top = (H - colH) / 2, itop = (H - instH) / 2;
     // Columns: boards | MQTT | instances | decode / Received | HA
-    const BX = 44, BW = 190, MX = 290, MW = 150, IX = 500, IW = 210, DX = 770, DW = 175, HX = 1000, HW = 150, NH = 70;
+    const BX = 44, BW = 190, MX = 290, MW = 150, IX = 500, IW = 250, DX = 810, DW = 175, HX = 1040, HW = 150, NH = 70;
     const W = HX + HW + 10;
     const maxRate = Math.max(1, ...devs.map((d) => Number(d.frames_h) || 0));
     const nodeColor = (st, own) => st === "ok" ? own : FLOW_STATE[st] || FLOW_STATE.unknown;
