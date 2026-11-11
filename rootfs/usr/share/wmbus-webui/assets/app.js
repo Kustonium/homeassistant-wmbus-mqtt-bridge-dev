@@ -2180,7 +2180,7 @@
     const H = Math.max(colH, instH, 170) + 40;
     const cy = H / 2, top = (H - colH) / 2, itop = (H - instH) / 2;
     // Columns: boards | MQTT | instances | decode / Received | HA
-    const BX = 44, BW = 190, MX = 290, MW = 130, IX = 480, IW = 210, DX = 750, DW = 140, HX = 935, HW = 150, NH = 70;
+    const BX = 44, BW = 190, MX = 290, MW = 150, IX = 500, IW = 210, DX = 770, DW = 175, HX = 1000, HW = 150, NH = 70;
     const W = HX + HW + 10;
     const maxRate = Math.max(1, ...devs.map((d) => Number(d.frames_h) || 0));
     const nodeColor = (st, own) => st === "ok" ? own : FLOW_STATE[st] || FLOW_STATE.unknown;
