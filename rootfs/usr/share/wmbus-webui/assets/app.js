@@ -2173,7 +2173,7 @@
   }
 
   function flowDiagram(o) {
-    const devs = asArray(o.devices);
+    const devs = asArray(o.devices).slice().sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));  // fixed order: by name, not by who spoke last
     const colors = flowColors();
     const focus = !!state.flowFocus;
     const inst = asArray(o.instances);
@@ -3591,7 +3591,7 @@
     return `<section class="section">
       <div class="section-head"><h2>${escapeHtml(t("bs_title", "Board settings"))}</h2>
         <span class="hint">${escapeHtml(t("bs_apply_restart", "A change restarts the board (about 10 s)."))}</span></div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;">${devices.map(boardTile).join("")}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;">${devices.slice().sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""))).map(boardTile).join("")}</div>
     </section>`;
   }
 
