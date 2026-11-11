@@ -1,3 +1,8 @@
+## 1.6.18-dev.486
+
+### Other (review)
+- radio env heatmap coloured green/yellow/red by min/median/max with legend (1e20a31)
+
 ## 1.6.18-dev.485
 
 ### Added
