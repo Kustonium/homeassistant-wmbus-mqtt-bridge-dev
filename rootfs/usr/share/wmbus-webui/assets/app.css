@@ -2081,6 +2081,10 @@ th.sortable:hover {
   flex-direction: column;
   gap: 14px;
 }
+/* Column headers here read as words ("Płytka"), not in capitals. */
+.re-page th {
+  text-transform: none;
+}
 .re-page .card {
   margin: 0;
   padding: 14px 18px;

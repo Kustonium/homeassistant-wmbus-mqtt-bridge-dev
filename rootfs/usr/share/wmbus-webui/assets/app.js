@@ -4545,6 +4545,8 @@
         ? t("re_learning_note", "Typical values need {n} earlier days of the same kind. Collected so far: {days} days.", {n: x.min_samples || 3, days: x.days})
         : asArray(x.boards).length > 1 ? t("re_v_hint_all", "All boards agree.") : "";
     const fmt = (v) => (v === null || v === undefined) ? "—" : String(v);
+    // Labels and pills on this page start with a capital letter.
+    const cap = (s) => s ? String(s).charAt(0).toLocaleUpperCase() + String(s).slice(1) : s;
     const typ = (x.head_typ_lo !== null && x.head_typ_lo !== undefined)
       ? t("re_typical", "typically {range}", {range: `${x.head_typ_lo}–${x.head_typ_hi}`})
       : t("re_typical_pending", "typical: collecting data");
@@ -4557,19 +4559,20 @@
     const top = `<div class="card" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;">
       <div><div class="hint">${escapeHtml(t("re_now", "Now ({time}, {day})", {time: `${hh}:00`, day: dayType}))}</div>
         <div style="font-size:22px;font-weight:600;">${escapeHtml(t("re_frames_h", "{n} frames/h", {n: fmt(x.head_frames_h)}))}</div>
-        <div class="hint">${escapeHtml(typ)}</div>
-        ${x.head && asArray(x.boards).length > 1 ? `<div class="hint">${escapeHtml(t("re_head_board", "board that hears the most: {board}", {board: x.head}))}</div>` : ""}</div>
+        <div class="hint">${escapeHtml(cap(typ))}</div>
+        ${x.head && asArray(x.boards).length > 1 ? `<div class="hint">${escapeHtml(cap(t("re_head_board", "board that hears the most: {board}", {board: x.head})))}</div>` : ""}</div>
       <div><div class="hint">${escapeHtml(t("re_sym", "Invalid 3-of-6 symbols"))}</div>
         <div style="font-size:22px;font-weight:600;">${escapeHtml(x.sym_pct === null || x.sym_pct === undefined ? "—" : `${x.sym_pct}%`)}</div>
-        <div class="hint">${escapeHtml(symTyp)}</div></div>
+        <div class="hint">${escapeHtml(cap(symTyp))}</div></div>
       <div><div class="hint">${escapeHtml(t("re_verdict", "Verdict"))}</div>
-        <div style="margin-top:6px;"><span class="pill ${verdictPill[0]}">${escapeHtml(verdictPill[1])}</span></div>
+        <div style="margin-top:6px;"><span class="pill ${verdictPill[0]}">${escapeHtml(cap(verdictPill[1]))}</span></div>
         <div class="hint" style="margin-top:6px;">${escapeHtml(verdictHint)}</div></div>
     </div>`;
 
     const heat = asArray(x.heat);
-    // Colour by where the hour sits among the filled cells: green = quietest,
-    // yellow = median, red = busiest (linear between them).
+    // Three colours only, by where the hour sits among the filled cells:
+    // green = near the quietest, red = near the busiest, yellow = around the
+    // median (the borders lie halfway between median and min/max).
     const heatVals = heat.flat().filter(v => typeof v === "number").sort((a, b) => a - b);
     const hMin = heatVals.length ? heatVals[0] : 0;
     const hMax = heatVals.length ? heatVals[heatVals.length - 1] : 0;
@@ -4579,8 +4582,9 @@
     const mix = (a, b, f) => `rgb(${a.map((c, i) => Math.round(c + (b[i] - c) * f)).join(",")})`;
     const heatColor = v => {
       if (hMax <= hMin) return mix(HC[1], HC[1], 0);
-      if (v <= hMed) return mix(HC[0], HC[1], hMed > hMin ? (v - hMin) / (hMed - hMin) : 1);
-      return mix(HC[1], HC[2], hMax > hMed ? (v - hMed) / (hMax - hMed) : 1);
+      if (v < (hMin + hMed) / 2) return mix(HC[0], HC[0], 0);
+      if (v > (hMed + hMax) / 2) return mix(HC[2], HC[2], 0);
+      return mix(HC[1], HC[1], 0);
     };
     const days = [0, 1, 2, 3, 4, 5, 6].map(i => t(`re_wd_${i}`, ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][i]));
     const heatRows = heat.map((row, wd) => `<div style="font-size:11px;color:var(--muted);">${escapeHtml(days[wd])}</div>` +
@@ -4609,22 +4613,38 @@
         silent: ["bad", t("re_s_silent", "no frames")],
       }[b.state] || ["muted", b.state];
     };
+    // Per column, three colours: the strongest board green with ▲, the
+    // weakest red with ▼, the rest yellow. For invalid symbols the lowest
+    // rate is the strongest. Returns [cell attribute, arrow].
+    const rank = (key, lowBest) => {
+      const vals = asArray(x.boards).map(b => b[key]).filter(v => typeof v === "number");
+      const lo = Math.min(...vals), hi = Math.max(...vals);
+      return (v) => {
+        if (typeof v !== "number" || vals.length < 2 || hi <= lo) return ["", ""];
+        const best = lowBest ? lo : hi, worst = lowBest ? hi : lo;
+        const c = v === best ? HC[0] : v === worst ? HC[2] : HC[1];
+        const arrow = v === best ? " ▲" : v === worst ? " ▼" : "";
+        return [` style="color:${mix(c, c, 0)};font-weight:600;"`, arrow];
+      };
+    };
+    const rkFrames = rank("frames_h", false), rkMeters = rank("meters", false), rkSym = rank("sym_pct", true);
     const diagPill = (b) => {
       const m = String(b.diag_mode || "");
       if (m === "off") return `<span class="pill warn">off</span>`;
       if (m) return `<span class="pill ok">${escapeHtml(m)}</span>`;
-      return b.summaries ? `<span class="pill ok">${escapeHtml(t("re_diag_on", "on"))}</span>` : `<span class="hint">—</span>`;
+      return b.summaries ? `<span class="pill ok">${escapeHtml(cap(t("re_diag_on", "on")))}</span>` : `<span class="hint">—</span>`;
     };
     const diagOff = asArray(x.boards).filter(b => b.diag_mode === "off" || (!b.diag_mode && !b.summaries));
     const boardRows = asArray(x.boards).map(b => {
       const p = statePill(b);
+      const rf = rkFrames(b.frames_h), rm = rkMeters(b.meters), rs = rkSym(b.sym_pct);
       return `<tr>
         <td>${escapeHtml(b.name)}</td>
-        <td>${escapeHtml(fmt(b.frames_h))}${b.typ !== null && b.typ !== undefined ? ` <span class="hint">/ ${escapeHtml(String(b.typ))}</span>` : ""}</td>
-        <td>${escapeHtml(fmt(b.meters))}</td>
-        <td>${escapeHtml(b.sym_pct === null || b.sym_pct === undefined ? "—" : `${b.sym_pct}%`)}</td>
+        <td${rf[0]}>${escapeHtml(fmt(b.frames_h))}${rf[1]}${b.typ !== null && b.typ !== undefined ? ` <span class="hint">/ ${escapeHtml(String(b.typ))}</span>` : ""}</td>
+        <td${rm[0]}>${escapeHtml(fmt(b.meters))}${rm[1]}</td>
+        <td${rs[0]}>${escapeHtml(b.sym_pct === null || b.sym_pct === undefined ? "—" : `${b.sym_pct}%`)}${rs[1]}</td>
         <td>${diagPill(b)}</td>
-        <td><span class="pill ${p[0]}">${escapeHtml(p[1])}</span></td>
+        <td><span class="pill ${p[0]}">${escapeHtml(cap(p[1]))}</span></td>
       </tr>`;
     }).join("");
     const boardsCard = `<div class="card">
