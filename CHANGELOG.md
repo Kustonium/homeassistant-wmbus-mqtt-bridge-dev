@@ -1,3 +1,9 @@
+## 1.6.18-dev.487
+
+### Other (review)
+- radio env board table ranked green/yellow/red with arrows, 3-colour heatmap, capitalised labels (8c205a7)
+- radio env heatmap coloured green/yellow/red by min/median/max with legend (1e20a31)
+
 ## 1.6.18-dev.486
 
 ### Other (review)
