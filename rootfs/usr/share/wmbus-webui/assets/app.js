@@ -4613,19 +4613,34 @@
         silent: ["bad", t("re_s_silent", "no frames")],
       }[b.state] || ["muted", b.state];
     };
-    // Per column, three colours: the strongest board green with ▲, the
-    // weakest red with ▼, the rest yellow. For invalid symbols the lowest
-    // rate is the strongest. Returns [cell attribute, arrow].
+    // Per column, three colours: the strongest board green, the weakest red,
+    // the rest yellow. For invalid symbols the lowest rate is the strongest.
+    // Returns the cell attribute.
     const rank = (key, lowBest) => {
       const vals = asArray(x.boards).map(b => b[key]).filter(v => typeof v === "number");
       const lo = Math.min(...vals), hi = Math.max(...vals);
       return (v) => {
-        if (typeof v !== "number" || vals.length < 2 || hi <= lo) return ["", ""];
+        if (typeof v !== "number" || vals.length < 2 || hi <= lo) return "";
         const best = lowBest ? lo : hi, worst = lowBest ? hi : lo;
         const c = v === best ? HC[0] : v === worst ? HC[2] : HC[1];
-        const arrow = v === best ? " ▲" : v === worst ? " ▼" : "";
-        return [` style="color:${mix(c, c, 0)};font-weight:600;"`, arrow];
+        return ` style="color:${mix(c, c, 0)};font-weight:600;"`;
       };
+    };
+    // Trend against the typical value for this hour and kind of day: ▲ above,
+    // ▼ below. Frames: beyond ±15 %. Invalid symbols: half again or half as
+    // much, and at least 0.3 points apart. Nothing until typical is known.
+    const arrow = (now, typ, up, label) => (up === null) ? ""
+      : ` <span title="${escapeHtml(t("re_typical", "typically {range}", {range: label}))}">${up ? "▲" : "▼"}</span>`;
+    const trendFrames = (b) => {
+      if (typeof b.frames_h !== "number" || !b.typ) return "";
+      const r = b.frames_h / b.typ;
+      return arrow(b.frames_h, b.typ, r > 1.15 ? true : r < 0.85 ? false : null, `${b.typ}/h`);
+    };
+    const trendSym = (b) => {
+      const v = b.sym_pct, ty = b.sym_typ_pct;
+      if (typeof v !== "number" || typeof ty !== "number" || b.state === "learning") return "";
+      const far = Math.abs(v - ty) >= 0.3;
+      return arrow(v, ty, far && v > ty * 1.5 ? true : far && v < ty / 1.5 ? false : null, `${ty}%`);
     };
     const rkFrames = rank("frames_h", false), rkMeters = rank("meters", false), rkSym = rank("sym_pct", true);
     const diagPill = (b) => {
@@ -4637,12 +4652,11 @@
     const diagOff = asArray(x.boards).filter(b => b.diag_mode === "off" || (!b.diag_mode && !b.summaries));
     const boardRows = asArray(x.boards).map(b => {
       const p = statePill(b);
-      const rf = rkFrames(b.frames_h), rm = rkMeters(b.meters), rs = rkSym(b.sym_pct);
       return `<tr>
         <td>${escapeHtml(b.name)}</td>
-        <td${rf[0]}>${escapeHtml(fmt(b.frames_h))}${rf[1]}${b.typ !== null && b.typ !== undefined ? ` <span class="hint">/ ${escapeHtml(String(b.typ))}</span>` : ""}</td>
-        <td${rm[0]}>${escapeHtml(fmt(b.meters))}${rm[1]}</td>
-        <td${rs[0]}>${escapeHtml(b.sym_pct === null || b.sym_pct === undefined ? "—" : `${b.sym_pct}%`)}${rs[1]}</td>
+        <td${rkFrames(b.frames_h)}>${escapeHtml(fmt(b.frames_h))}${trendFrames(b)}${b.typ !== null && b.typ !== undefined ? ` <span class="hint">/ ${escapeHtml(String(b.typ))}</span>` : ""}</td>
+        <td${rkMeters(b.meters)}>${escapeHtml(fmt(b.meters))}</td>
+        <td${rkSym(b.sym_pct)}>${escapeHtml(b.sym_pct === null || b.sym_pct === undefined ? "—" : `${b.sym_pct}%`)}${trendSym(b)}</td>
         <td>${diagPill(b)}</td>
         <td><span class="pill ${p[0]}">${escapeHtml(cap(p[1]))}</span></td>
       </tr>`;
