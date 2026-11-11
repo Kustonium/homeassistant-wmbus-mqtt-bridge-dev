@@ -1,3 +1,7 @@
+## 1.6.19-dev
+
+<!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
+
 ## 1.6.18-dev.496
 
 ### Other (review)
