@@ -1,3 +1,8 @@
+## 1.6.18-dev.484
+
+### Added
+- Boards tab with board settings, starting with the listen mode (c039494)
+
 ## 1.6.18-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
