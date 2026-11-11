@@ -2099,12 +2099,18 @@ th.sortable:hover {
   border-radius: 10px;
 }
 .board-tile:not(.board-tile-off) {
-  border-color: var(--accent);
+  border-color: var(--c, var(--accent));
+  background: color-mix(in srgb, var(--c, var(--accent)) 10%, transparent);
 }
 .board-tile-off {
   opacity: 0.6;
   border-style: dashed;
+  border-color: var(--c, #5a6270);
 }
+/* Board colour as in the Panel flow: name, dot, and the active mode button. */
+.board-tile-name { display: inline-flex; align-items: center; gap: 7px; color: var(--c, inherit); }
+.board-tile-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c, #5a6270); }
+.board-tile .btn.primary { background: var(--c); border-color: var(--c); color: #0f161c; }
 
 /* Panel flow: boards → MQTT → wmbusmeters → HA (wide SVG), told top-down in
    HTML on narrow screens; meter tiles below. Colours come inline per board. */
