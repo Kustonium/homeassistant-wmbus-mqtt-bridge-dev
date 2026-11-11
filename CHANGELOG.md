@@ -1,3 +1,9 @@
+## 1.6.18-dev.492
+
+### Other (review)
+- Panel flow MQTT and decode tiles wide enough for broker name and 'status + discovery' (1ca4e74)
+- Panel flow HA tile wide enough for its status in every language; node text clipped inside the box (5fb3560)
+
 ## 1.6.18-dev.491
 
 ### Other (review)
