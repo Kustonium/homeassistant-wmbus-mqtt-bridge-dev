@@ -1,3 +1,8 @@
+## 1.6.20-dev.502
+
+### Other (review)
+- radio env heatmap green = normal (median), yellow = quietest, red = busiest; far-meter chart explained, with a scale, hour marks and the best hours highlighted (0f2dce6)
+
 ## 1.6.20-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
