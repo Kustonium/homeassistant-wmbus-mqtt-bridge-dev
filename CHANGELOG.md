@@ -1,3 +1,8 @@
+## 1.6.21-dev.504
+
+### Other (review)
+- board tiles show every setting a board announces (CC1101 RX filter, carrier sense), not only listen_mode (b75a3ab)
+
 ## 1.6.21-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
