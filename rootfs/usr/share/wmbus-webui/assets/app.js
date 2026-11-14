@@ -3572,7 +3572,8 @@
     let pill = `<span class="pill ok">${escapeHtml(t("bs_online", "online"))}</span>`;
     let note = "";
     if (pending) {
-      if (pending.value === value || (pending.value === "yaml" && lm.source === "yaml")) {
+      const ps = s[pending.key || "listen_mode"] || {};
+      if (pending.value === String(ps.value || "") || (pending.value === "yaml" && ps.source === "yaml")) {
         delete state.bsPending[name];
       } else if (Date.now() - pending.at > 90000) {
         pill = `<span class="pill bad">${escapeHtml(t("bs_no_confirm", "not confirmed"))}</span>`;
@@ -3596,10 +3597,31 @@
     const source = lm.source === "stored"
       ? `${escapeHtml(t("bs_source_stored", "stored on the board"))} · <a href="#" data-action="board-set" data-board="${escapeHtml(name)}" data-key="listen_mode" data-value="yaml">${escapeHtml(t("bs_reset", "back to YAML ({value})", {value: label(String(lm.yaml || "both"))}))}</a>`
       : escapeHtml(t("bs_source_yaml", "from YAML"));
+    // Further settings the board announces (e.g. CC1101 RX filter and
+    // carrier sense): one row each, same buttons and "back to YAML".
+    const optLabel = (spec, o) => o === "on" ? t("bs_on", "on") : o === "off" ? t("bs_off", "off")
+      : `${o}${spec.unit ? " " + spec.unit : ""}`;
+    const extra = Object.keys(s).filter((k) => !["v", "radio", "listen_mode"].includes(k)
+      && s[k] && typeof s[k] === "object" && Array.isArray(s[k].options)).map((k) => {
+      const spec = s[k];
+      const cur = String(spec.value || "");
+      const btns = spec.options.map((o) => {
+        const on = String(o) === cur;
+        return `<button class="btn${on ? " primary" : ""}" style="padding:4px 10px;font-size:12px;" data-action="board-set"
+          data-board="${escapeHtml(name)}" data-key="${escapeHtml(k)}" data-value="${escapeHtml(String(o))}"
+          ${on || pending ? "disabled" : ""}>${escapeHtml(optLabel(spec, String(o)))}</button>`;
+      }).join("");
+      const src = spec.source === "stored"
+        ? `${escapeHtml(t("bs_source_stored", "stored on the board"))} · <a href="#" data-action="board-set" data-board="${escapeHtml(name)}" data-key="${escapeHtml(k)}" data-value="yaml">${escapeHtml(t("bs_reset", "back to YAML ({value})", {value: optLabel(spec, String(spec.yaml || ""))}))}</a>`
+        : escapeHtml(t("bs_source_yaml", "from YAML"));
+      return `<div class="hint" style="margin:10px 0 4px;">${escapeHtml(t(`bs_key_${k}`, k))}: <strong>${escapeHtml(optLabel(spec, cur))}</strong> (${src})</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">${btns}</div>`;
+    }).join("");
     return `<div class="card board-tile" style="--c:${color}">
       ${head(pill)}
       <div class="hint" style="margin:6px 0;">${escapeHtml(String(s.radio || ""))} · ${escapeHtml(t("bs_listen_mode", "Listen mode"))}: <strong>${escapeHtml(label(value))}</strong> (${source})</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">${buttons}</div>
+      ${extra}${extra ? `<p class="hint" style="margin:6px 0 0;">${escapeHtml(t("bs_bench_hint", "Test settings: change one at a time and compare the same hours of the day."))}</p>` : ""}
       ${note ? `<p class="hint" style="margin:6px 0 0;">${escapeHtml(note)}</p>` : ""}
       ${hints.length ? `<p class="hint" style="margin:6px 0 0;">${escapeHtml(hints.join(" "))}</p>` : ""}
     </div>`;
@@ -6441,7 +6463,7 @@
       (async () => {
         try {
           await postApi("esp-setting", {board, key, value});
-          state.bsPending[board] = {value, at: Date.now()};
+          state.bsPending[board] = {key, value, at: Date.now()};
           toast(t("bs_pending", "Sent. The board stores it and restarts (about 10 s)."));
         } catch (error) {
           toast(error.message, true);

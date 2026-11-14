@@ -4495,12 +4495,18 @@ def board_setting_send(board: str, key: str, value: str) -> tuple[bool, str]:
     board, key, value = str(board or ""), str(key or ""), str(value or "").strip().lower()
     if not _BOARD_NAME_RE.fullmatch(board):
         return False, "invalid board"
-    if key not in BOARD_SETTING_VALUES or value not in BOARD_SETTING_VALUES[key]:
-        return False, "invalid setting"
     announced = _esp_settings().get(board)
-    if not isinstance(announced, dict) or not isinstance(announced.get(key), dict):
+    if not isinstance(announced, dict):
         return False, "this board does not take settings from the add-on"
-    if value in (announced[key].get("unsupported") or []):
+    # Any setting the board announces in its diag/settings, with one of the
+    # options it lists (or "yaml" to drop the stored value).
+    spec = announced.get(key)
+    if not re.fullmatch(r"[a-z0-9_]{1,40}", key) or not isinstance(spec, dict) or key in ("v", "radio"):
+        return False, "invalid setting"
+    options = [str(o).lower() for o in (spec.get("options") or [])]
+    if value != "yaml" and value not in options:
+        return False, "invalid setting"
+    if value in (spec.get("unsupported") or []):
         return False, f"{value} is not supported on this board"
     try:
         port = int((RUNTIME / "mqtt_publisher.port").read_text(encoding="utf-8").split()[0])

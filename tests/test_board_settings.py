@@ -27,7 +27,9 @@ SPEC.loader.exec_module(webui)
 
 SETTINGS = {"v": 1, "radio": "CC1101", "listen_mode": {
     "value": "both", "source": "yaml", "yaml": "both", "options": ["t1", "c1", "both", "s1"],
-    "unsupported": ["s1"], "weak": [], "apply": "restart"}}
+    "unsupported": ["s1"], "weak": [], "apply": "restart"},
+    "cc1101_rx_bandwidth": {"value": "325", "source": "yaml", "yaml": "325",
+                            "options": ["325", "270", "232"], "unit": "kHz", "apply": "restart"}}
 
 
 class Store(unittest.TestCase):
@@ -55,6 +57,10 @@ class Send(unittest.TestCase):
         self.assertEqual(webui.board_setting_send("cc1101", "listen_mode", "x1")[1], "invalid setting")
         self.assertIn("not supported", webui.board_setting_send("cc1101", "listen_mode", "s1")[1])
         self.assertIn("does not take", webui.board_setting_send("heltec", "listen_mode", "c1")[1])
+        # A radio-specific setting the board announces, with one of its options.
+        self.assertEqual(webui.board_setting_send("cc1101", "cc1101_rx_bandwidth", "999")[1], "invalid setting")
+        self.assertEqual(webui.board_setting_send("cc1101", "cc1101_carrier_sense", "off")[1], "invalid setting")
+        self.assertEqual(webui.board_setting_send("cc1101", "radio", "x")[1], "invalid setting")
 
     def test_publishes_through_the_publisher(self):
         srv = socket.socket()
