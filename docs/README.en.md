@@ -144,7 +144,7 @@ Available in **5 languages** (EN/PL/DE/CS/SK) — switcher in the top-right corn
 
 | Tab | Purpose |
 |---|---|
-| **PANEL** | Dashboard: a live flow from every ESP board (own colour, antenna, line width = frames/min) through MQTT and wmbusmeters to HA (click a node for details), and a tile per meter; hovering a meter highlights the boards that hear it. |
+| **PANEL** | Dashboard: a live flow from every ESP board (own colour, antenna, line width = frames/min) through MQTT and wmbusmeters to HA (click a node for details), and a tile per meter; hovering a meter highlights the boards that hear it. Each board node also shows the band it listens to (T1, C1, T1+C1, S1). |
 | **METERS** | Your configured meters: value, last telegram, **RECEPTION**. |
 | **RECEIVING / SEARCH** | Detected candidates + configured-on-air; add/remove meters and filter displayed values here. |
 | **LOGS / ESP LOGS** | Runtime events and ESP receiver diagnostics. |
@@ -485,6 +485,10 @@ that comparison.
   boards at once, at the air.
 - **Density map** of the week by hour, a **table per board**, and the **hours
   when far meters are heard** (frames at -90 dBm or weaker).
+- **Band switch:** all bands together, or T1, C1 or S1 alone. A band view
+  shows only the boards that listen to that band now; the board table also
+  shows each board's listen mode. Bands are counted separately from 1.6.21
+  on, so a band view collects its own typical values first.
 
 Typical values need three earlier days of the same kind; until then the tab
 says it is collecting data. The invalid-symbol rate and the collisions and

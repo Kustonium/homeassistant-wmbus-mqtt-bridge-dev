@@ -2227,11 +2227,12 @@
           <line x1="0" y1="-2" x2="0" y2="${compact ? 8 : 12}"/><path class="w1" d="M-5 -5 A7 7 0 0 1 5 -5"/>${compact ? "" : `<path class="w2" d="M-9 -9 A12.7 12.7 0 0 1 9 -9"/>`}
           ${dead ? `<line x1="-9" y1="-11" x2="9" y2="10" stroke="${FLOW_STATE.bad}"/>` : ""}</g>
         <g class="flow-board${hl}" data-board="${name}" data-action="open-workspace" data-ws="esp">
-          <title>${name} · ${escapeHtml(info.sub)}</title>
+          <title>${name}${listenModeBands(d.listen_mode) ? ` · ${escapeHtml(listenModeBands(d.listen_mode))}` : ""} · ${escapeHtml(info.sub)}</title>
           <rect x="${BX}" y="${y}" width="${BW}" height="${bh}" rx="8" fill="${c}" fill-opacity="0.14" stroke="${c}"${info.live ? "" : ` stroke-dasharray="4 3"`}/>
           ${compact
             ? `<text class="flow-t" x="${BX + 12}" y="${my}" dominant-baseline="central">${escapeHtml(flowClip(d.name, 14))}<tspan class="flow-s" fill="${c}"> ${info.live ? escapeHtml(info.rateTxt ? info.rateTxt + "/min" : "") : "—"}</tspan></text>`
-            : `<text class="flow-t" x="${BX + 12}" y="${y + 17}" dominant-baseline="central">${escapeHtml(flowClip(d.name, 20))}</text>
+            : `<text class="flow-t" x="${BX + 12}" y="${y + 17}" dominant-baseline="central">${escapeHtml(flowClip(d.name, listenModeBands(d.listen_mode) ? 13 : 20))}${listenModeBands(d.listen_mode)
+                 ? `<tspan class="flow-s2" dx="6">${escapeHtml(listenModeBands(d.listen_mode))}</tspan>` : ""}</text>
                <text class="flow-s" x="${BX + 12}" y="${y + 34}" dominant-baseline="central" fill="${c}">${escapeHtml(flowClip(info.sub, 25))}</text>`}
         </g>`;
     });
@@ -4733,7 +4734,8 @@
     if (state.re && !force) return;
     state.reLoading = true;
     try {
-      const response = await fetch("api/radio-env", {cache: "no-store"});
+      const band = state.reBand || "all";
+      const response = await fetch(`api/radio-env?band=${encodeURIComponent(band)}`, {cache: "no-store"});
       state.re = response.ok ? await response.json() : {error: true};
     } catch (_) {
       state.re = {error: true};
@@ -4762,14 +4764,27 @@
     return ranges.join(", ");
   }
 
+  // Listen mode as the boards announce it (t1/c1/both/s1), shown as bands.
+  function listenModeBands(mode) {
+    return {t1: "T1", c1: "C1", both: "T1+C1", s1: "S1"}[String(mode || "").toLowerCase()] || "";
+  }
+
   function radioEnvPage() {
     const x = state.re || {};
     if (x.error) {
       return `<div class="card"><p>${escapeHtml(t("re_load_failed", "Could not load the radio environment."))}</p></div>`;
     }
+    // All bands together (as before) or one band at a time.
+    const band = state.reBand || "all";
+    const bandSwitch = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">${["all", "T1", "C1", "S1"].map((b) =>
+      `<button class="btn${b === band ? " primary" : ""}" style="padding:4px 12px;font-size:12px;" data-action="re-band" data-band="${b}"${b === band ? " disabled" : ""}>${escapeHtml(b === "all" ? t("re_band_all", "All bands") : b)}</button>`).join("")}</div>
+      ${band !== "all" ? `<p class="hint" style="margin:8px 0 0;">${escapeHtml(t("re_band_hint", "Only frames received in {band}, and only the boards that listen to it now. Bands are counted separately from this version on, so typical values for a band need {n} days of the same kind first.", {band, n: x.min_samples || 3}))}</p>` : ""}`;
+    const titleCard = `<div class="card"><h2>${escapeHtml(t("re_title", "Radio environment"))}</h2>
+        <p class="hint">${escapeHtml(t("re_intro", "How busy the air around your boards is, compared with the same hour on earlier days of the same kind. It changes nothing in reception."))}</p>${bandSwitch}</div>`;
     if (x.empty) {
-      return `<div class="card"><h2>${escapeHtml(t("re_title", "Radio environment"))}</h2>
-        <p class="hint">${escapeHtml(t("re_no_data", "No data yet. Counting starts with the first frame from an ESP board."))}</p></div>`;
+      return `<div class="re-page">${titleCard}<div class="card">
+        <p class="hint">${escapeHtml(band === "all" ? t("re_no_data", "No data yet. Counting starts with the first frame from an ESP board.")
+          : t("re_band_no_data", "No frames in {band} yet, and no board listens to it now.", {band}))}</p></div></div>`;
     }
     const dayType = x.day_type === "weekend" ? t("re_weekend", "weekend") : t("re_workday", "working day");
     const verdictPill = {
@@ -4897,7 +4912,7 @@
     const boardRows = asArray(x.boards).map(b => {
       const p = statePill(b);
       return `<tr>
-        <td>${escapeHtml(b.name)}</td>
+        <td>${escapeHtml(b.name)}${listenModeBands(b.listen_mode) ? ` <span class="hint">· ${escapeHtml(listenModeBands(b.listen_mode))}</span>` : ""}</td>
         <td${rkFrames(b.frames_h)}>${escapeHtml(fmt(b.frames_h))}${trendFrames(b)}${b.typ !== null && b.typ !== undefined ? ` <span class="hint">/ ${escapeHtml(String(b.typ))}</span>` : ""}</td>
         <td${rkMeters(b.meters)}>${escapeHtml(fmt(b.meters))}</td>
         <td${rkSym(b.sym_pct)}>${escapeHtml(b.sym_pct === null || b.sym_pct === undefined ? "—" : `${b.sym_pct}%`)}${trendSym(b)}</td>
@@ -4936,8 +4951,7 @@
     </div>`;
 
     return `<div class="re-page">
-      <div class="card"><h2>${escapeHtml(t("re_title", "Radio environment"))}</h2>
-        <p class="hint">${escapeHtml(t("re_intro", "How busy the air around your boards is, compared with the same hour on earlier days of the same kind. It changes nothing in reception."))}</p></div>
+      ${titleCard}
       ${top}${heatCard}${boardsCard}${farCard}
     </div>`;
   }
@@ -6450,6 +6464,16 @@
           render();
         }
       })();
+      return;
+    }
+
+    if (action === "re-band") {
+      const band = target.dataset.band || "all";
+      if (band === (state.reBand || "all")) return;
+      state.reBand = band;
+      state.re = null;
+      loadRadioEnv(true);
+      render();
       return;
     }
 

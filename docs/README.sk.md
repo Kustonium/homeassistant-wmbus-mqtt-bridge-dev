@@ -144,7 +144,7 @@ Dostupné v **5 jazykoch** (EN/PL/DE/CS/SK) — prepínač vpravo hore.
 
 | Záložka | Na čo |
 |---|---|
-| **PANEL** | Dashboard: živý tok z každej dosky ESP (vlastná farba, anténa, hrúbka čiary = rámce/min) cez MQTT a wmbusmeters do HA (kliknutím na uzol podrobnosti) a dlaždica každého merača; prejdenie na merač zvýrazní dosky, ktoré ho počujú. |
+| **PANEL** | Dashboard: živý tok z každej dosky ESP (vlastná farba, anténa, hrúbka čiary = rámce/min) cez MQTT a wmbusmeters do HA (kliknutím na uzol podrobnosti) a dlaždica každého merača; prejdenie na merač zvýrazní dosky, ktoré ho počujú. Každá doska ukazuje aj pásmo, ktoré počúva (T1, C1, T1+C1, S1). |
 | **MERAČE** | Tvoje nakonfigurované merače: hodnota, posledný telegram, **PRÍJEM**. |
 | **PRÍJEM / HĽADANIE** | Detegovaní kandidáti + nakonfigurované „v éteri"; tu pridáš/odoberieš merače a filtruješ zobrazené hodnoty. |
 | **LOGY / ESP LOGY** | Runtime udalosti a diagnostika ESP prijímačov. |
@@ -466,6 +466,10 @@ skorších dňoch rovnakého typu: pracovný deň alebo víkend, vybrané automa
   sa len <doska>“.
 - **Mapa hustoty** týždňa po hodinách, **tabuľka dosiek** a **hodiny, kedy sú
   počuť vzdialené merače** (rámce -90 dBm a slabšie).
+- **Prepínač pásiem:** všetky pásma spolu, alebo zvlášť T1, C1 či S1.
+  Pohľad na pásmo ukazuje len dosky, ktoré ho teraz počúvajú; tabuľka dosiek
+  ukazuje aj režim počúvania každej dosky. Pásma sa počítajú zvlášť od verzie
+  1.6.21, takže pohľad na pásmo najprv zbiera vlastné typické hodnoty.
 
 Typické hodnoty potrebujú tri skoršie dni rovnakého typu. Podiel chybných symbolov a verdikty kolízie/rušenie
 vyžadujú `diagnostic_mode: normal` na ESP; ukážkové konfigurácie ho majú

@@ -145,7 +145,7 @@ Verfügbar in **5 Sprachen** (EN/PL/DE/CS/SK) — Umschalter oben rechts.
 
 | Tab | Zweck |
 |---|---|
-| **PANEL** | Dashboard: Live-Fluss von jeder ESP-Platine (eigene Farbe, Antenne, Linienbreite = Frames/min) über MQTT und wmbusmeters zu HA (Knoten anklicken für Details) und eine Kachel je Zähler; Zeigen auf einen Zähler hebt die Platinen hervor, die ihn hören. |
+| **PANEL** | Dashboard: Live-Fluss von jeder ESP-Platine (eigene Farbe, Antenne, Linienbreite = Frames/min) über MQTT und wmbusmeters zu HA (Knoten anklicken für Details) und eine Kachel je Zähler; Zeigen auf einen Zähler hebt die Platinen hervor, die ihn hören. Jede Platine zeigt auch das Band, das sie hört (T1, C1, T1+C1, S1). |
 | **ZÄHLER** | Deine konfigurierten Zähler: Wert, letztes Telegramm, **EMPFANG**. |
 | **EMPFANG / SUCHE** | Erkannte Kandidaten + konfigurierte „on air"; hier Zähler hinzufügen/entfernen und angezeigte Werte filtern. |
 | **LOGS / ESP-LOGS** | Runtime-Ereignisse und ESP-Empfänger-Diagnose. |
@@ -494,6 +494,11 @@ einer Platine, eine Wochenendnacht etwa 3000.
   <Platine> weicht ab“.
 - **Dichtekarte** der Woche nach Stunden, **Tabelle pro Platine** und die
   **Stunden, in denen ferne Zähler zu hören sind** (Frames -90 dBm und schwächer).
+- **Bandumschalter:** alle Bänder zusammen oder T1, C1 bzw. S1 einzeln. Eine
+  Bandansicht zeigt nur die Platinen, die dieses Band gerade hören; die
+  Platinentabelle zeigt auch den Empfangsmodus jeder Platine. Bänder werden ab
+  1.6.21 getrennt gezählt, eine Bandansicht sammelt also zuerst eigene
+  typische Werte.
 
 Typische Werte brauchen drei frühere Tage derselben Art. Die Symbolfehlerrate und die Bewertungen
 Kollisionen/Störungen brauchen `diagnostic_mode: normal` am ESP; die

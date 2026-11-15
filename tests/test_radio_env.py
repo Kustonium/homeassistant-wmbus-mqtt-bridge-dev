@@ -60,6 +60,24 @@ class Collector(unittest.TestCase):
         env2.frame("tbeam", "2", -80, T + H)
         self.assertEqual(json.loads(Path(self.path).read_text())["boards"]["tbeam"], [[T, 2, 0, 2, 0, 0]])
 
+    def test_bands_are_counted_under_their_own_keys(self):
+        env = radio_env.RadioEnv(self.path, self.now)
+        env.frame("lilygo", "1", -95, T + 10, "T1")
+        env.frame("lilygo", "2", -70, T + 20, "C1")
+        env.frame("lilygo", "3", -99, T + 1200, "S1")   # an S1 meter, late in the hour
+        env.frame("lilygo", "4", -99, T + 30, "X9")     # unknown mode: only in the total
+        env.summary("lilygo", {"event": "summary", "t1": {"sym_total": 1000, "sym_invalid": 30}}, T + 60)
+        env.frame("lilygo", "1", -95, T + H + 5, "T1")
+        env.frame("lilygo", "2", -70, T + H + 6, "C1")
+        env.frame("lilygo", "3", -99, T + H + 7, "S1")
+        boards = json.loads(Path(self.path).read_text())["boards"]
+        self.assertEqual(boards["lilygo"], [[T, 4, 3, 4, 1000, 30]])
+        self.assertEqual(boards["lilygo|T1"], [[T, 1, 1, 1, 1000, 30]])
+        self.assertEqual(boards["lilygo|C1"], [[T, 1, 0, 1, 0, 0]])
+        # Its first frame came 20 minutes in, but the board counted the whole
+        # hour: the S1 hour is kept, not dropped as a partial one.
+        self.assertEqual(boards["lilygo|S1"], [[T, 1, 1, 1, 0, 0]])
+
     def test_old_rows_are_dropped(self):
         env = radio_env.RadioEnv(self.path, self.now)
         env.frame("x", "1", -80, T - 20 * D)
@@ -159,6 +177,40 @@ class Payload(unittest.TestCase):
         self.write({})
         self.assertTrue(webui.radio_env_payload(T)["empty"])
 
+    def settings(self, modes):
+        webui.STATUS_ESP_SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        webui.STATUS_ESP_SETTINGS_FILE.write_text(json.dumps(
+            {n: {"v": 1, "listen_mode": {"value": m}} for n, m in modes.items()}))
+        self.addCleanup(webui.STATUS_ESP_SETTINGS_FILE.unlink, True)
+
+    def test_all_view_ignores_band_keys_and_names_listen_modes(self):
+        row = [[T - H, 1000, 5, 50, 0, 0]]
+        self.write({"a": row, "a|T1": row, "b": row, "b|S1": row})
+        self.settings({"a": "both", "b": "s1"})
+        p = webui.radio_env_payload(T + 60)
+        self.assertEqual(p["band"], "all")
+        self.assertEqual({b["name"]: b["listen_mode"] for b in p["boards"]}, {"a": "both", "b": "s1"})
+
+    def test_band_view_shows_the_boards_listening_to_it(self):
+        row = [[T - H, 300, 5, 20, 0, 0]]
+        # c heard S1 earlier but listens to T1 now; d listens to S1 and has
+        # heard nothing in it yet.
+        self.write({"a": row, "a|T1": row, "b": row, "b|S1": row, "c": row, "c|S1": row, "d": row})
+        self.settings({"a": "both", "b": "s1", "c": "t1", "d": "s1"})
+        p = webui.radio_env_payload(T + 60, band="S1")
+        self.assertEqual(p["band"], "S1")
+        states = {b["name"]: b["state"] for b in p["boards"]}
+        self.assertEqual(states, {"b": "learning", "d": "learning"})
+        self.assertEqual(webui.radio_env_payload(T + 60, band="nonsense")["band"], "all")
+
+    def test_band_view_without_frames_or_listeners_is_empty(self):
+        row = [[T - H, 300, 5, 20, 0, 0]]
+        self.write({"a": row, "a|T1": row})
+        self.settings({"a": "t1"})
+        p = webui.radio_env_payload(T + 60, band="C1")
+        self.assertTrue(p["empty"])
+        self.assertEqual(p["band"], "C1")
+
 
 
 class Hooks(unittest.TestCase):
@@ -192,6 +244,8 @@ class Hooks(unittest.TestCase):
         c = radio_env.instance().cur["lilygo"]
         self.assertEqual((c["frames"], c["weak"], c["meters"], c["sym_total"], c["sym_invalid"]),
                          (1, 1, {"52632878"}, 500, 5))
+        c = radio_env.instance().cur["lilygo|T1"]
+        self.assertEqual((c["frames"], c["sym_total"]), (1, 500))
 
     def test_without_the_variable_nothing_is_collected(self):
         os.environ.pop("RADIO_ENV_FILE")

@@ -144,7 +144,7 @@ Dostupné v **5 jazycích** (EN/PL/DE/CS/SK) — přepínač vpravo nahoře.
 
 | Záložka | K čemu |
 |---|---|
-| **PANEL** | Dashboard: živý tok z každé desky ESP (vlastní barva, anténa, tloušťka čáry = rámce/min) přes MQTT a wmbusmeters do HA (kliknutím na uzel podrobnosti) a dlaždice každého měřiče; najetí na měřič zvýrazní desky, které ho slyší. |
+| **PANEL** | Dashboard: živý tok z každé desky ESP (vlastní barva, anténa, tloušťka čáry = rámce/min) přes MQTT a wmbusmeters do HA (kliknutím na uzel podrobnosti) a dlaždice každého měřiče; najetí na měřič zvýrazní desky, které ho slyší. Každá deska ukazuje i pásmo, které poslouchá (T1, C1, T1+C1, S1). |
 | **MĚŘIČE** | Tvé nakonfigurované měřiče: hodnota, poslední telegram, **PŘÍJEM**. |
 | **PŘÍJEM / HLEDÁNÍ** | Detekovaní kandidáti + nakonfigurované „v éteru"; zde přidáš/odebereš měřiče a filtruješ zobrazené hodnoty. |
 | **LOGY / ESP LOGY** | Runtime události a diagnostika ESP přijímačů. |
@@ -465,6 +465,10 @@ dnech stejného typu: pracovní den nebo víkend, vybráno automaticky.
   chybných symbolů bez více rámců) nebo „odlišuje se jen <deska>“.
 - **Mapa hustoty** týdne po hodinách, **tabulka desek** a **hodiny, kdy jsou
   slyšet vzdálené měřiče** (rámce -90 dBm a slabší).
+- **Přepínač pásem:** všechna pásma dohromady, nebo zvlášť T1, C1 či S1.
+  Pohled na pásmo ukazuje jen desky, které ho teď poslouchají; tabulka desek
+  ukazuje i režim poslechu každé desky. Pásma se počítají zvlášť od verze
+  1.6.21, takže pohled na pásmo nejdřív sbírá vlastní typické hodnoty.
 
 Typické hodnoty potřebují tři dřívější dny stejného typu. Podíl chybných symbolů a verdikty kolize/rušení
 vyžadují `diagnostic_mode: normal` na ESP; ukázkové konfigurace ho mají zapnutý.

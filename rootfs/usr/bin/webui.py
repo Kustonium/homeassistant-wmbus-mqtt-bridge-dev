@@ -1058,23 +1058,56 @@ def _re_board_now(rows: list, now: int) -> tuple:
     return f_now, meters
 
 
-def radio_env_payload(now: int | None = None) -> dict:
+# The bands a board hears in each listen mode it announces (diag/settings).
+RE_LISTENS = {"t1": ("T1",), "c1": ("C1",), "both": ("T1", "C1"), "s1": ("S1",)}
+
+
+def _re_listen_mode(settings: dict, name: str) -> str:
+    lm = (settings.get(name) or {}).get("listen_mode") if isinstance(settings, dict) else None
+    v = str(lm.get("value") or "").lower() if isinstance(lm, dict) else ""
+    return v if v in RE_LISTENS else ""
+
+
+def _re_band_boards(all_boards: dict, band: str) -> dict:
+    """The rows of one view: "all" = the plain board keys, a band = the
+    "<board>|<band>" keys under the board's name."""
+    if band == "all":
+        return {k: v for k, v in all_boards.items() if _re.BAND_SEP not in k}
+    suffix = _re.BAND_SEP + band
+    return {k[:-len(suffix)]: v for k, v in all_boards.items() if k.endswith(suffix)}
+
+
+def radio_env_payload(now: int | None = None, band: str = "all") -> dict:
     now = int(now if now is not None else time.time())
-    boards = _re.load(str(RADIO_ENV_FILE), str(RADIO_ENV_NOW_FILE))
+    band = band if band in _re.BANDS else "all"
+    all_boards = _re.load(str(RADIO_ENV_FILE), str(RADIO_ENV_NOW_FILE))
+    boards = _re_band_boards(all_boards, band)
+    settings = _esp_settings()
+    modes = {name: _re_listen_mode(settings, name) for name in _re_band_boards(all_boards, "all")}
+    # A band view also names the boards that listen to the band but have
+    # not heard a frame in it yet, and drops the ones that left the band.
+    if band != "all":
+        for name, mode in modes.items():
+            if mode and band in RE_LISTENS[mode]:
+                boards.setdefault(name, [])
     if not any(boards.values()):
-        return {"ok": True, "empty": True}
+        return {"ok": True, "empty": True, "band": band}
     cur_hour = now - now % 3600
     elapsed = max(1, now - cur_hour)
     lt_now = time.localtime(now)
     hod, dtype = lt_now.tm_hour, _re_day_type(now)
-    first = min(r[0] for rows in boards.values() for r in rows)
+    first = min((r[0] for rows in boards.values() for r in rows), default=now)
     configs = _esp_diag_config()
     out = []
     for name, rows in sorted(boards.items()):
         by = {r[0]: r for r in rows}
         cur, prev = by.get(cur_hour), by.get(cur_hour - 3600)
         last = max((r[0] for r in rows), default=0)
-        if now - last > RE_GONE_S:
+        mode = modes.get(name, "")
+        listens = None if not mode or band == "all" else band in RE_LISTENS[mode]
+        if band != "all" and listens is False:
+            continue  # moved to another band: its old rows are history, not "silent"
+        if now - last > RE_GONE_S and not (band != "all" and listens):
             continue
         # Frames over the last 60 minutes: this hour so far plus the rest
         # taken from the previous hour, when that one was counted in full.
@@ -1092,8 +1125,10 @@ def radio_env_payload(now: int | None = None) -> dict:
              # The board's own setting when it published one; otherwise only
              # whether 60 s summaries reached us in the last two hours.
              "diag_mode": _re_diag_mode((configs.get(name) or {}).get("lines")),
-             "summaries": sym_tot > 0}
-        if now - last > RE_SILENT_S:
+             "summaries": sym_tot > 0, "listen_mode": mode}
+        if band != "all" and not rows:
+            b["state"] = "learning"
+        elif now - last > RE_SILENT_S:
             b["state"] = "silent"
         elif len(typ) < RE_MIN_SAMPLES or f_now is None:
             b["state"] = "learning"
@@ -1183,7 +1218,7 @@ def radio_env_payload(now: int | None = None) -> dict:
     best = [h for h, v in enumerate(far) if v is not None and peak > 0 and v >= 0.7 * peak] \
         if covered >= RE_FAR_MIN_HOURS else []
 
-    return {"ok": True, "empty": False, "now": now, "hour": hod, "day_type": dtype,
+    return {"ok": True, "empty": False, "band": band, "now": now, "hour": hod, "day_type": dtype,
             "days": round((now - first) / 86400, 1), "verdict": verdict, "odd_board": odd_board,
             "boards": out, "head": head["name"] if head else "",
             "head_frames_h": head["frames_h"] if head else None,
@@ -4846,10 +4881,14 @@ def _esp_payload() -> dict:
         re_boards = _re.load(str(RADIO_ENV_FILE), str(RADIO_ENV_NOW_FILE))
     except Exception:
         re_boards = {}
+    re_settings = _esp_settings()
     for d in devices_list:
         f_h, m = _re_board_now(re_boards.get(d["name"]) or [], now_epoch)
         d["frames_h"] = None if f_h is None else round(f_h)
         d["meters_heard"] = m
+        # The board's listen mode as it announces it (t1/c1/both/s1), for
+        # the Panel's board node; "" with firmware that announces nothing.
+        d["listen_mode"] = _re_listen_mode(re_settings, d["name"])
 
     # Aggregate radio-health verdict (#24: the aggregate must never hide a dead
     # ESP). Computed only over devices that actually published /health; a stopped
@@ -5576,7 +5615,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(200 if payload.get("ok") else 404, payload)
             return
         if path.endswith('/api/radio-env'):
-            self._send_json(200, radio_env_payload())
+            band = (params.get('band') or ['all'])[0].strip().upper()
+            self._send_json(200, radio_env_payload(band=band if band in _re.BANDS else "all"))
             return
         if path.endswith('/api/drivers'):
             if not custom_drivers_enabled():
