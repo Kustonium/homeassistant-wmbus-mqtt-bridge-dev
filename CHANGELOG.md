@@ -1,3 +1,11 @@
+## 1.6.21-dev.505
+
+### Added
+- show each board's band on the Panel and split the radio environment tab by band (aafa101)
+
+### Other (review)
+- board tiles show every setting a board announces (CC1101 RX filter, carrier sense), not only listen_mode (b75a3ab)
+
 ## 1.6.21-dev.504
 
 ### Other (review)
