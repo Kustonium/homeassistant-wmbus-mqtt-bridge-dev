@@ -509,6 +509,12 @@ the board reports. S1 is greyed out on CC1101 and marked as weaker on SX1262.
 settings (no `<board>/diag/settings`) shows a greyed tile with that reason;
 rebuild it with the current component. Below the tiles, the diagnostics as before.
 
+**YAML options.** Each tile also folds out the board's public YAML options:
+the current value, where it comes from (default, YAML, preset) and one sentence
+on what it does, with the values it takes. Each chip lists only its own options;
+pins, SPI and test options are left out. These are changed in the board's YAML
+and need a new build; the list only saves looking them up in the documentation.
+
 **Status lights.** Under the board tiles, four lights per board, each
 remembering the last 24 hours: **Alive** (the board's pulse every 60 s and
 restarts; one restart a day is normal), **Radio** (interrupts from the radio

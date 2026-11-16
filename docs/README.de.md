@@ -514,6 +514,13 @@ ihn an die Platine, die ihn im Flash speichert und neu startet (etwa 10 s).
 Eine Platine ohne `<platine>/diag/settings` zeigt eine ausgegraute Kachel mit
 dem Grund. Darunter die Diagnose wie bisher.
 
+**YAML-Optionen.** Jede Kachel klappt außerdem die öffentlichen YAML-Optionen
+der Platine aus: aktueller Wert, woher er kommt (Standard, YAML, Voreinstellung)
+und ein Satz, was sie bewirkt, mit den möglichen Werten. Jeder Chip zeigt nur
+seine eigenen Optionen; Pins, SPI und Testoptionen fehlen bewusst. Geändert
+werden sie im YAML der Platine und erfordern einen neuen Build; die Liste spart
+nur das Nachschlagen in der Dokumentation.
+
 **Kontrollleuchten.** Unter den Platinenkacheln vier Leuchten je Platine, jede
 mit dem Gedächtnis der letzten 24 Stunden: **Lebt** (Puls der Platine alle 60 s
 und Neustarts; ein Neustart pro Tag ist normal), **Funk** (Interrupts vom

@@ -508,6 +508,13 @@ Płytka, której firmware nie ogłasza ustawień (brak `<płytka>/diag/settings`
 ma wyszarzony kafelek z wyjaśnieniem; trzeba ją przebudować z aktualnym
 komponentem. Pod kafelkami diagnostyka jak dotąd.
 
+**Opcje YAML.** Każdy kafelek ma też rozwijaną listę publicznych opcji YAML
+płytki: aktualna wartość, skąd pochodzi (domyślna, z YAML, z presetu) i jedno
+zdanie, co daje, razem z dopuszczalnymi wartościami. Każdy układ pokazuje tylko
+swoje opcje; piny, SPI i opcje testowe są pominięte. Zmienia się je w YAML
+płytki i wymaga to ponownego zbudowania; lista oszczędza tylko szukania w
+dokumentacji.
+
 **Kontrolki.** Pod kafelkami cztery kontrolki każdej płytki, każda z pamięcią
 ostatniej doby: **Żyje** (puls płytki co 60 s i restarty; jeden restart na dobę
 to norma), **Radio** (przerwania z układu radiowego; długi ich brak przy żyjącej
