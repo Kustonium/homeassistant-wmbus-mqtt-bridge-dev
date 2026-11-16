@@ -3498,7 +3498,7 @@
       if (!el || el.tagName !== "DETAILS") return;
       const key = el.getAttribute("data-cfg-key");
       if (!key) return;
-      try { localStorage.setItem(key, el.open ? "1" : "0"); } catch (_) {}
+      try { localStorage.setItem(key, el.open ? "1" : (el.getAttribute("data-cfg-closed") || "0")); } catch (_) {}
     }, true);
   }
   function diagConfigSection(cfg, name) {
@@ -3674,12 +3674,20 @@
         <td>${diagStatusPill(d.status)}</td>
       </tr>`).join("");
 
+    // Folded by default: the status lights above answer "is it fine" at a
+    // glance. It opens by itself when a board needs attention, unless it was
+    // closed while those very boards were the problem.
+    const problems = devices.filter((d) => d.status === "warn" || d.status === "alarm").map((d) => d.name).sort();
+    const sig = "0|" + problems.join(",");
+    let stored = null;
+    try { stored = localStorage.getItem("esp:diag-open"); } catch (_) {}
+    const open = stored === "1" || (problems.length > 0 && stored !== sig);
     return `${boardTiles(devices)}${lightsSection(devices)}
-      <section class="section">
-        <div class="section-head">
+      <details class="section diag-fold" data-cfg-key="esp:diag-open" data-cfg-closed="${escapeHtml(sig)}"${open ? " open" : ""}>
+        <summary class="section-head">
           <h2>${escapeHtml(t("diag_section", "Diagnostics"))}</h2>
           <span>${summary}</span>
-        </div>
+        </summary>
         <table>
           <thead>
             <tr>
@@ -3697,11 +3705,9 @@
         <div style="font-size:11px;color:#7a8a96;margin-top:8px;">
           ${escapeHtml(t("diag_gap_caveat", "A gap in the sequence means an event was lost between the ESP and this add-on. It does not identify the radio, MQTT, the network or the subscriber as the cause."))}
         </div>
-      </section>
-      <section class="section">
-        <div class="section-head"><h2>${escapeHtml(t("diag_per_board", "Per board"))}</h2></div>
+        <div class="section-head" style="margin-top:18px;"><h2>${escapeHtml(t("diag_per_board", "Per board"))}</h2></div>
         ${devices.map(diagDeviceCard).join("")}
-      </section>
+      </details>
     `;
   }
 
@@ -4825,7 +4831,8 @@
     const v = lightValue(k, l);
     const tip = st === "none" ? t("light_none_tip", "No data: the board sends no diagnostic summary (diagnostic_mode off).")
       : t(`light_${k}_tip`, "");
-    return [`${lightLabel(k)}: ${t(`lights_legend_${st}`, st)}`, v, tip].filter(Boolean).join(" · ");
+    const learning = l && l.learning ? t("light_learning", "learning this board's normal (about a day)") : "";
+    return [`${lightLabel(k)}: ${t(`lights_legend_${st}`, st)}`, learning, v, tip].filter(Boolean).join(" · ");
   }
 
   // Four small dots for the Panel's board node, right-aligned to x.

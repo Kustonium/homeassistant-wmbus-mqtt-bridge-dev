@@ -130,9 +130,11 @@ class Verdict(unittest.TestCase):
         self.assertEqual((r["state"], r["drop_typ"]), ("ok", 20.0))
         worse = self.day(total=30, dropped=15)  # 50 %
         self.assertEqual(ev(earlier + worse, {"irq": T, "summary": T}, T)["reception"]["state"], "warn")
-        # Without earlier days the fixed floor applies.
-        self.assertEqual(ev(self.day(total=30, dropped=6), {"irq": T, "summary": T}, T)["reception"]["state"], "warn")
-        self.assertEqual(ev(self.day(total=30, dropped=1), {"irq": T, "summary": T}, T)["reception"]["state"], "ok")
+        # Without earlier days the board is learning: never yellow, even at
+        # 50 % (a board in `both` normally rejects 10-20 %).
+        r = ev(self.day(total=30, dropped=15), {"irq": T, "summary": T}, T)["reception"]
+        self.assertEqual((r["state"], r["learning"]), ("ok", True))
+        self.assertFalse(ev(earlier + today, {"irq": T, "summary": T}, T)["reception"]["learning"])
 
 
 class Payload(unittest.TestCase):

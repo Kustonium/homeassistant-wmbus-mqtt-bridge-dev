@@ -73,7 +73,10 @@ SUMMARY_STALE_S = 300
 # radio: interrupts that found no data, worth a look from this share on.
 NO_DATA_WARN_PCT = 5.0
 NO_DATA_WARN_MIN = 10
-# reception: compared with the board's own hours before the last day.
+# reception: compared with the board's own hours before the last day. Until
+# the board has such hours it is "learning" and never yellow: a board in
+# `both` normally rejects 10-20 % (weak C1, noise), so any fixed threshold
+# would light up healthy boards for their first days.
 DROP_WARN_MIN_PCT = 10.0
 SYM_WARN_MIN_PCT = 5.0
 TYP_FACTOR = 2.0
@@ -326,8 +329,10 @@ def evaluate(rows: List[List[int]], last: Dict[str, int], now: int, *,
     drop_typ = _typical(before, 5, 4, TYP_MIN_FRAMES)
     sym_typ = _typical(before, 9, 8, MIN_SYMBOLS)
     st = "ok"
-    drop_bad = total >= MIN_FRAMES and drop_pct >= max(DROP_WARN_MIN_PCT, TYP_FACTOR * (drop_typ or 0))
-    sym_bad = sym_total >= MIN_SYMBOLS and sym_pct >= max(SYM_WARN_MIN_PCT, TYP_FACTOR * (sym_typ or 0))
+    drop_bad = (drop_typ is not None and total >= MIN_FRAMES
+                and drop_pct >= max(DROP_WARN_MIN_PCT, TYP_FACTOR * drop_typ))
+    sym_bad = (sym_typ is not None and sym_total >= MIN_SYMBOLS
+               and sym_pct >= max(SYM_WARN_MIN_PCT, TYP_FACTOR * sym_typ))
     if total < MIN_FRAMES and sym_total < MIN_SYMBOLS:
         st = "none"
     elif drop_bad or sym_bad:
@@ -336,5 +341,5 @@ def evaluate(rows: List[List[int]], last: Dict[str, int], now: int, *,
     # worth showing next to the light.
     out["reception"] = {"state": st, "drop_pct": drop_pct, "drop_typ": drop_typ, "drop_bad": drop_bad,
                         "sym_pct": sym_pct if sym_total >= MIN_SYMBOLS else None, "sym_typ": sym_typ,
-                        "sym_bad": sym_bad}
+                        "sym_bad": sym_bad, "learning": drop_typ is None and sym_typ is None}
     return out
