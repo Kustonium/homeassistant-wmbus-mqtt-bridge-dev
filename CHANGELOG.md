@@ -1,3 +1,9 @@
+## 1.6.21-dev.509
+
+### Added
+- board tiles switch the new settings, each with what it does (183e6f6)
+- YAML options with a description on each board tile (fb9ad90)
+
 ## 1.6.21-dev.508
 
 ### Added
