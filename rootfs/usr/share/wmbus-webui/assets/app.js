@@ -3606,9 +3606,11 @@
     const source = lm.source === "stored"
       ? `${escapeHtml(t("bs_source_stored", "stored on the board"))} · <a href="#" data-action="board-set" data-board="${escapeHtml(name)}" data-key="listen_mode" data-value="yaml">${escapeHtml(t("bs_reset", "back to YAML ({value})", {value: label(String(lm.yaml || "both"))}))}</a>`
       : escapeHtml(t("bs_source_yaml", "from YAML"));
-    // Further settings the board announces (e.g. CC1101 RX filter and
-    // carrier sense): one row each, same buttons and "back to YAML".
-    const optLabel = (spec, o) => o === "on" ? t("bs_on", "on") : o === "off" ? t("bs_off", "off")
+    // Further settings the board announces (diagnostic_mode, rx_gain, ...):
+    // one row each with what it does, same buttons and "back to YAML".
+    const optLabel = (spec, o) => o === "on" || o === "true" ? t("bs_on", "on")
+      : o === "off" && spec.options.includes("on") ? t("bs_off", "off")
+      : o === "false" ? t("bs_off", "off")
       : `${o}${spec.unit ? " " + spec.unit : ""}`;
     const extra = Object.keys(s).filter((k) => !["v", "radio", "listen_mode"].includes(k)
       && s[k] && typeof s[k] === "object" && Array.isArray(s[k].options)).map((k) => {
@@ -3623,14 +3625,16 @@
       const src = spec.source === "stored"
         ? `${escapeHtml(t("bs_source_stored", "stored on the board"))} · <a href="#" data-action="board-set" data-board="${escapeHtml(name)}" data-key="${escapeHtml(k)}" data-value="yaml">${escapeHtml(t("bs_reset", "back to YAML ({value})", {value: optLabel(spec, String(spec.yaml || ""))}))}</a>`
         : escapeHtml(t("bs_source_yaml", "from YAML"));
+      const desc = t(`bo_${k}`, "");
       return `<div class="hint" style="margin:10px 0 4px;">${escapeHtml(t(`bs_key_${k}`, k))}: <strong>${escapeHtml(optLabel(spec, cur))}</strong> (${src})</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">${btns}</div>`;
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">${btns}</div>
+        ${desc ? `<div class="bo-desc" style="font-size:11px;margin-top:4px;">${escapeHtml(desc)}</div>` : ""}`;
     }).join("");
     return `<div class="card board-tile" style="--c:${color}">
       ${head(pill)}
       <div class="hint" style="margin:6px 0;">${escapeHtml(String(s.radio || ""))} · ${escapeHtml(t("bs_listen_mode", "Listen mode"))}: <strong>${escapeHtml(label(value))}</strong> (${source})</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">${buttons}</div>
-      ${extra}${extra ? `<p class="hint" style="margin:6px 0 0;">${escapeHtml(t("bs_bench_hint", "Test settings: change one at a time and compare the same hours of the day."))}</p>` : ""}
+      ${extra}
       ${note ? `<p class="hint" style="margin:6px 0 0;">${escapeHtml(note)}</p>` : ""}
       ${hints.length ? `<p class="hint" style="margin:6px 0 0;">${escapeHtml(hints.join(" "))}</p>` : ""}
       ${boardYamlOptions(d)}
@@ -3666,10 +3670,11 @@
     if (!lines.length) return "";
     const found = {};
     lines.forEach((l) => { const p = diagConfigParse(l); if (p.key) found[p.key] = p; });
-    const rows = BOARD_YAML_OPTIONS.filter(([k]) => found[k]).map(([k, values]) => {
+    const switchable = d.settings && typeof d.settings === "object" ? d.settings : {};
+    const rows = BOARD_YAML_OPTIONS.filter(([k]) => found[k] && !(switchable[k] && Array.isArray(switchable[k].options))).map(([k, values]) => {
       const p = found[k];
       const src = /stored by the add-on/i.test(p.marker) ? t("bo_src_stored", "stored on the board")
-        : p.state === "default" ? t("bo_src_default", "default")
+        : p.state === "default" || /^not set$/i.test(p.value) ? t("bo_src_default", "default")
         : /^from /i.test(p.marker) ? t("bo_src_preset", "from diagnostic_mode")
         : t("bo_src_yaml", "from YAML");
       return `<div class="bo-row">
