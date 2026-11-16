@@ -146,7 +146,7 @@ Dostępny w **5 językach** (EN/PL/DE/CS/SK) — przełącznik w prawym górnym 
 
 | Zakładka | Po co |
 |---|---|
-| **PANEL** | Dashboard: przepływ na żywo od każdej płytki ESP (własny kolor, antena, grubość linii = ramki/min) przez MQTT i wmbusmeters do HA (kliknięcie węzła pokazuje szczegóły) oraz kafelek każdego licznika; najechanie na licznik podświetla płytki, które go słyszą. Każda płytka pokazuje też pasmo, którego słucha (T1, C1, T1+C1, S1). |
+| **PANEL** | Dashboard: przepływ na żywo od każdej płytki ESP (własny kolor, antena, grubość linii = ramki/min) przez MQTT i wmbusmeters do HA (kliknięcie węzła pokazuje szczegóły) oraz kafelek każdego licznika; najechanie na licznik podświetla płytki, które go słyszą. Każda płytka pokazuje też pasmo, którego słucha (T1, C1, T1+C1, S1). Cztery kropki przy nazwie płytki to jej kontrolki (zakładka Płytki). |
 | **LICZNIKI** | Twoje skonfigurowane liczniki: wartość, ostatni telegram, **ODBIÓR**. |
 | **ODBIERANE / SZUKAJ** | Wykryci kandydaci + skonfigurowane w eterze; tu dodajesz/usuwasz liczniki i filtrujesz pokazane wartości. |
 | **LOGI / LOGI ESP** | Zdarzenia runtime i diagnostyka odbiorników ESP. |
@@ -507,6 +507,19 @@ oznaczone jako słabsze przy SX1262. „Wróć do YAML” kasuje zapisaną warto
 Płytka, której firmware nie ogłasza ustawień (brak `<płytka>/diag/settings`),
 ma wyszarzony kafelek z wyjaśnieniem; trzeba ją przebudować z aktualnym
 komponentem. Pod kafelkami diagnostyka jak dotąd.
+
+**Kontrolki.** Pod kafelkami cztery kontrolki każdej płytki, każda z pamięcią
+ostatniej doby: **Żyje** (puls płytki co 60 s i restarty; jeden restart na dobę
+to norma), **Radio** (przerwania z układu radiowego; długi ich brak przy żyjącej
+płytce to głuche radio), **Nadąża** (przepełnienia FIFO i ucięte ramki, stracone,
+bo odbiornik nie nadążył) i **Odbiór** (odrzucone ramki i błędne symbole 3 z 6 na
+tle wcześniejszych dni tej płytki). Zielony to norma, żółty gorzej niż zwykle,
+czerwony zdarzenie w ciągu doby, szary brak danych (płytka nie wysyła
+podsumowań, `diagnostic_mode` wyłączony). Liczby widać tylko przy żółtej i
+czerwonej kontrolce, szczegóły po najechaniu. Na płytce słuchającej S1 godzina
+bez ramki to norma i nie zapala czerwonego. PANEL pokazuje te same kontrolki
+jako cztery kropki przy nazwie płytki. Trzymane per płytka i godzina przez 7 dni
+w `/data/board_lights_hours.json`; tylko wyświetlanie.
 
 #### Zakładka Diagnostyka
 

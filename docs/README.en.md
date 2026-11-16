@@ -144,7 +144,7 @@ Available in **5 languages** (EN/PL/DE/CS/SK) — switcher in the top-right corn
 
 | Tab | Purpose |
 |---|---|
-| **PANEL** | Dashboard: a live flow from every ESP board (own colour, antenna, line width = frames/min) through MQTT and wmbusmeters to HA (click a node for details), and a tile per meter; hovering a meter highlights the boards that hear it. Each board node also shows the band it listens to (T1, C1, T1+C1, S1). |
+| **PANEL** | Dashboard: a live flow from every ESP board (own colour, antenna, line width = frames/min) through MQTT and wmbusmeters to HA (click a node for details), and a tile per meter; hovering a meter highlights the boards that hear it. Each board node also shows the band it listens to (T1, C1, T1+C1, S1). The four dots next to a board's name are its status lights (Boards tab). |
 | **METERS** | Your configured meters: value, last telegram, **RECEPTION**. |
 | **RECEIVING / SEARCH** | Detected candidates + configured-on-air; add/remove meters and filter displayed values here. |
 | **LOGS / ESP LOGS** | Runtime events and ESP receiver diagnostics. |
@@ -508,6 +508,20 @@ the board reports. S1 is greyed out on CC1101 and marked as weaker on SX1262.
 "Back to YAML" drops the stored value. A board whose firmware does not announce
 settings (no `<board>/diag/settings`) shows a greyed tile with that reason;
 rebuild it with the current component. Below the tiles, the diagnostics as before.
+
+**Status lights.** Under the board tiles, four lights per board, each
+remembering the last 24 hours: **Alive** (the board's pulse every 60 s and
+restarts; one restart a day is normal), **Radio** (interrupts from the radio
+chip; none for a long time while the board is alive means a deaf radio),
+**Keeps up** (FIFO overruns and truncated frames, lost because the receiver did
+not keep up) and **Reception** (rejected frames and invalid 3-of-6 symbols,
+against the board's own earlier days). Green is normal, yellow worse than
+usual, red an event within the day, grey no data (the board sends no
+diagnostic summary, `diagnostic_mode` off). Numbers appear only next to a yellow
+or red light; hovering shows the details. On a board listening to S1 an hour
+without a frame is normal and never turns a light red. The Panel shows the same
+lights as four dots next to each board's name. Kept per board and hour for 7
+days in `/data/board_lights_hours.json`; display only.
 
 #### Diagnostics tab
 

@@ -144,7 +144,7 @@ Dostupné v **5 jazykoch** (EN/PL/DE/CS/SK) — prepínač vpravo hore.
 
 | Záložka | Na čo |
 |---|---|
-| **PANEL** | Dashboard: živý tok z každej dosky ESP (vlastná farba, anténa, hrúbka čiary = rámce/min) cez MQTT a wmbusmeters do HA (kliknutím na uzol podrobnosti) a dlaždica každého merača; prejdenie na merač zvýrazní dosky, ktoré ho počujú. Každá doska ukazuje aj pásmo, ktoré počúva (T1, C1, T1+C1, S1). |
+| **PANEL** | Dashboard: živý tok z každej dosky ESP (vlastná farba, anténa, hrúbka čiary = rámce/min) cez MQTT a wmbusmeters do HA (kliknutím na uzol podrobnosti) a dlaždica každého merača; prejdenie na merač zvýrazní dosky, ktoré ho počujú. Každá doska ukazuje aj pásmo, ktoré počúva (T1, C1, T1+C1, S1). Štyri bodky pri názve dosky sú jej kontrolky (záložka Dosky). |
 | **MERAČE** | Tvoje nakonfigurované merače: hodnota, posledný telegram, **PRÍJEM**. |
 | **PRÍJEM / HĽADANIE** | Detegovaní kandidáti + nakonfigurované „v éteri"; tu pridáš/odoberieš merače a filtruješ zobrazené hodnoty. |
 | **LOGY / ESP LOGY** | Runtime udalosti a diagnostika ESP prijímačov. |
@@ -483,6 +483,19 @@ Hore dlaždica každej dosky s nastaveniami, ktoré doska dovolí meniť z dopln
 zatiaľ režim príjmu (T1, C1, oba, S1). Kliknutie ho pošle doske, tá ho uloží do
 flash a reštartuje sa (asi 10 s). Doska bez `<doska>/diag/settings` má sivú
 dlaždicu s vysvetlením. Pod dlaždicami diagnostika ako doteraz.
+
+**Kontrolky.** Pod dlaždicami dosiek štyri kontrolky každej dosky, každá s
+pamäťou posledných 24 hodín: **Žije** (pulz dosky každých 60 s a reštarty; jeden
+reštart denne je normálny), **Rádio** (prerušenia z rádiového čipu; dlho žiadne
+pri bežiacej doske znamená hluché rádio), **Stíha** (pretečenia FIFO a odseknuté
+rámce, stratené, lebo prijímač nestíhal) a **Príjem** (odmietnuté rámce a chybné
+symboly 3 z 6 v porovnaní s predchádzajúcimi dňami dosky). Zelená je norma, žltá
+horšie než zvyčajne, červená udalosť počas dňa, sivá žiadne dáta (doska
+neposiela diagnostické súhrny, `diagnostic_mode` vypnutý). Čísla sú vidieť len
+pri žltej a červenej kontrolke, podrobnosti po nabehnutí myšou. Pri doske
+počúvajúcej S1 je hodina bez rámca normálna a kontrolku nezčervená. PANEL
+ukazuje tie isté kontrolky ako štyri bodky pri názve dosky. Uložené po doskách a
+hodinách na 7 dní v `/data/board_lights_hours.json`; len zobrazenie.
 
 #### Záložka Diagnostika
 

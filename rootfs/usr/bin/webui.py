@@ -995,6 +995,10 @@ def external_driver_matches(decode: bool = True) -> dict:
 # kind (working day / weekend). Display only; nothing here changes reception.
 # ---------------------------------------------------------------------------
 import radio_env as _re  # noqa: E402
+import board_lights as _bl  # noqa: E402
+
+BOARD_LIGHTS_FILE = Path(os.environ.get("BOARD_LIGHTS_FILE", str(BASE / "board_lights_hours.json")))
+BOARD_LIGHTS_NOW_FILE = Path(os.environ.get("BOARD_LIGHTS_NOW_FILE", str(RUNTIME / "status_board_lights_now.json")))
 
 RADIO_ENV_FILE = Path(os.environ.get("RADIO_ENV_FILE", str(BASE / "radio_env_hours.json")))
 RADIO_ENV_NOW_FILE = Path(os.environ.get("RADIO_ENV_NOW_FILE", str(RUNTIME / "status_radio_env_now.json")))
@@ -4556,6 +4560,30 @@ def board_setting_send(board: str, key: str, value: str) -> tuple[bool, str]:
     return True, "sent"
 
 
+def _board_lights_of(name: str, lights_data: dict, health: object, settings: object,
+                     reboot: dict, now: int) -> dict:
+    """The four status lights of one board (board_lights.evaluate)."""
+    pulse_age = None
+    mode = ""
+    if isinstance(health, dict):
+        ep = safe_int(health.get("_bridge_rx_epoch", 0))
+        if ep > 0:
+            pulse_age = max(0, now - ep)
+        mode = str(health.get("listen_mode") or "")
+    lm = (settings or {}).get("listen_mode") if isinstance(settings, dict) else None
+    if isinstance(lm, dict) and lm.get("value"):
+        mode = str(lm.get("value"))
+    # "s1" from the board's settings, "S1" from its pulse.
+    s1_only = mode.strip().lower().startswith("s1")
+    try:
+        return _bl.evaluate((lights_data.get("boards") or {}).get(name) or [],
+                            (lights_data.get("last") or {}).get(name) or {}, now,
+                            pulse_age_s=pulse_age, reboots_24h=safe_int(reboot.get("reboots_24h")),
+                            last_boot=safe_int(reboot.get("boot_started_at")), s1_only=s1_only)
+    except Exception:  # noqa: BLE001 - lights are display only, never break the page
+        return {}
+
+
 def _esp_diag_payload() -> dict:
     """Per-board diagnostics for the Boards tab (formerly Diagnostics)."""
     now = int(time.time())
@@ -4571,6 +4599,9 @@ def _esp_diag_payload() -> dict:
     clocks = _esp_diag_clock()
     configs = _esp_diag_config()
     board_settings = _esp_settings()
+    lights_data = _bl.load(str(BOARD_LIGHTS_FILE), str(BOARD_LIGHTS_NOW_FILE))
+    health_raw = read_json(STATUS_ESP_HEALTH_JSON)
+    health_raw = health_raw if isinstance(health_raw, dict) else {}
 
     frames: dict[str, int] = {}
     meters: dict[str, int] = {}
@@ -4641,6 +4672,8 @@ def _esp_diag_payload() -> dict:
             "settings": board_settings.get(name),
             "clock": clocks.get(name) or {},
             "reasons": reasons,
+            "lights": _board_lights_of(name, lights_data, health_raw.get(name), board_settings.get(name),
+                                       reboot, now),
         })
 
     return {

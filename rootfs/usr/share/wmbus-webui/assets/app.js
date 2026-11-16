@@ -2211,10 +2211,14 @@
     const iy = (i) => itop + i * (IH + IG) + IH / 2;
     let boards = "", lines = "";
     devs.forEach((d, i) => {
+      const lights = boardLightsOf(d.name);
       const info = flowBoardInfo(d, o.stale);
+      const quiet = flowS1Quiet(d, info, lights, o.stale);
+      if (quiet) info.sub = t("flow_s1_quiet", "S1 · last frame {age} ago", {age: fmtInterval(Number(d.telegram_age_s) || 0)});
+      const hasLights = Object.keys(lights).length > 0;
       const y = top + i * (bh + gap), my = y + bh / 2;
       const own = colors.get(d.name) || FLOW_STATE.unknown;
-      const c = info.live ? own : info.warn ? FLOW_STATE.warn : FLOW_STATE.unknown;
+      const c = info.live || quiet ? own : info.warn ? FLOW_STATE.warn : FLOW_STATE.unknown;
       const hl = flowFocused("board", d.name) ? " hl" : "";
       const ey = cy + (n > 1 ? (i / (n - 1) - 0.5) * 40 : 0);
       const path = `M${BX + BW} ${my} C${BX + BW + 40} ${my} ${MX - 40} ${ey} ${MX} ${ey}`;
@@ -2222,18 +2226,19 @@
       lines += info.live
         ? `<path class="flow-line flow-dots${hl}" data-board="${name}" d="${path}" stroke="${c}" stroke-width="${(1.5 + 4.5 * info.rate / maxRate).toFixed(1)}" style="--d:${(2.6 - 1.8 * info.rate / maxRate).toFixed(2)}s"/>`
         : `<path class="flow-line${hl}" data-board="${name}" d="${path}" stroke="${c}" stroke-width="1.2" stroke-dasharray="5 5"/>`;
-      const dead = !info.live && !info.warn;
+      const dead = !info.live && !info.warn && !quiet;
       boards += `<g class="flow-ant${info.live ? " on" : ""}" transform="translate(22 ${my})" stroke="${c}" fill="none" stroke-width="1.6" stroke-linecap="round">
           <line x1="0" y1="-2" x2="0" y2="${compact ? 8 : 12}"/><path class="w1" d="M-5 -5 A7 7 0 0 1 5 -5"/>${compact ? "" : `<path class="w2" d="M-9 -9 A12.7 12.7 0 0 1 9 -9"/>`}
           ${dead ? `<line x1="-9" y1="-11" x2="9" y2="10" stroke="${FLOW_STATE.bad}"/>` : ""}</g>
         <g class="flow-board${hl}" data-board="${name}" data-action="open-workspace" data-ws="esp">
           <title>${name}${listenModeBands(d.listen_mode) ? ` · ${escapeHtml(listenModeBands(d.listen_mode))}` : ""} · ${escapeHtml(info.sub)}</title>
-          <rect x="${BX}" y="${y}" width="${BW}" height="${bh}" rx="8" fill="${c}" fill-opacity="0.14" stroke="${c}"${info.live ? "" : ` stroke-dasharray="4 3"`}/>
+          <rect x="${BX}" y="${y}" width="${BW}" height="${bh}" rx="8" fill="${c}" fill-opacity="0.14" stroke="${c}"${info.live || quiet ? "" : ` stroke-dasharray="4 3"`}/>
           ${compact
-            ? `<text class="flow-t" x="${BX + 12}" y="${my}" dominant-baseline="central">${escapeHtml(flowClip(d.name, 14))}<tspan class="flow-s" fill="${c}"> ${info.live ? escapeHtml(info.rateTxt ? info.rateTxt + "/min" : "") : "—"}</tspan></text>`
-            : `<text class="flow-t" x="${BX + 12}" y="${y + 17}" dominant-baseline="central">${escapeHtml(flowClip(d.name, listenModeBands(d.listen_mode) ? 13 : 20))}${listenModeBands(d.listen_mode)
+            ? `<text class="flow-t" x="${BX + 12}" y="${my}" dominant-baseline="central">${escapeHtml(flowClip(d.name, hasLights ? 10 : 14))}<tspan class="flow-s" fill="${c}"> ${info.live ? escapeHtml(info.rateTxt ? info.rateTxt + "/min" : "") : "—"}</tspan></text>`
+            : `<text class="flow-t" x="${BX + 12}" y="${y + 17}" dominant-baseline="central">${escapeHtml(flowClip(d.name, listenModeBands(d.listen_mode) ? (hasLights ? 11 : 13) : (hasLights ? 15 : 20)))}${listenModeBands(d.listen_mode)
                  ? `<tspan class="flow-s2" dx="6">${escapeHtml(listenModeBands(d.listen_mode))}</tspan>` : ""}</text>
                <text class="flow-s" x="${BX + 12}" y="${y + 34}" dominant-baseline="central" fill="${c}">${escapeHtml(flowClip(info.sub, 25))}</text>`}
+          ${lightDotsSvg(lights, BX + BW - 10, compact ? my : y + 17)}
         </g>`;
     });
     const icon = {
@@ -2313,11 +2318,14 @@
         ${lines}${mid}${boards}${mqttBox}
       </svg>`;
     const narrowBoards = devs.map((d) => {
+      const lights = boardLightsOf(d.name);
       const info = flowBoardInfo(d, o.stale);
+      const quiet = flowS1Quiet(d, info, lights, o.stale);
+      if (quiet) info.sub = t("flow_s1_quiet", "S1 · last frame {age} ago", {age: fmtInterval(Number(d.telegram_age_s) || 0)});
       const own = colors.get(d.name) || FLOW_STATE.unknown;
-      const c = info.live ? own : info.warn ? FLOW_STATE.warn : FLOW_STATE.unknown;
-      return `<button type="button" class="flow-nb${info.live ? "" : " off"}${flowFocused("board", d.name) ? " hl" : ""}" data-board="${escapeHtml(d.name)}" data-action="open-workspace" data-ws="esp" style="--c:${c}">
-          <span class="flow-nb-ant${info.live ? " on" : ""}">📡</span><span class="flow-nb-name">${escapeHtml(d.name)}</span><span class="flow-nb-sub">${escapeHtml(info.sub)}</span></button>`;
+      const c = info.live || quiet ? own : info.warn ? FLOW_STATE.warn : FLOW_STATE.unknown;
+      return `<button type="button" class="flow-nb${info.live || quiet ? "" : " off"}${flowFocused("board", d.name) ? " hl" : ""}" data-board="${escapeHtml(d.name)}" data-action="open-workspace" data-ws="esp" style="--c:${c}">
+          <span class="flow-nb-ant${info.live ? " on" : ""}">📡</span><span class="flow-nb-name">${escapeHtml(d.name)}${lightDotsHtml(lights)}</span><span class="flow-nb-sub">${escapeHtml(info.sub)}</span></button>`;
     }).join("");
     const nn = (c, title, l1, l2, attrs) => `<button type="button" class="flow-nn" ${attrs} style="--c:${c}"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(l1)}</span>${l2 ? `<span class="flow-nn-sub">${escapeHtml(l2)}</span>` : ""}</button>`;
     const arrow = (txt) => `<div class="flow-na">↓${txt ? " " + escapeHtml(txt) : ""}</div>`;
@@ -3666,7 +3674,7 @@
         <td>${diagStatusPill(d.status)}</td>
       </tr>`).join("");
 
-    return `${boardTiles(devices)}
+    return `${boardTiles(devices)}${lightsSection(devices)}
       <section class="section">
         <div class="section-head">
           <h2>${escapeHtml(t("diag_section", "Diagnostics"))}</h2>
@@ -4767,6 +4775,107 @@
   // Listen mode as the boards announce it (t1/c1/both/s1), shown as bands.
   function listenModeBands(mode) {
     return {t1: "T1", c1: "C1", both: "T1+C1", s1: "S1"}[String(mode || "").toLowerCase()] || "";
+  }
+
+  // Status lights (board_lights.py): one per question a user can act on,
+  // each remembering the last 24 hours. Numbers are shown only next to a
+  // yellow or red light; a green one needs no reading.
+  const LIGHT_KEYS = ["alive", "radio", "keeps_up", "reception"];
+  const LIGHT_COLOR = {ok: "#2fd3a6", warn: "#f0b03c", bad: "#ff6b6b", none: "#55646f"};
+
+  function boardLightsOf(name) {
+    const d = asArray(((state.data || {}).esp_diag || {}).devices).find((x) => x && x.name === name);
+    return (d && d.lights) || {};
+  }
+
+  function lightLabel(k) {
+    return t(`light_${k}`, {alive: "Alive", radio: "Radio", keeps_up: "Keeps up", reception: "Reception"}[k] || k);
+  }
+
+  function lightClock(epoch) {
+    const n = Number(epoch) || 0;
+    return n > 0 ? new Date(n * 1000).toLocaleTimeString(undefined, {hour: "2-digit", minute: "2-digit"}) : "—";
+  }
+
+  function lightValue(k, l) {
+    if (!l || (l.state !== "warn" && l.state !== "bad")) return "";
+    if (k === "alive") {
+      return l.stale ? t("lv_pulse_stale", "no pulse for {age}", {age: fmtInterval(Number(l.pulse_age_s) || 0)})
+        : t("lv_reboots", "restarts: {n}, last {time}", {n: l.reboots, time: lightClock(l.last_boot)});
+    }
+    if (k === "radio") {
+      if (l.deaf) {
+        return l.silent_s === null || l.silent_s === undefined ? t("lv_radio_never", "no interrupts yet")
+          : t("lv_radio_deaf", "no interrupts for {age}", {age: fmtInterval(Number(l.silent_s) || 0)});
+      }
+      return t("lv_radio_no_data", "interrupts without data: {n} ({pct}%)", {n: l.no_data, pct: l.no_data_pct});
+    }
+    if (k === "keeps_up") {
+      return t("lv_keeps_up", "overruns: {o}, truncated: {tr}, last {time}", {o: l.overrun, tr: l.truncated, time: lightClock(l.last)});
+    }
+    const typ = (v) => (v === null || v === undefined) ? "" : ` (${t("lv_typ", "typical {typ}%", {typ: v})})`;
+    const parts = [];
+    if (l.drop_bad) parts.push(t("lv_drop", "rejected {pct}%", {pct: l.drop_pct}) + typ(l.drop_typ));
+    if (l.sym_bad) parts.push(t("lv_sym", "invalid symbols {pct}%", {pct: l.sym_pct}) + typ(l.sym_typ));
+    return parts.join("; ");
+  }
+
+  function lightTitle(k, l) {
+    const st = (l && l.state) || "none";
+    const v = lightValue(k, l);
+    const tip = st === "none" ? t("light_none_tip", "No data: the board sends no diagnostic summary (diagnostic_mode off).")
+      : t(`light_${k}_tip`, "");
+    return [`${lightLabel(k)}: ${t(`lights_legend_${st}`, st)}`, v, tip].filter(Boolean).join(" · ");
+  }
+
+  // Four small dots for the Panel's board node, right-aligned to x.
+  function lightDotsSvg(lights, x, y) {
+    if (!lights || !Object.keys(lights).length) return "";
+    return `<g class="flow-lights">${LIGHT_KEYS.map((k, i) => {
+      const l = lights[k] || {state: "none"};
+      return `<circle cx="${x - (LIGHT_KEYS.length - 1 - i) * 9}" cy="${y}" r="3.2" fill="${LIGHT_COLOR[l.state] || LIGHT_COLOR.none}"><title>${escapeHtml(lightTitle(k, l))}</title></circle>`;
+    }).join("")}</g>`;
+  }
+
+  function lightDotsHtml(lights) {
+    if (!lights || !Object.keys(lights).length) return "";
+    return `<span class="flow-nb-lights">${LIGHT_KEYS.map((k) => {
+      const l = lights[k] || {state: "none"};
+      return `<i style="background:${LIGHT_COLOR[l.state] || LIGHT_COLOR.none}" title="${escapeHtml(lightTitle(k, l))}"></i>`;
+    }).join("")}</span>`;
+  }
+
+  // An S1 board whose pulse is fine is quiet, not dead: S1 meters send
+  // rarely and on schedules that differ between installations.
+  function flowS1Quiet(d, info, lights, stale) {
+    return !stale && !info.live && String(d.listen_mode || "").toLowerCase() === "s1"
+      && (lights.alive || {}).state === "ok";
+  }
+
+  function lightsSection(devices) {
+    const rows = devices.filter((d) => d && d.lights && Object.keys(d.lights).length)
+      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+    if (!rows.length) return "";
+    const colors = flowColors();
+    const card = (d) => {
+      const band = listenModeBands(((d.settings || {}).listen_mode || {}).value);
+      return `<div class="card lights-card" style="--c:${colors.get(d.name) || FLOW_STATE.unknown}">
+        <div class="lights-head"><span class="lights-name">${escapeHtml(d.name)}</span>${band ? `<span class="hint">${escapeHtml(band)}</span>` : ""}</div>
+        ${LIGHT_KEYS.map((k) => {
+          const l = d.lights[k] || {state: "none"};
+          const v = lightValue(k, l);
+          return `<div class="lights-row" title="${escapeHtml(lightTitle(k, l))}"><span class="lights-dot" style="background:${LIGHT_COLOR[l.state] || LIGHT_COLOR.none}"></span><span>${escapeHtml(lightLabel(k))}</span>${v ? `<span class="lights-val">${escapeHtml(v)}</span>` : ""}</div>`;
+        }).join("")}
+      </div>`;
+    };
+    const legend = ["ok", "warn", "bad", "none"].map((s) =>
+      `<span><span class="lights-dot" style="background:${LIGHT_COLOR[s]}"></span>${escapeHtml(t(`lights_legend_${s}`, s))}</span>`).join("");
+    return `<section class="section">
+      <div class="section-head"><h2>${escapeHtml(t("lights_title", "Status lights"))}</h2>
+        <span class="hint">${escapeHtml(t("lights_hint", "Last 24 hours. Hover over a light for details."))}</span></div>
+      <div class="lights-grid">${rows.map(card).join("")}</div>
+      <div class="lights-legend hint">${legend}</div>
+    </section>`;
   }
 
   function radioEnvPage() {

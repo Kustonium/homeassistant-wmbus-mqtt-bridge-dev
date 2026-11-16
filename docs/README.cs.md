@@ -144,7 +144,7 @@ Dostupné v **5 jazycích** (EN/PL/DE/CS/SK) — přepínač vpravo nahoře.
 
 | Záložka | K čemu |
 |---|---|
-| **PANEL** | Dashboard: živý tok z každé desky ESP (vlastní barva, anténa, tloušťka čáry = rámce/min) přes MQTT a wmbusmeters do HA (kliknutím na uzel podrobnosti) a dlaždice každého měřiče; najetí na měřič zvýrazní desky, které ho slyší. Každá deska ukazuje i pásmo, které poslouchá (T1, C1, T1+C1, S1). |
+| **PANEL** | Dashboard: živý tok z každé desky ESP (vlastní barva, anténa, tloušťka čáry = rámce/min) přes MQTT a wmbusmeters do HA (kliknutím na uzel podrobnosti) a dlaždice každého měřiče; najetí na měřič zvýrazní desky, které ho slyší. Každá deska ukazuje i pásmo, které poslouchá (T1, C1, T1+C1, S1). Čtyři tečky u názvu desky jsou její kontrolky (záložka Desky). |
 | **MĚŘIČE** | Tvé nakonfigurované měřiče: hodnota, poslední telegram, **PŘÍJEM**. |
 | **PŘÍJEM / HLEDÁNÍ** | Detekovaní kandidáti + nakonfigurované „v éteru"; zde přidáš/odebereš měřiče a filtruješ zobrazené hodnoty. |
 | **LOGY / ESP LOGY** | Runtime události a diagnostika ESP přijímačů. |
@@ -481,6 +481,19 @@ Nahoře dlaždice každé desky s nastaveními, která deska dovolí měnit z do
 zatím režim příjmu (T1, C1, oba, S1). Kliknutí ho pošle desce, ta ho uloží do
 flash a restartuje se (asi 10 s). Deska bez `<deska>/diag/settings` má šedou
 dlaždici s vysvětlením. Pod dlaždicemi diagnostika jako dosud.
+
+**Kontrolky.** Pod dlaždicemi desek čtyři kontrolky každé desky, každá s pamětí
+posledních 24 hodin: **Žije** (puls desky každých 60 s a restarty; jeden restart
+denně je normální), **Rádio** (přerušení z rádiového čipu; dlouho žádné při
+běžící desce znamená hluché rádio), **Stíhá** (přetečení FIFO a useknuté rámce,
+ztracené, protože přijímač nestíhal) a **Příjem** (odmítnuté rámce a chybné
+symboly 3 z 6 ve srovnání s dřívějšími dny desky). Zelená je norma, žlutá hůř
+než obvykle, červená událost během dne, šedá žádná data (deska neposílá
+diagnostické souhrny, `diagnostic_mode` vypnutý). Čísla jsou vidět jen u žluté a
+červené kontrolky, podrobnosti po najetí myší. U desky poslouchající S1 je hodina
+bez rámce normální a kontrolku nezčervená. PANEL ukazuje tytéž kontrolky jako
+čtyři tečky u názvu desky. Uloženo po deskách a hodinách na 7 dní v
+`/data/board_lights_hours.json`; jen zobrazení.
 
 #### Záložka Diagnostika
 
