@@ -1,3 +1,9 @@
+## 1.6.21-dev.511
+
+### Fixed
+- board settings in the same order on every tile (9f3c1fb)
+- drop the read-only YAML options list from the board tiles (6c037a9)
+
 ## 1.6.21-dev.510
 
 ### Added
