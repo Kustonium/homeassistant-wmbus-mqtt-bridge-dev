@@ -1,3 +1,11 @@
+## 1.6.21-dev.508
+
+### Added
+- YAML options with a description on each board tile (fb9ad90)
+
+### Fixed
+- reception light learns first, diagnostics folded under the lights (0982c34)
+
 ## 1.6.21-dev.507
 
 ### Added
