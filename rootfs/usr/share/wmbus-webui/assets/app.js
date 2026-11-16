@@ -3637,61 +3637,7 @@
       ${extra}
       ${note ? `<p class="hint" style="margin:6px 0 0;">${escapeHtml(note)}</p>` : ""}
       ${hints.length ? `<p class="hint" style="margin:6px 0 0;">${escapeHtml(hints.join(" "))}</p>` : ""}
-      ${boardYamlOptions(d)}
     </div>`;
-  }
-
-  // The public YAML options a user may want to know about, with the values
-  // they take. A board lists only those its /diag/config report carries, so
-  // each chip shows its own. Pins, SPI, bench and developer options are left
-  // out on purpose: they are wiring or measuring tools, not tuning.
-  const BOARD_YAML_OPTIONS = [
-    ["frequency", "868.950 · 868.300"],
-    ["diagnostic_mode", "off · low · normal · debug · dev"],
-    ["log_language", "en · pl"],
-    ["highlight_meters", "[ID, ...]"],
-    ["forward_meters", "[ID, ...] · true"],
-    ["publish_rssi", "true · false"],
-    ["topic_name", ""],
-    ["sx1262_rx_bandwidth", "234khz · 312khz · 156khz"],
-    ["rx_gain", "boosted · power_saving"],
-    ["long_gfsk_packets", "true · false"],
-    ["has_tcxo", "true · false"],
-    ["tcxo_voltage", "1.8v · 3.0v · 3.3v"],
-    ["sx1262_tcxo_startup_ms", "1 … 20"],
-    ["dio2_rf_switch", "true · false"],
-    ["sx1276_busy_ether_mode", "normal · aggressive · adaptive"],
-    ["cc1101_rx_bandwidth", "232khz · 325khz · 270khz"],
-  ];
-
-  function boardYamlOptions(d) {
-    const name = String(d.name || "");
-    const lines = asArray((d.config || {}).lines);
-    if (!lines.length) return "";
-    const found = {};
-    lines.forEach((l) => { const p = diagConfigParse(l); if (p.key) found[p.key] = p; });
-    const switchable = d.settings && typeof d.settings === "object" ? d.settings : {};
-    const rows = BOARD_YAML_OPTIONS.filter(([k]) => found[k] && !(switchable[k] && Array.isArray(switchable[k].options))).map(([k, values]) => {
-      const p = found[k];
-      const src = /stored by the add-on/i.test(p.marker) ? t("bo_src_stored", "stored on the board")
-        : p.state === "default" || /^not set$/i.test(p.value) ? t("bo_src_default", "default")
-        : /^from /i.test(p.marker) ? t("bo_src_preset", "from diagnostic_mode")
-        : t("bo_src_yaml", "from YAML");
-      return `<div class="bo-row">
-          <div class="bo-head"><code>${escapeHtml(k)}</code>: <strong>${escapeHtml(p.value)}</strong> <span class="bo-src${p.state === "default" ? "" : " set"}">${escapeHtml(src)}</span></div>
-          <div class="bo-desc">${escapeHtml(t(`bo_${k}`, ""))}</div>
-          ${values ? `<div class="bo-vals">${escapeHtml(t("bo_values", "values"))}: <code>${escapeHtml(values)}</code></div>` : ""}
-        </div>`;
-    });
-    if (!rows.length) return "";
-    const key = "esp:opts-open:" + name;
-    let open = false;
-    try { open = localStorage.getItem(key) === "1"; } catch (_) {}
-    return `<details class="bo-fold" data-cfg-key="${escapeHtml(key)}"${open ? " open" : ""}>
-        <summary>${escapeHtml(t("bo_title", "YAML options ({n})", {n: rows.length}))}</summary>
-        <p class="hint" style="margin:6px 0;font-size:11px;">${escapeHtml(t("bo_hint", "To change one, edit its line under wmbus_radio: in the board's YAML and build the board again."))}</p>
-        ${rows.join("")}
-      </details>`;
   }
 
   function boardTiles(devices) {

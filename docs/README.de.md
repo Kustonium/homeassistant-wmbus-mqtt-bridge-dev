@@ -514,12 +514,11 @@ ihn an die Platine, die ihn im Flash speichert und neu startet (etwa 10 s).
 Eine Platine ohne `<platine>/diag/settings` zeigt eine ausgegraute Kachel mit
 dem Grund. Darunter die Diagnose wie bisher.
 
-**YAML-Optionen.** Jede Kachel klappt außerdem die öffentlichen YAML-Optionen
-der Platine aus: aktueller Wert, woher er kommt (Standard, YAML, Voreinstellung)
-und ein Satz, was sie bewirkt, mit den möglichen Werten. Jeder Chip zeigt nur
-seine eigenen Optionen; Pins, SPI und Testoptionen fehlen bewusst. Geändert
-werden sie im YAML der Platine und erfordern einen neuen Build; die Liste spart
-nur das Nachschlagen in der Dokumentation.
+**Weitere Einstellungen.** Mit aktueller Firmware schaltet die Kachel auch die
+Diagnose der Platine (`diagnostic_mode`), die Signalstärke je Zähler
+(`publish_rssi`) und je nach Chip die RX-Verstärkung und lange Frames (SX1262)
+oder die volle Funkumgebung (SX1276), jeweils mit einem Satz, was sie bewirkt.
+Das geht auch bei ausgeschalteter Diagnose.
 
 **Kontrollleuchten.** Unter den Platinenkacheln vier Leuchten je Platine, jede
 mit dem Gedächtnis der letzten 24 Stunden: **Lebt** (Puls der Platine alle 60 s

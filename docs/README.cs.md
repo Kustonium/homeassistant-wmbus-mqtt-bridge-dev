@@ -482,11 +482,10 @@ zatím režim příjmu (T1, C1, oba, S1). Kliknutí ho pošle desce, ta ho ulož
 flash a restartuje se (asi 10 s). Deska bez `<deska>/diag/settings` má šedou
 dlaždici s vysvětlením. Pod dlaždicemi diagnostika jako dosud.
 
-**Volby YAML.** Každá dlaždice má také rozbalovací seznam veřejných voleb YAML
-desky: aktuální hodnota, odkud pochází (výchozí, z YAML, z předvolby) a jedna
-věta, co dělá, spolu s možnými hodnotami. Každý čip ukazuje jen své volby; piny,
-SPI a testovací volby jsou vynechány. Mění se v YAML desky a vyžadují nové
-sestavení; seznam jen šetří hledání v dokumentaci.
+**Další nastavení.** S aktuálním firmwarem dlaždice přepíná také diagnostiku
+desky (`diagnostic_mode`), sílu signálu po měřičích (`publish_rssi`) a podle
+čipu zesílení RX a dlouhé rámce (SX1262) nebo přeplněný éter (SX1276); pod
+každým jedna věta, co dělá. Funguje to i při vypnuté diagnostice.
 
 **Kontrolky.** Pod dlaždicemi desek čtyři kontrolky každé desky, každá s pamětí
 posledních 24 hodin: **Žije** (puls desky každých 60 s a restarty; jeden restart

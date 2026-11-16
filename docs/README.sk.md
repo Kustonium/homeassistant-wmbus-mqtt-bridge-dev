@@ -484,11 +484,10 @@ zatiaľ režim príjmu (T1, C1, oba, S1). Kliknutie ho pošle doske, tá ho ulo�
 flash a reštartuje sa (asi 10 s). Doska bez `<doska>/diag/settings` má sivú
 dlaždicu s vysvetlením. Pod dlaždicami diagnostika ako doteraz.
 
-**Voľby YAML.** Každá dlaždica má aj rozbaľovací zoznam verejných volieb YAML
-dosky: aktuálna hodnota, odkiaľ pochádza (predvolená, z YAML, z predvoľby) a
-jedna veta, čo robí, spolu s možnými hodnotami. Každý čip ukazuje len svoje
-voľby; piny, SPI a testovacie voľby sú vynechané. Menia sa v YAML dosky a
-vyžadujú nové zostavenie; zoznam len šetrí hľadanie v dokumentácii.
+**Ďalšie nastavenia.** S aktuálnym firmvérom dlaždica prepína aj diagnostiku
+dosky (`diagnostic_mode`), silu signálu po meračoch (`publish_rssi`) a podľa
+čipu zosilnenie RX a dlhé rámce (SX1262) alebo preplnený éter (SX1276); pod
+každým jedna veta, čo robí. Funguje to aj pri vypnutej diagnostike.
 
 **Kontrolky.** Pod dlaždicami dosiek štyri kontrolky každej dosky, každá s
 pamäťou posledných 24 hodín: **Žije** (pulz dosky každých 60 s a reštarty; jeden

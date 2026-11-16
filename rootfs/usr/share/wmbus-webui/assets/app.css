@@ -2151,15 +2151,7 @@ th.sortable:hover {
 .lights-val { margin-left: auto; font-size: 11px; color: #8ea4b1; text-align: right; }
 .lights-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
 .lights-legend > span { display: inline-flex; align-items: center; gap: 5px; }
-.bo-fold { margin-top: 10px; border-top: 1px solid #22303a; padding-top: 8px; }
-.bo-fold > summary { cursor: pointer; font-size: 12px; color: #9eafba; }
-.bo-row { padding: 6px 0; border-bottom: 1px solid #1b262e; font-size: 12px; }
-.bo-row:last-child { border-bottom: none; }
-.bo-head code { color: #cbd9e1; }
-.bo-src { font-size: 11px; color: #7a8a96; }
-.bo-src.set { color: #f4b850; }
 .bo-desc { color: #9eafba; margin-top: 2px; }
-.bo-vals { color: #7a8a96; font-size: 11px; margin-top: 2px; }
 .diag-fold > summary { cursor: pointer; list-style: none; }
 .diag-fold > summary::-webkit-details-marker { display: none; }
 .diag-fold > summary h2::before { content: "▸ "; color: #8ea4b1; }

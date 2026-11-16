@@ -509,11 +509,11 @@ the board reports. S1 is greyed out on CC1101 and marked as weaker on SX1262.
 settings (no `<board>/diag/settings`) shows a greyed tile with that reason;
 rebuild it with the current component. Below the tiles, the diagnostics as before.
 
-**YAML options.** Each tile also folds out the board's public YAML options:
-the current value, where it comes from (default, YAML, preset) and one sentence
-on what it does, with the values it takes. Each chip lists only its own options;
-pins, SPI and test options are left out. These are changed in the board's YAML
-and need a new build; the list only saves looking them up in the documentation.
+**More settings.** With current firmware the tile also switches the board's
+diagnostics (`diagnostic_mode`), its signal strength per meter
+(`publish_rssi`) and, depending on the chip, the RX gain and long frames
+(SX1262) or busy air handling (SX1276), each with one sentence on what it
+does. This works with diagnostics off too.
 
 **Status lights.** Under the board tiles, four lights per board, each
 remembering the last 24 hours: **Alive** (the board's pulse every 60 s and
