@@ -1,3 +1,9 @@
+## 1.6.21-dev.506
+
+### Added
+- status lights per board with a 24 h memory (0d7eaa1)
+- show each board's band on the Panel and split the radio environment tab by band (aafa101)
+
 ## 1.6.21-dev.505
 
 ### Added
