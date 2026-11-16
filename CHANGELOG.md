@@ -1,3 +1,11 @@
+## 1.6.21-dev.507
+
+### Added
+- status lights per board with a 24 h memory (0d7eaa1)
+
+### Fixed
+- reception light learns first, diagnostics folded under the lights (0982c34)
+
 ## 1.6.21-dev.506
 
 ### Added
