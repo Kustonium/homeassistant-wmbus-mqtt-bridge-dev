@@ -3612,8 +3612,13 @@
       : o === "off" && spec.options.includes("on") ? t("bs_off", "off")
       : o === "false" ? t("bs_off", "off")
       : `${o}${spec.unit ? " " + spec.unit : ""}`;
+    // Same order on every board, whatever order the firmware sends: the
+    // settings all boards have first, then the chip's own.
+    const ORDER = ["diagnostic_mode", "publish_rssi", "rx_gain", "long_gfsk_packets", "sx1276_busy_ether_mode"];
+    const rank = (k) => (ORDER.indexOf(k) + 1) || ORDER.length + 1;
     const extra = Object.keys(s).filter((k) => !["v", "radio", "listen_mode"].includes(k)
-      && s[k] && typeof s[k] === "object" && Array.isArray(s[k].options)).map((k) => {
+      && s[k] && typeof s[k] === "object" && Array.isArray(s[k].options))
+      .sort((x, y) => rank(x) - rank(y) || x.localeCompare(y)).map((k) => {
       const spec = s[k];
       const cur = String(spec.value || "");
       const btns = spec.options.map((o) => {
