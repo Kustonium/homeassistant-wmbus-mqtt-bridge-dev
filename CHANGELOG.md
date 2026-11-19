@@ -1,3 +1,9 @@
+## 1.6.22-dev.513
+
+### Added
+- show chip, listen mode, bridge and link signal for a board behind an ESP-NOW bridge (a071363)
+- board behind an ESP-NOW bridge is not shown as older firmware (edf9a3d)
+
 ## 1.6.22-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
