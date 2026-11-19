@@ -143,9 +143,9 @@ grep -qi -- "${RAW}" <<<"${REPORT}" \
   && pass "raw frame resolved from the rolling buffer (the longest, not the latest)" \
   || fail "raw frame missing from the report"
 
-grep -q "suggested driver: hydrodigit" <<<"${REPORT}" \
-  && pass "driver taken from the meter's configuration" \
-  || fail "driver line: $(grep 'suggested driver' <<<"${REPORT}" || echo missing)"
+grep -q "configured driver: hydrodigit" <<<"${REPORT}" \
+  && pass "driver taken from the meter's configuration, labelled as configured" \
+  || fail "driver line: $(grep 'driver:' <<<"${REPORT}" || echo missing)"
 
 grep -q "type/medium: water" <<<"${REPORT}" \
   && pass "medium taken from the last decoded telegram" \
