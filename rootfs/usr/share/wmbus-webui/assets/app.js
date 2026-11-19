@@ -4621,7 +4621,7 @@
             <p style="font-size:11px;color:#f3c84b;margin:0 0 8px;">⚠️ ${escapeHtml(rm.anon
               ? t("export_report_privacy_anon", "The meter number and common serial/fabrication fields are masked. Review the report before sharing it; the AES key is never included.")
               : t("export_report_privacy", "The telegram contains your meter's serial number. The AES key is never included."))}</p>
-            ${rm.keyUsed ? `<p style="font-size:11px;color:#f3c84b;margin:0 0 8px;">🔓 ${escapeHtml(t("export_report_key_used", "The analysis was decrypted with your configured AES key — the report reveals meter readings, but never the key itself."))}</p>` : ""}
+            ${rm.keyUsed ? `<p style="font-size:11px;color:#f3c84b;margin:0 0 8px;">🔓 ${escapeHtml(t("export_report_key_used", "The analysis ran with your configured AES key — if the telegram is encrypted, the report shows meter readings; the key itself is never included."))}</p>` : ""}
             ${anonToggle}
             ${body}
           </div>
