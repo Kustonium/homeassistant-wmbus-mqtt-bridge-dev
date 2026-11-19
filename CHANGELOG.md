@@ -1,3 +1,13 @@
+## 1.6.22-dev.515
+
+### Added
+- a board behind an ESP-NOW bridge keeps the bridge line on its settings tile (00e770b)
+
+### Fixed
+- the report note no longer says the analysis was decrypted (614217f)
+- do not claim decryption, label the driver by its source (3a756af)
+- the ESP-NOW tile without settings now points to rebuilding node and bridge (a042f87)
+
 ## 1.6.22-dev.514
 
 ### Added
