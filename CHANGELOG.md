@@ -1,3 +1,13 @@
+## 1.6.22-dev.514
+
+### Added
+- a board behind an ESP-NOW bridge keeps the bridge line on its settings tile (00e770b)
+- show chip, listen mode, bridge and link signal for a board behind an ESP-NOW bridge (a071363)
+- board behind an ESP-NOW bridge is not shown as older firmware (edf9a3d)
+
+### Fixed
+- the ESP-NOW tile without settings now points to rebuilding node and bridge (a042f87)
+
 ## 1.6.22-dev.513
 
 ### Added
