@@ -3587,7 +3587,7 @@
       return `<div class="card board-tile board-tile-off" style="--c:${color}">
         ${head(`<span class="pill muted">${escapeHtml(t("bs_via_espnow", "behind ESP-NOW bridge"))}</span>`)}
         ${viaLine(true)}
-        <p class="hint" style="margin:8px 0 0;">${escapeHtml(t("bs_no_settings_espnow", "This board sends its frames through an ESP-NOW bridge and has no MQTT of its own, so the add-on cannot change its settings. Change them in the board's YAML."))}</p>
+        <p class="hint" style="margin:8px 0 0;">${escapeHtml(t("bs_no_settings_espnow", "This board is behind an ESP-NOW bridge and has not sent its settings through it yet (or runs an older repeater firmware). Rebuild the node and the bridge from the current example to change its settings here."))}</p>
       </div>`;
     }
     if (!s || typeof s !== "object" || !s.listen_mode) {
