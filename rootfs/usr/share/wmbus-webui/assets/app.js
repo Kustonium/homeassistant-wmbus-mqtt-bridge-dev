@@ -3568,6 +3568,14 @@
     const color = flowColors().get(name) || FLOW_STATE.unknown;
     const head = (pill) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
         <strong class="board-tile-name"><span class="board-tile-dot"></span>${escapeHtml(name)}</strong>${pill}</div>`;
+    if ((!s || typeof s !== "object" || !s.listen_mode) && d.via === "espnow") {
+      // Behind an ESP-NOW bridge (repeater mode): the board has no MQTT, so it can
+      // never announce settings. Saying "rebuild it" would send the user in circles.
+      return `<div class="card board-tile board-tile-off" style="--c:${color}">
+        ${head(`<span class="pill muted">${escapeHtml(t("bs_via_espnow", "behind ESP-NOW bridge"))}</span>`)}
+        <p class="hint" style="margin:8px 0 0;">${escapeHtml(t("bs_no_settings_espnow", "This board sends its frames through an ESP-NOW bridge and has no MQTT of its own, so the add-on cannot change its settings. Change them in the board's YAML."))}</p>
+      </div>`;
+    }
     if (!s || typeof s !== "object" || !s.listen_mode) {
       return `<div class="card board-tile board-tile-off" style="--c:${color}">
         ${head(`<span class="pill muted">${escapeHtml(t("bs_old_fw", "older firmware"))}</span>`)}

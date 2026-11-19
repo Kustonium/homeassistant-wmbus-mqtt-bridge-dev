@@ -4670,6 +4670,9 @@ def _esp_diag_payload() -> dict:
             "config": configs.get(name) or {},
             # None: the board has not announced settings (older firmware).
             "settings": board_settings.get(name),
+            # "espnow": the board is behind an ESP-NOW bridge (repeater mode): no MQTT
+            # of its own, so no settings can ever arrive - not an old firmware.
+            "via": str((health_raw.get(name) or {}).get("via") or "") if isinstance(health_raw.get(name), dict) else "",
             "clock": clocks.get(name) or {},
             "reasons": reasons,
             "lights": _board_lights_of(name, lights_data, health_raw.get(name), board_settings.get(name),
