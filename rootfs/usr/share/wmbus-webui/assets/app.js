@@ -3568,20 +3568,25 @@
     const color = flowColors().get(name) || FLOW_STATE.unknown;
     const head = (pill) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
         <strong class="board-tile-name"><span class="board-tile-dot"></span>${escapeHtml(name)}</strong>${pill}</div>`;
+    // A board behind an ESP-NOW bridge: chip, listen mode, bridge and link signal
+    // from the pulse the bridge publishes for it. withChip=false on the settings
+    // tile, which already shows the listen mode.
+    const viaLine = (withChip) => {
+      if (d.via !== "espnow") return "";
+      const pu = d.pulse || {};
+      const parts = [];
+      if (withChip && pu.chip) parts.push(escapeHtml(String(pu.chip)));
+      if (withChip && pu.listen_mode) parts.push(escapeHtml(String(pu.listen_mode)));
+      parts.push(`${escapeHtml(t("bs_via_espnow", "behind ESP-NOW bridge"))}${pu.bridge ? ` <strong>${escapeHtml(String(pu.bridge))}</strong>` : ""}`);
+      if (Number.isFinite(Number(pu.link_rssi)) && Number(pu.link_rssi) < 0) parts.push(`${escapeHtml(t("bs_link", "link"))} ${Number(pu.link_rssi)} dBm`);
+      return `<p class="hint" style="margin:6px 0 0;">${parts.join(" · ")}</p>`;
+    };
     if ((!s || typeof s !== "object" || !s.listen_mode) && d.via === "espnow") {
       // Behind an ESP-NOW bridge (repeater mode): the board has no MQTT, so it can
       // never announce settings. Saying "rebuild it" would send the user in circles.
       return `<div class="card board-tile board-tile-off" style="--c:${color}">
         ${head(`<span class="pill muted">${escapeHtml(t("bs_via_espnow", "behind ESP-NOW bridge"))}</span>`)}
-        ${(() => {
-          const pu = d.pulse || {};
-          const parts = [];
-          if (pu.chip) parts.push(escapeHtml(String(pu.chip)));
-          if (pu.listen_mode) parts.push(escapeHtml(String(pu.listen_mode)));
-          if (pu.bridge) parts.push(`${escapeHtml(t("bs_bridge", "bridge"))}: <strong>${escapeHtml(String(pu.bridge))}</strong>`);
-          if (Number.isFinite(Number(pu.link_rssi)) && Number(pu.link_rssi) < 0) parts.push(`${escapeHtml(t("bs_link", "link"))} ${Number(pu.link_rssi)} dBm`);
-          return parts.length ? `<p style="margin:8px 0 0;">${parts.join(" · ")}</p>` : "";
-        })()}
+        ${viaLine(true)}
         <p class="hint" style="margin:8px 0 0;">${escapeHtml(t("bs_no_settings_espnow", "This board sends its frames through an ESP-NOW bridge and has no MQTT of its own, so the add-on cannot change its settings. Change them in the board's YAML."))}</p>
       </div>`;
     }
@@ -3654,6 +3659,7 @@
     }).join("");
     return `<div class="card board-tile" style="--c:${color}">
       ${head(pill)}
+      ${viaLine(false)}
       <div class="hint" style="margin:6px 0;">${escapeHtml(String(s.radio || ""))} · ${escapeHtml(t("bs_listen_mode", "Listen mode"))}: <strong>${escapeHtml(label(value))}</strong> (${source})</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">${buttons}</div>
       ${extra}
