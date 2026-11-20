@@ -1,3 +1,11 @@
+## 1.6.23-dev.521
+
+### Added
+- show the meter's own number under a radio module's id (af0a932)
+
+### Fixed
+- LISTEN-instance preview telegrams of a module-read meter go to the candidate (251422b)
+
 ## 1.6.23-dev.520
 
 ### Fixed
