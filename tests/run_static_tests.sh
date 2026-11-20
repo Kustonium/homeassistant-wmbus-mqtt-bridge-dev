@@ -37,6 +37,7 @@ bash tests/test_mqtt_pub_fallback.sh
 bash tests/test_candidate_values_kept.sh
 python3 -m unittest tests/test_mbus_webui.py -v
 python3 -m unittest tests/test_meter_rename.py -v
+python3 -m unittest tests/test_module_meter_id.py -v
 python3 -m unittest tests/test_bridge_ledger.py -v
 python3 -m unittest tests/test_radio_env.py -v
 python3 -m unittest tests/test_board_lights.py -v
