@@ -1,3 +1,9 @@
+## 1.6.23-dev.519
+
+### Fixed
+- a decoded telegram belongs to the meter its name names (0cb6e03)
+- preview of a candidate behind a radio module books its own value (8b2e4e2)
+
 ## 1.6.23-dev.518
 
 ### Fixed
