@@ -1,3 +1,9 @@
+## 1.6.23-dev.520
+
+### Fixed
+- LISTEN-instance preview telegrams of a module-read meter go to the candidate (251422b)
+- a decoded telegram belongs to the meter its name names (0cb6e03)
+
 ## 1.6.23-dev.519
 
 ### Fixed
