@@ -2654,6 +2654,7 @@ class ListenBook:
 
     def json(self, line: str) -> None:
         """11-listen.sh _process_listen_json_line: a decoded telegram of a candidate."""
+        line = preview_json_by_name(line)
         self.log("debug", f"[DIAG] LISTEN-parse: JSON telegram received: {line[:160]}")
         if self.official_meters() > 0:
             self.candidate_seen_from_json(line)
@@ -3130,6 +3131,15 @@ def preview_json_for(meter: str, json_line: str) -> str:
     if not m or normalize_id(m.group(1)) == normalize_id(meter):
         return json_line
     return json_line[:m.start()] + f'"id":"{meter}"' + json_line[m.end():]
+
+
+def preview_json_by_name(json_line: str) -> str:
+    """A telegram decoded by a candidate's preview config (meter-preview-<id>,
+    name=preview_<id>) belongs to that candidate: preview_json_for with the id
+    from the name. Any other line is returned as it is."""
+    n = _DEC_NAME.search(json_line)
+    m = re.fullmatch(r"preview_([0-9A-Fa-f]{8})", n.group(1)) if n else None
+    return preview_json_for(m.group(1).upper(), json_line) if m else json_line
 
 
 def configured_meter_id(mid: str, name: str, names_by_id: Dict[str, str]) -> str:

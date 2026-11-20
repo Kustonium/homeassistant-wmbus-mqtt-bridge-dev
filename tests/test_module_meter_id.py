@@ -127,5 +127,27 @@ class PreviewTest(unittest.TestCase):
         self.assertEqual(out, bridge_ledger.preview_json_for(MODULE_ID, FAW_JSON))
 
 
+class ListenPreviewTest(unittest.TestCase):
+    """The LISTEN instance decodes candidates with their preview configs too
+    (name=preview_<id>); its JSON must also be booked under the candidate."""
+    LINE = FAW_JSON.replace('"name":"myname"', f'"name":"preview_{MODULE_ID}"')
+
+    def test_python(self):
+        out = bridge_ledger.preview_json_by_name(self.LINE)
+        self.assertIn(f'"id":"{MODULE_ID}"', out)
+        self.assertEqual(bridge_ledger.preview_json_by_name(FAW_JSON), FAW_JSON)  # not a preview name
+
+    def test_bash_same(self):
+        src = (ROOT / "rootfs" / "usr" / "bin" / "bridge-lib" / "11-listen.sh").read_text(encoding="utf-8")
+        lines = src.splitlines()
+        start = lines.index("_process_listen_json_line() {")
+        # The function's head: from the declaration to the end of the preview block.
+        end = next(i for i in range(start, len(lines)) if lines[i] == "  fi")
+        body = "\n".join(lines[start + 1:end + 1]).replace('local line="$1" _pid', "local _pid")
+        script = "f() {\n" + f"line='{self.LINE}'\n" + body + "\nprintf '%s' \"$line\"\n}\nf"
+        out = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=True).stdout
+        self.assertEqual(out, bridge_ledger.preview_json_by_name(self.LINE))
+
+
 if __name__ == "__main__":
     unittest.main()
