@@ -1,3 +1,8 @@
+## 1.6.23-dev.517
+
+### Fixed
+- match a meter read through a radio module by its name (issue 182 in the stable repository) (5e32852)
+
 ## 1.6.23-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
