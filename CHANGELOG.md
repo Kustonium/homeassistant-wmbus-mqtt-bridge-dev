@@ -1,3 +1,9 @@
+## 1.6.23-dev.518
+
+### Fixed
+- preview of a candidate behind a radio module books its own value (8b2e4e2)
+- match a meter read through a radio module by its name (issue 182 in the stable repository) (5e32852)
+
 ## 1.6.23-dev.517
 
 ### Fixed
