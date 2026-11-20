@@ -167,5 +167,33 @@ class AliasNoteTest(unittest.TestCase):
         self.assertEqual(bridge_ledger.json_id(FAW_JSON), METER_ID)
 
 
+class GhostCandidateTest(unittest.TestCase):
+    """Older versions registered the reported meter number as a candidate of
+    its own (from the decoded JSON); that row is hidden next to the module."""
+
+    def setUp(self):
+        import os, tempfile
+        os.environ.setdefault("WMBUS_BASE", tempfile.mkdtemp())
+        import webui
+        self.f = webui.module_meter_ghost_ids
+
+    def test_json_only_row_of_the_reported_number_is_a_ghost(self):
+        cands = [{"id": MODULE_ID, "manufacturer": "EFE", "reported_id": METER_ID},
+                 {"id": METER_ID, "manufacturer": ""}]
+        self.assertEqual(self.f(cands, [], []), {METER_ID})
+
+    def test_reported_by_a_configured_meter(self):
+        self.assertEqual(self.f([{"id": METER_ID}], [{"id": MODULE_ID, "reported_id": METER_ID}], []),
+                         {METER_ID})
+
+    def test_a_sender_of_its_own_stays(self):
+        cands = [{"id": MODULE_ID, "reported_id": METER_ID},
+                 {"id": METER_ID, "manufacturer": "EFE"}]
+        self.assertEqual(self.f(cands, [], []), set())
+
+    def test_nothing_reported_nothing_hidden(self):
+        self.assertEqual(self.f([{"id": METER_ID}, {"id": MODULE_ID}], [], []), set())
+
+
 if __name__ == "__main__":
     unittest.main()
