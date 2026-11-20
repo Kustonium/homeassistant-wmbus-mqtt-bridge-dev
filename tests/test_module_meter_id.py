@@ -11,8 +11,9 @@ Real frame from wmbusmeters' own engelmann_faw test: link-layer address
 wmbusmeters reports "id":"20254060".
 
 configured_meter_id (bridge_ledger.py) and meter_configured_id (07-meters.sh)
-must give the configured address back from the telegram's name, and nothing
-else: not when the id is configured itself, not when the name is ambiguous.
+must give the configured address back from the telegram's name (the meter file
+wmbusmeters matched), also when both numbers are configured, and leave the id
+alone when the name is ambiguous or missing.
 """
 from __future__ import annotations
 
@@ -51,8 +52,13 @@ class PythonTest(unittest.TestCase):
     def test_module_meter_resolves_to_the_configured_address(self):
         self.assertEqual(self.f(METER_ID, "myname", {MODULE_ID: "myname"}), MODULE_ID)
 
-    def test_configured_id_wins(self):
-        self.assertEqual(self.f(METER_ID, "myname", {METER_ID.lower(): "other", MODULE_ID: "myname"}), METER_ID)
+    def test_both_numbers_configured_each_meter_gets_its_own(self):
+        both = {METER_ID: "water", MODULE_ID: "myname"}
+        self.assertEqual(self.f(METER_ID, "myname", both), MODULE_ID)
+        self.assertEqual(self.f(METER_ID, "water", both), METER_ID)
+
+    def test_ordinary_meter_keeps_its_id(self):
+        self.assertEqual(self.f("03534161", "kitchen", {"03534161": "kitchen", MODULE_ID: "myname"}), "03534161")
 
     def test_ambiguous_name_changes_nothing(self):
         self.assertEqual(self.f(METER_ID, "meter", {MODULE_ID: "meter", "11111111": "meter"}), METER_ID)
@@ -85,7 +91,9 @@ class BashTest(unittest.TestCase):
     def test_same_answers_as_python(self):
         cases = [
             ({MODULE_ID: "myname"}, METER_ID, "myname"),
-            ({METER_ID: "other", MODULE_ID: "myname"}, METER_ID, "myname"),
+            ({METER_ID: "water", MODULE_ID: "myname"}, METER_ID, "myname"),
+            ({METER_ID: "water", MODULE_ID: "myname"}, METER_ID, "water"),
+            ({"03534161": "kitchen", MODULE_ID: "myname"}, "03534161", "kitchen"),
             ({MODULE_ID: "meter", "11111111": "meter"}, METER_ID, "meter"),
             ({MODULE_ID: "myname"}, METER_ID, ""),
             ({}, METER_ID, "myname"),

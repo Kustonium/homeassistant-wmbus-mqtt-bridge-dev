@@ -37,14 +37,16 @@ _select_primary_meter_value() {
   ' <<<"${json_line}" 2>/dev/null | head -n 1 || true
 }
 
-# The configured id a decoded telegram belongs to. Normally its JSON "id". A
-# meter read through a radio module (Engelmann FAW on a water meter) is
-# configured with the module's address, while wmbusmeters reports the meter's
-# own number as "id": then the telegram's name, when exactly one configured
-# meter carries it, gives the configured id. Prints the id to use.
+# The configured id a decoded telegram belongs to (configured_meter_id in
+# bridge_ledger.py). The telegram's name is the meter file wmbusmeters matched,
+# so it says which configured meter produced the JSON even when "id" is another
+# number - a meter read through a radio module (Engelmann FAW: configured with
+# the module's address, "id" is the water meter's own number), also when both
+# numbers are configured. That id when exactly one configured meter carries the
+# name, otherwise the JSON "id". Prints the id to use.
 meter_configured_id() {
   local id="$1" name="$2" _k _hit="" _n=0
-  if [[ -z "${name}" || -n "${METER_NAME_BY_ID[${id,,}]+x}" || ${#METER_NAME_BY_ID[@]} -eq 0 ]]; then
+  if [[ -z "${name}" || ${#METER_NAME_BY_ID[@]} -eq 0 || "${METER_NAME_BY_ID[${id,,}]:-}" == "${name}" ]]; then
     printf '%s' "${id}"
     return 0
   fi

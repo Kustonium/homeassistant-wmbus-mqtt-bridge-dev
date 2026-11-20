@@ -3134,12 +3134,16 @@ def preview_json_for(meter: str, json_line: str) -> str:
 
 def configured_meter_id(mid: str, name: str, names_by_id: Dict[str, str]) -> str:
     """meter_configured_id (07-meters.sh): the configured id a decoded telegram
-    belongs to. Its JSON "id" when that is configured; otherwise, for a meter
-    read through a radio module (Engelmann FAW: configured with the module's
-    address, "id" is the water meter's own number), the one configured id
-    whose name equals the telegram's name. Unchanged when no or several
-    configured meters carry that name."""
-    if not name or not names_by_id or mid.lower() in names_by_id:
+    belongs to. The telegram's "name" is the name of the meter file wmbusmeters
+    matched, so it says which configured meter produced the JSON even when its
+    "id" is another number: a meter read through a radio module (Engelmann FAW:
+    configured with the module's address, "id" is the water meter's own
+    number), also when both numbers are configured. That configured id when
+    exactly one configured meter carries the name; otherwise the JSON "id"
+    (several meters named alike, e.g. the default "meter", or no name)."""
+    if not name or not names_by_id:
+        return mid
+    if names_by_id.get(mid.lower()) == name:
         return mid
     hits = [k for k, v in names_by_id.items() if v == name]
     return hits[0].upper() if len(hits) == 1 else mid
@@ -3504,7 +3508,7 @@ class DecodeBook:
             m = _DEC_ID.search(line)
             if m:
                 key = normalize_id(m.group(1)).lower()
-                if key and key not in self.excludes and self.names_by_id:
+                if key and self.names_by_id:
                     n = _DEC_NAME.search(line)
                     key = configured_meter_id(key.upper(), n.group(1) if n else "", self.names_by_id).lower()
                 if key:
