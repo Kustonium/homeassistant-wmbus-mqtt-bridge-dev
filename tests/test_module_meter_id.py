@@ -96,5 +96,28 @@ class BashTest(unittest.TestCase):
                                  bridge_ledger.configured_meter_id(mid, name, mapping))
 
 
+class PreviewTest(unittest.TestCase):
+    """The candidate list's preview decodes one candidate (the module's address)
+    and must book the value under it, not under the reported meter number."""
+
+    def test_python_sets_the_candidate_id(self):
+        out = bridge_ledger.preview_json_for(MODULE_ID, FAW_JSON)
+        self.assertIn(f'"id":"{MODULE_ID}"', out)
+        self.assertNotIn(METER_ID, out)
+        self.assertIn('"consumption_at_reporting_date_m3":59.682', out)
+
+    def test_python_leaves_a_matching_id(self):
+        self.assertEqual(bridge_ledger.preview_json_for(METER_ID, FAW_JSON), FAW_JSON)
+
+    def test_bash_gives_the_same_line(self):
+        src = (ROOT / "rootfs" / "usr" / "bin" / "bridge-lib" / "06-candidates.sh").read_text(encoding="utf-8")
+        line = next((ln for ln in src.splitlines() if 'sed -E \'s/"id":' in ln), "")
+        assert line, "preview id rewrite not found in 06-candidates.sh"
+        sed = line.split("| ", 1)[1].rsplit(')"', 1)[0]
+        script = f"id={MODULE_ID}\njson_line='{FAW_JSON}'\nprintf '%s' \"$json_line\" | {sed}"
+        out = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=True).stdout
+        self.assertEqual(out, bridge_ledger.preview_json_for(MODULE_ID, FAW_JSON))
+
+
 if __name__ == "__main__":
     unittest.main()

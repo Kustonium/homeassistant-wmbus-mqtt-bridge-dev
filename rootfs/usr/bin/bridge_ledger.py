@@ -2157,6 +2157,7 @@ class PreviewDecoder:
             self.running = [r for r in self.running if r[1] != tmp]
             try:
                 if json_line:
+                    json_line = preview_json_for(meter, json_line)
                     self.log("debug", f"[DIAG] preview one-shot {meter}: decoded JSON")
                     candidate_seen_from_json(self.files, json_line, self.state_file, self.attempts_dir,
                                              self.events_file, self.log, self._route)
@@ -3113,10 +3114,22 @@ _INSTANT_METER = re.compile(r"(_kw$|_w$|_m3h$|_l_h$|_c$|_rh$|_bar$)", re.I)
 _INSTANT_NOT = re.compile(r"(average|last_|previous|history|historic|minimum|maximum|min_|max_)", re.I)
 _DEC_ID = re.compile(r'"id":"?([^",}]*)')
 _DEC_NAME = re.compile(r'"name":"([^"]*)"')
+_JSON_ID = re.compile(r'"id":"([^"]*)"')
 
 
 def _first_line(text: str) -> str:
     return text.split("\n", 1)[0]
+
+
+def preview_json_for(meter: str, json_line: str) -> str:
+    """A preview one-shot decodes one candidate, so its result belongs to that
+    candidate even when wmbusmeters reports another "id" (a meter behind a
+    radio module, Engelmann FAW: the candidate is the module's address, "id" the
+    meter's own number). The first, top-level "id" is set to the candidate's."""
+    m = _JSON_ID.search(json_line)
+    if not m or normalize_id(m.group(1)) == normalize_id(meter):
+        return json_line
+    return json_line[:m.start()] + f'"id":"{meter}"' + json_line[m.end():]
 
 
 def configured_meter_id(mid: str, name: str, names_by_id: Dict[str, str]) -> str:
