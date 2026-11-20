@@ -195,5 +195,26 @@ class GhostCandidateTest(unittest.TestCase):
         self.assertEqual(self.f([{"id": METER_ID}, {"id": MODULE_ID}], [], []), set())
 
 
+class PrimaryValueTest(unittest.TestCase):
+    """wmbusmeters 3.1 prints the JSON fields sorted by name, so for the FAW
+    "consumption_10_months_ago_m3" comes first; the value shown must be the
+    reading at the reporting date (the driver's default field), not history."""
+    # Real output of wmbusmeters 3.1.1 for FAW_TELEGRAM (fields cut short).
+    JSON = ('{"_":"telegram","media":"water","driver":"engelmann_faw","name":"W","id":"20254060",'
+            '"consumption_10_months_ago_m3":59.682,"consumption_1_months_ago_m3":78.908,'
+            '"consumption_at_reporting_date_m3":59.682,"reporting_date":"2021-12-31","status":"OK"}')
+    WANT = "consumption_at_reporting_date_m3\t59.682"
+
+    def test_python(self):
+        self.assertEqual(bridge_ledger.select_primary_meter_value(self.JSON), self.WANT)
+
+    def test_bash(self):
+        src = (ROOT / "rootfs" / "usr" / "bin" / "bridge-lib" / "07-meters.sh").read_text(encoding="utf-8")
+        m = re.search(r"^_select_primary_meter_value\(\) \{.*?^\}", src, re.S | re.M)
+        script = f"{m.group(0)}\n_select_primary_meter_value '{self.JSON}'"
+        out = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=True).stdout
+        self.assertEqual(out.strip(), self.WANT)
+
+
 if __name__ == "__main__":
     unittest.main()
