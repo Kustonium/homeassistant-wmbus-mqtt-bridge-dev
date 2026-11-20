@@ -3112,10 +3112,24 @@ _ELECTRIC_KEY = re.compile(r"(energy|power|voltage|current).*(_kwh|_wh|_kw|_w|_v
 _INSTANT_METER = re.compile(r"(_kw$|_w$|_m3h$|_l_h$|_c$|_rh$|_bar$)", re.I)
 _INSTANT_NOT = re.compile(r"(average|last_|previous|history|historic|minimum|maximum|min_|max_)", re.I)
 _DEC_ID = re.compile(r'"id":"?([^",}]*)')
+_DEC_NAME = re.compile(r'"name":"([^"]*)"')
 
 
 def _first_line(text: str) -> str:
     return text.split("\n", 1)[0]
+
+
+def configured_meter_id(mid: str, name: str, names_by_id: Dict[str, str]) -> str:
+    """meter_configured_id (07-meters.sh): the configured id a decoded telegram
+    belongs to. Its JSON "id" when that is configured; otherwise, for a meter
+    read through a radio module (Engelmann FAW: configured with the module's
+    address, "id" is the water meter's own number), the one configured id
+    whose name equals the telegram's name. Unchanged when no or several
+    configured meters carry that name."""
+    if not name or not names_by_id or mid.lower() in names_by_id:
+        return mid
+    hits = [k for k, v in names_by_id.items() if v == name]
+    return hits[0].upper() if len(hits) == 1 else mid
 
 
 def meter_metadata(line: str) -> List[str]:
@@ -3276,6 +3290,12 @@ class DecodeBook:
             k, sep, v = row.partition("\x1f")
             if sep:
                 self.excludes[k] = v
+        # The configured name per lowercase configured id (configured_meter_id).
+        self.names_by_id: Dict[str, str] = {}
+        for row in (os.environ.get("METER_NAME_LINES") or "").split("\n"):
+            k, sep, v = row.partition("\x1f")
+            if sep and k:
+                self.names_by_id[k] = v
         # value_field: the field shown as the meter's value, per lowercase id.
         self.value_fields: Dict[str, str] = {}
         for row in (os.environ.get("METER_VALUE_LINES") or "").split("\n"):
@@ -3383,6 +3403,7 @@ class DecodeBook:
         mid = normalize_id(raw_id)
         if not _ID8.fullmatch(mid):
             return
+        mid = configured_meter_id(mid, name, self.names_by_id)
         prev = next((_bash_read_tabs("\t".join(_field(_fields(ln), n) for n in (5, 6, 13)), 3)
                      for ln in _read_lines(a.meters_file) if _first_field(ln) == _b(mid)), None)
         # A field the user unticked (exclude_fields) is not published, so it
@@ -3470,6 +3491,9 @@ class DecodeBook:
             m = _DEC_ID.search(line)
             if m:
                 key = normalize_id(m.group(1)).lower()
+                if key and key not in self.excludes and self.names_by_id:
+                    n = _DEC_NAME.search(line)
+                    key = configured_meter_id(key.upper(), n.group(1) if n else "", self.names_by_id).lower()
                 if key:
                     patterns = self.excludes.get(key, "")
         payload = _b(patterns + "\n" + line)

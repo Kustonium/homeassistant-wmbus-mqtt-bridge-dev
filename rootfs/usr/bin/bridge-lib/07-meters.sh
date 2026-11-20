@@ -37,6 +37,30 @@ _select_primary_meter_value() {
   ' <<<"${json_line}" 2>/dev/null | head -n 1 || true
 }
 
+# The configured id a decoded telegram belongs to. Normally its JSON "id". A
+# meter read through a radio module (Engelmann FAW on a water meter) is
+# configured with the module's address, while wmbusmeters reports the meter's
+# own number as "id": then the telegram's name, when exactly one configured
+# meter carries it, gives the configured id. Prints the id to use.
+meter_configured_id() {
+  local id="$1" name="$2" _k _hit="" _n=0
+  if [[ -z "${name}" || -n "${METER_NAME_BY_ID[${id,,}]+x}" || ${#METER_NAME_BY_ID[@]} -eq 0 ]]; then
+    printf '%s' "${id}"
+    return 0
+  fi
+  for _k in "${!METER_NAME_BY_ID[@]}"; do
+    if [[ "${METER_NAME_BY_ID[${_k}]}" == "${name}" ]]; then
+      _hit="${_k}"
+      _n=$((_n + 1))
+    fi
+  done
+  if (( _n == 1 )); then
+    printf '%s' "${_hit^^}"
+  else
+    printf '%s' "${id}"
+  fi
+}
+
 status_meter_seen() {
   local json_line="$1"
   local id name meter media value_key value value_parts last_seen _id_raw
@@ -49,6 +73,7 @@ status_meter_seen() {
   ) || true
   id="$(normalize_meter_id "${_id_raw}")"
   [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]] || return 0
+  id="$(meter_configured_id "${id}" "${name}")"
   # The value is picked without the fields the user unticked
   # (exclude_fields): they are not published, so they are not the meter's
   # value either. The last JSON stored below stays whole for the Fields tab.
@@ -310,6 +335,7 @@ refresh_meter_files() {
       --loglevel="${LOGLEVEL:-}")"
     METER_EXCLUDE_FIELDS=()
     METER_VALUE_FIELD=()
+    METER_NAME_BY_ID=()
     OFFICIAL_METERS_COUNT=0
     EXTERNAL_METERS_COUNT=0
     SEARCH_USING_TEMP_METERS="false"
@@ -322,6 +348,7 @@ refresh_meter_files() {
           esac ;;
         exclude) METER_EXCLUDE_FIELDS["${_a}"]="${_b}" ;;
         value) METER_VALUE_FIELD["${_a}"]="${_b}" ;;
+        name) METER_NAME_BY_ID["${_a}"]="${_b}" ;;
         search) write_search_status "${_a}" "${_b}" ;;
         rc) _rc="${_a}" ;;
       esac
@@ -346,6 +373,7 @@ _refresh_meter_files_bash() {
   EXTERNAL_METERS_COUNT=0
 
   METER_EXCLUDE_FIELDS=()
+  METER_NAME_BY_ID=()
   OFFICIAL_METERS_COUNT=0
   local configured_count=0
   if [[ -f "${OPTIONS_JSON}" ]] && jq -e '.meters and (.meters|length>0)' "${OPTIONS_JSON}" >/dev/null 2>&1; then
@@ -426,6 +454,7 @@ _refresh_meter_files_bash() {
       if [[ "${value_field}" =~ ^[A-Za-z0-9_]+$ ]]; then
         METER_VALUE_FIELD["${mid,,}"]="${value_field}"
       fi
+      METER_NAME_BY_ID["${mid,,}"]="${friendly_name}"
 
       # Built before the redirect below: build_calculated_field_lines warns
       # about malformed entries, and a warning emitted inside the block would
