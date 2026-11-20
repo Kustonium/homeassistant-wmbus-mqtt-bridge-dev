@@ -8,6 +8,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
+bash tests/test_webui_js_undefined.sh
 bash tests/test_driver_catalog_contract.sh
 bash tests/test_discovery_publish_order.sh
 bash tests/test_discovery_field_categories.sh
