@@ -1,3 +1,8 @@
+## 1.6.24-dev.525
+
+### Fixed
+- Received page did not load with ignored candidates (aa90b54)
+
 ## 1.6.24-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
