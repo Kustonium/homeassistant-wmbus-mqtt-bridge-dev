@@ -1,3 +1,9 @@
+## 1.6.23-dev.523
+
+### Fixed
+- do not show a monthly history field as the meter's value (96e3d71)
+- hide the old candidate row of a module meter's own number (3151528)
+
 ## 1.6.23-dev.522
 
 ### Added
