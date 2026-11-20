@@ -2157,6 +2157,7 @@ class PreviewDecoder:
             self.running = [r for r in self.running if r[1] != tmp]
             try:
                 if json_line:
+                    note_reported_id(self.values_file, meter, json_id(json_line))
                     json_line = preview_json_for(meter, json_line)
                     self.log("debug", f"[DIAG] preview one-shot {meter}: decoded JSON")
                     candidate_seen_from_json(self.files, json_line, self.state_file, self.attempts_dir,
@@ -2654,7 +2655,9 @@ class ListenBook:
 
     def json(self, line: str) -> None:
         """11-listen.sh _process_listen_json_line: a decoded telegram of a candidate."""
+        reported = json_id(line)
         line = preview_json_by_name(line)
+        note_reported_id(self.a.candidate_values_file, json_id(line), reported)
         self.log("debug", f"[DIAG] LISTEN-parse: JSON telegram received: {line[:160]}")
         if self.official_meters() > 0:
             self.candidate_seen_from_json(line)
@@ -3133,6 +3136,29 @@ def preview_json_for(meter: str, json_line: str) -> str:
     return json_line[:m.start()] + f'"id":"{meter}"' + json_line[m.end():]
 
 
+ALIASES_NAME = "status_meter_aliases.tsv"
+
+
+def note_reported_id(near: str, shown: str, reported: str) -> None:
+    """status_meter_aliases.tsv, next to the file `near`: the meter number a
+    telegram reported ("id" in the JSON) when the add-on shows it under another
+    id - the radio module's address of a meter behind a module (Engelmann FAW).
+    The WebUI prints it under the shown id. Only when the two differ."""
+    shown, reported = normalize_id(shown), normalize_id(reported)
+    if not near or not shown or not reported or shown == reported:
+        return
+    try:
+        tsv_upsert(os.path.join(os.path.dirname(near), ALIASES_NAME), shown, f"{shown}\t{reported}\t{iso_now()}")
+    except OSError:
+        pass
+
+
+def json_id(json_line: str) -> str:
+    """The first, top-level "id" of a decoded JSON line ("" when there is none)."""
+    m = _JSON_ID.search(json_line)
+    return m.group(1) if m else ""
+
+
 def preview_json_by_name(json_line: str) -> str:
     """A telegram decoded by a candidate's preview config (meter-preview-<id>,
     name=preview_<id>) belongs to that candidate: preview_json_for with the id
@@ -3430,7 +3456,9 @@ class DecodeBook:
         mid = normalize_id(raw_id)
         if not _ID8.fullmatch(mid):
             return
+        reported = mid
         mid = configured_meter_id(mid, name, self.names_by_id)
+        note_reported_id(a.meters_file, mid, reported)
         prev = next((_bash_read_tabs("\t".join(_field(_fields(ln), n) for n in (5, 6, 13)), 3)
                      for ln in _read_lines(a.meters_file) if _first_field(ln) == _b(mid)), None)
         # A field the user unticked (exclude_fields) is not published, so it

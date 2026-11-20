@@ -139,6 +139,12 @@ _process_listen_json_line() {
   # a meter behind a radio module, e.g. Engelmann FAW).
   _pid="$(printf '%s' "${line}" | sed -nE 's/.*"name":"preview_([0-9A-Fa-f]{8})".*/\1/p')"
   if [[ -n "${_pid}" ]]; then
+    local _rep
+    _rep="$(normalize_meter_id "$(printf '%s' "${line}" | grep -o '"id":"[^"]*"' | head -n 1 | sed -E 's/"id":"([^"]*)"/\1/')")"
+    if [[ -n "${_rep}" && "${_rep}" != "${_pid^^}" ]]; then
+      _tsv_upsert "${RUNTIME:-${BASE}}/status_meter_aliases.tsv" "${_pid^^}" \
+        "${_pid^^}"$'\t'"${_rep}"$'\t'"$(date -Iseconds 2>/dev/null || date)"
+    fi
     line="$(printf '%s' "${line}" | sed -E 's/"id":"[^"]*"/"id":"'"${_pid^^}"'"/')"
   fi
   log_debug "[DIAG] LISTEN-parse: JSON telegram received: ${line:0:160}"

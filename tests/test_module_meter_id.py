@@ -119,7 +119,8 @@ class PreviewTest(unittest.TestCase):
 
     def test_bash_gives_the_same_line(self):
         src = (ROOT / "rootfs" / "usr" / "bin" / "bridge-lib" / "06-candidates.sh").read_text(encoding="utf-8")
-        line = next((ln for ln in src.splitlines() if 'sed -E \'s/"id":' in ln), "")
+        line = next((ln for ln in src.splitlines()
+                     if ln.strip().startswith('json_line="$(printf') and 'sed -E \'s/"id":' in ln), "")
         assert line, "preview id rewrite not found in 06-candidates.sh"
         sed = line.split("| ", 1)[1].rsplit(')"', 1)[0]
         script = f"id={MODULE_ID}\njson_line='{FAW_JSON}'\nprintf '%s' \"$json_line\" | {sed}"
@@ -147,6 +148,23 @@ class ListenPreviewTest(unittest.TestCase):
         script = "f() {\n" + f"line='{self.LINE}'\n" + body + "\nprintf '%s' \"$line\"\n}\nf"
         out = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=True).stdout
         self.assertEqual(out, bridge_ledger.preview_json_by_name(self.LINE))
+
+
+class AliasNoteTest(unittest.TestCase):
+    """The reported meter number is kept next to the shown id for the WebUI."""
+
+    def test_written_only_when_numbers_differ(self):
+        import tempfile, os
+        with tempfile.TemporaryDirectory() as d:
+            near = os.path.join(d, "status_meters.tsv")
+            bridge_ledger.note_reported_id(near, MODULE_ID, METER_ID)
+            bridge_ledger.note_reported_id(near, "03534161", "03534161")
+            rows = Path(d, bridge_ledger.ALIASES_NAME).read_text().splitlines()
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0].split("	")[:2], [MODULE_ID, METER_ID])
+
+    def test_json_id(self):
+        self.assertEqual(bridge_ledger.json_id(FAW_JSON), METER_ID)
 
 
 if __name__ == "__main__":

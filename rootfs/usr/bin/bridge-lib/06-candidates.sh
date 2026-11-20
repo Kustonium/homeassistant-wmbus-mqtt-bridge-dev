@@ -176,6 +176,13 @@ EOFONESHOT
       # The result is this candidate's even when wmbusmeters reports another
       # "id" (preview_json_for in bridge_ledger.py: a meter behind a radio
       # module, e.g. Engelmann FAW). Only the first, top-level "id" is set.
+      local _rep
+      _rep="$(printf '%s' "${json_line}" | grep -o '"id":"[^"]*"' | head -n 1 | sed -E 's/"id":"([^"]*)"/\1/')"
+      _rep="$(normalize_meter_id "${_rep}")"
+      if [[ -n "${_rep}" && "${_rep}" != "${id}" ]]; then
+        _tsv_upsert "${RUNTIME:-${BASE}}/status_meter_aliases.tsv" "${id}" \
+          "${id}"$'\t'"${_rep}"$'\t'"$(date -Iseconds 2>/dev/null || date)"
+      fi
       json_line="$(printf '%s' "${json_line}" | sed -E 's/"id":"[^"]*"/"id":"'"${id}"'"/')"
       log_debug "[DIAG] preview one-shot ${id}: decoded JSON"
       status_candidate_seen_from_json "${json_line}"

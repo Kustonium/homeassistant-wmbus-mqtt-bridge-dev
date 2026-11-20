@@ -73,6 +73,10 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "share" / "wmbus-webui"
 STATUS_JSON = RUNTIME / "status.json"
 METERS_TSV = RUNTIME / "status_meters.tsv"
 CANDIDATES_TSV = RUNTIME / "status_candidates.tsv"
+# Shown id -> the number the telegram reported, for a meter behind a radio
+# module (Engelmann FAW: shown under the module's address). bridge_ledger.py
+# note_reported_id writes it; the WebUI prints it under the id.
+METER_ALIASES_TSV = RUNTIME / "status_meter_aliases.tsv"
 EVENTS_TSV = RUNTIME / "status_events.tsv"
 IGNORED_CANDIDATES = BASE / "status_ignored_candidates.tsv"
 SEARCH_CANDIDATES_TSV = BASE / "search_candidates.tsv"
@@ -3369,6 +3373,15 @@ def state(include_ignored: bool = False) -> dict:
     )
     # Attach the last full decoded JSON (string, parsed client-side) so the
     # meters view can expand a row into the list of published fields.
+    reported_by_id = {
+        normalize_meter_id(r.get("id")): normalize_meter_id(r.get("reported"))
+        for r in read_tsv(METER_ALIASES_TSV, ["id", "reported", "ts"])
+        if normalize_meter_id(r.get("id")) and normalize_meter_id(r.get("reported"))
+    }
+    for m in meters:
+        rep = reported_by_id.get(normalize_meter_id(m.get("id")), "")
+        if rep and rep != normalize_meter_id(m.get("id")):
+            m["reported_id"] = rep
     last_json_rows = read_tsv(METER_LAST_JSON_TSV, ["id", "ts", "json"])
     last_json_by_id = {
         normalize_meter_id(r.get("id")): r
@@ -3871,6 +3884,7 @@ def state(include_ignored: bool = False) -> dict:
                 driver = candidate.get("driver") or driver or "auto"
             pending_meters.append({
                 "meter_id": mid,
+                "reported_id": reported_by_id.get(mid, "") if reported_by_id.get(mid, "") != mid else "",
                 "type": opt_type,
                 "type_other": opt_type_other,
                 "driver": driver,
@@ -3967,6 +3981,9 @@ def state(include_ignored: bool = False) -> dict:
         return 0 if (seen_15m > 0 or seen_60m > 0) else 1
     for c in candidates:
         c["recent_silent"] = "true" if _silent(c) else "false"
+        rep = reported_by_id.get(normalize_meter_id(c.get("id")), "")
+        if rep and rep != normalize_meter_id(c.get("id")):
+            c["reported_id"] = rep
     candidates = sorted(
         candidates,
         key=lambda c: (

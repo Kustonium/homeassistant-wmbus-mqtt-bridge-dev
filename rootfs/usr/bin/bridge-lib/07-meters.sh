@@ -75,7 +75,14 @@ status_meter_seen() {
   ) || true
   id="$(normalize_meter_id "${_id_raw}")"
   [[ "${id}" =~ ^[0-9A-Fa-f]{8}$ ]] || return 0
+  local _reported="${id}"
   id="$(meter_configured_id "${id}" "${name}")"
+  # The number the telegram reported, when it is shown under another id
+  # (note_reported_id in bridge_ledger.py).
+  if [[ "${id}" != "${_reported}" ]]; then
+    _tsv_upsert "$(dirname "${STATUS_METERS_FILE}")/status_meter_aliases.tsv" "${id}" \
+      "${id}"$'\t'"${_reported}"$'\t'"$(date -Iseconds 2>/dev/null || date)"
+  fi
   # The value is picked without the fields the user unticked
   # (exclude_fields): they are not published, so they are not the meter's
   # value either. The last JSON stored below stays whole for the Fields tab.
