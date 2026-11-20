@@ -1,3 +1,11 @@
+## 1.6.23-dev.522
+
+### Added
+- show the meter's own number under a radio module's id (af0a932)
+
+### Fixed
+- hide the old candidate row of a module meter's own number (3151528)
+
 ## 1.6.23-dev.521
 
 ### Added
