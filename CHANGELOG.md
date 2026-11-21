@@ -1,3 +1,9 @@
+## 1.6.25-dev.528
+
+### Fixed
+- same RSSI rule in the Python publisher path (51048d7)
+- per-board RSSI entities under Diagnostic, still enabled (415fbc8)
+
 ## 1.6.25-dev.527
 
 ### Fixed
