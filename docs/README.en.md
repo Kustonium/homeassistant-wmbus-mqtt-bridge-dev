@@ -383,7 +383,8 @@ wmbus/<board>/rssi/<meter_id>    payload: -52
 
 The bridge caches that value per meter **and** per board, and joins it onto the
 decoded telegram as `rssi_<board>_dbm`. Each board therefore gets its own
-signal-strength entity for the same meter:
+signal-strength entity for the same meter. The entities are filed under the
+device's **Diagnostic** section and are enabled:
 
 ```json
 {
