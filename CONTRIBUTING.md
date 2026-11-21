@@ -8,13 +8,16 @@ English or Polish.
 
 ## How a change gets in
 
-Development happens in a separate repository; this one receives each release
-as one squashed commit. A pull request here is therefore ported to the
-development tree first and arrives back with the next release, so your commits
-will not appear in this repository's history even though the code is yours.
-Authorship is recorded instead in the port commit in the development tree and
-in the comment that closes your pull request, which states that the code is
-yours.
+Development happens in a separate repository, and this one receives each
+release from it. A pull request here is tested there first, in its own branch,
+on real hardware. If it needs changes, they go onto your pull request branch
+as well (by you, or by me if "Allow edits by maintainers" is ticked), so the
+pull request always holds exactly the code that will be released. After the
+release that carries it, your pull request is merged here as it is: it shows
+as merged and your commits stay in this repository's history. It stays open
+until that release, so a few days of waiting are normal. If a pull request has
+to be rewritten substantially, it is closed with a comment instead; authorship
+is then kept in the development tree and in the attribution file.
 
 For a small fix, open a pull request directly. For a new feature or anything
 that changes how meters are decoded or published, open an issue or a
