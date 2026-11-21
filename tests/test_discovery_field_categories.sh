@@ -268,6 +268,27 @@ assert_measurement temp_room_c "°C"
 assert_diagnostic current_date
 assert_diagnostic previous_date
 
+# --- per-board RSSI (publish_rssi): diagnostic, but enabled (issue 185) -----
+run_telegram 66554433 '{"_":"telegram","total_m3":12.5,"rssi_lilygo_dbm":-52,"rssi_xiaoseed_dbm":-71,"id":"66554433","media":"water","meter":"izar","name":"Water_4433","timestamp":"2026-08-13T14:30:19Z"}'
+
+# Signal strength: dBm unit and signal_strength class kept, filed under
+# Diagnostic, and NOT disabled (the board owner enabled publish_rssi on purpose).
+assert_signal_diagnostic() {  # assert_signal_diagnostic <field>
+  local field="$1" payload category enabled unit
+  payload="$(payload_for "${field}")"
+  category="$(field_prop "${payload}" entity_category)"
+  enabled="$(field_prop "${payload}" enabled_by_default)"
+  unit="$(field_prop "${payload}" unit_of_measurement)"
+  if [[ "${category}" == "diagnostic" && "${enabled}" == "missing" && "${unit}" == "dBm" ]]; then
+    pass "${field}: signal strength, diagnostic and enabled"
+  else
+    fail "${field}: entity_category=${category} enabled_by_default=${enabled} unit=${unit} (expected diagnostic/missing/dBm)"
+  fi
+}
+assert_signal_diagnostic rssi_lilygo_dbm
+assert_signal_diagnostic rssi_xiaoseed_dbm
+assert_measurement total_m3 "m³"
+
 # --- electricity: reactive/apparent energy also carry no HA device_class -----
 run_telegram 88776655 '{"_":"telegram","total_energy_consumption_kwh":3861.107,"total_reactive_energy_consumption_kvarh":42.5,"current_power_consumption_kw":0.35,"id":"88776655","media":"electricity","meter":"amiplus","name":"Power_6655","timestamp":"2026-08-13T14:30:19Z"}'
 
@@ -549,15 +570,16 @@ assert_json_field "malformed rssi" "$(inject_rssi_into_json 21031894 "${TELEGRAM
   rssi_dev_dbm missing
 
 # End to end: each board's field goes through the ordinary Discovery path and
-# becomes its own signal-strength sensor (dBm implies signal_strength).
+# becomes its own signal-strength sensor (dBm implies signal_strength), filed
+# under Diagnostic but enabled.
 printf '%s\t%s\t%s\t%s\n' "21031894" "-78" "esphome-wmbus-lilygo" "$(epoch_now)" > "${STATUS_RSSI_FILE}"
 # shellcheck disable=SC2034
 METER_EXCLUDE_FIELDS=()
 run_telegram 21031894 "$(inject_rssi_into_json 21031894 "${TELEGRAM_RSSI}")"
-assert_measurement rssi_esphome_wmbus_lilygo_dbm "dBm"
+assert_signal_diagnostic rssi_esphome_wmbus_lilygo_dbm
 run_telegram 21031894 "${RSSI_MULTI}"
-assert_measurement rssi_lilygo_dbm "dBm"
-assert_measurement rssi_xiao_seed_dbm "dBm"
+assert_signal_diagnostic rssi_lilygo_dbm
+assert_signal_diagnostic rssi_xiao_seed_dbm
 assert_no_entity rssi_source
 
 # The merged rssi_dbm sensor shipped in an earlier dev build, so every meter's

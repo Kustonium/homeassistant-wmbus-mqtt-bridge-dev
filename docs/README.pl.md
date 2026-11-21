@@ -381,7 +381,8 @@ wmbus/<płytka>/rssi/<id_licznika>    payload: -52
 
 Most trzyma tę wartość osobno dla każdej pary licznik **i** płytka, a następnie
 dołącza ją do zdekodowanego telegramu jako `rssi_<płytka>_dbm`. Każda płytka
-dostaje więc własną encję siły sygnału dla tego samego licznika:
+dostaje więc własną encję siły sygnału dla tego samego licznika. Encje trafiają
+do sekcji **Diagnostyka** urządzenia i są włączone:
 
 ```json
 {
