@@ -897,6 +897,10 @@ granicę między repozytoriami dev i stable opisuje
 
 ---
 
+## Wsparcie
+
+Rozwijany po godzinach, najlepiej, jak mogę (best effort), bez działalności gospodarczej i bez gwarancji: [SUPPORT_PL.md](../SUPPORT_PL.md).
+
 ## 12. Licencja i projekty bazowe
 
 **GNU GPL-3.0.** Projekt zawiera i modyfikuje kod z `wmbusmeters-ha-addon`
