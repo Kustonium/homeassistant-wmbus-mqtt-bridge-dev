@@ -429,7 +429,7 @@ encja nie powstaje.
 | `id` | str | tak | Twoja etykieta licznika, używana w nazwach MQTT Discovery i generowanej konfiguracji |
 | `meter_id` | str | tak | Numer seryjny licznika (HEX, z LISTEN) |
 | `type` | str | tak | **Nazwa sterownika wmbusmeters** (np. `hydrodigit`, `amiplus`, `izarv2`) **lub `auto`/`other`**. Dowolny string — wmbusmeters waliduje sterownik przy dekodowaniu (świadomie nie enum, żeby nowe sterowniki nie były odrzucane). |
-| `type_other` | str? | gdy `type=other` | Niestandardowa nazwa sterownika |
+| `type_other` | str? | gdy `type=other` | Niestandardowa nazwa sterownika. `vendor_<format>` wybiera format, który dodatek dekoduje sam, bo wmbusmeters nie ma jeszcze dla niego sterownika; dziś `vendor_bmeters_hydroclima_v34` (podzielniki B METERS Hydroclima, wersja 0x34). Gdy aktualizacja wmbusmeters nauczy się formatu, dodatek sam przełączy takie liczniki na wmbusmeters. `calculated_fields` i `static_fields` nie działają dla tych liczników. |
 | `key` | str? | gdy szyfrowany | 32-znakowy klucz AES (HEX) |
 | `exclude_fields` | str? | nie | Wzorce (globy) pól, które mają **nie** dostać encji w Home Assistant — np. `consumption_at_history_*, history_*_date`. Oddzielane przecinkami lub spacjami; puste publikuje wszystkie pola. |
 | `value_field` | str? | nie | Pole pokazywane jako wartość licznika na zakładce Liczniki (np. `total_m3`), wybierane w panelu Pola. Puste albo pole, którego telegram nie niesie jako liczby, oznacza wybór automatyczny. Tylko wyświetlanie: encje i MQTT się nie zmieniają. |
