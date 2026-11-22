@@ -282,5 +282,56 @@ class StartedMidHour(unittest.TestCase):
         self.assertEqual(b["frames_h"], 300)         # 100 frames in 20 minutes
 
 
+class LiveRate(unittest.TestCase):
+    """The Panel's board rate: median frames/min of the last 15 complete minutes."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self.dir.name, "hours.json")
+        self.now = os.path.join(self.dir.name, "now.json")
+        self.env = radio_env.RadioEnv(self.path, self.now)
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def minutes(self, board, start_min, counts):
+        """counts[i] frames spread over minute start_min + i (from T)."""
+        for i, n in enumerate(counts):
+            m = T + (start_min + i) * 60
+            for k in range(n):
+                self.env.frame(board, str(k), -80, m + 1 + k * 50 // max(n, 1))
+        # one frame of another board each minute keeps the file written
+        return T + (start_min + len(counts)) * 60
+
+    def rate(self, board, at):
+        self.env.frame("other", "x", -80, at + 1)   # writes the file for the minute before
+        return radio_env.live_rate(self.now, board, at + 30)
+
+    def test_none_until_fifteen_minutes_are_counted(self):
+        end = self.minutes("tbeam", 0, [10] * 10)
+        self.assertIsNone(self.rate("tbeam", end))
+
+    def test_steady_board(self):
+        end = self.minutes("tbeam", 0, [10] * 20)
+        self.assertEqual(self.rate("tbeam", end), 10.0)
+
+    def test_board_moved_from_an_attenuator(self):
+        # 20 minutes at 7/min (behind an attenuator), then moved: 54/min
+        end = self.minutes("tbeam", 0, [7] * 20)
+        self.assertEqual(self.rate("tbeam", end), 7.0)
+        end = self.minutes("tbeam", 20, [54] * 8)    # 8 of the last 15 minutes after the move
+        self.assertEqual(self.rate("tbeam", end), 54.0)   # the median follows the majority
+        end = self.minutes("tbeam", 28, [54] * 7)
+        self.assertEqual(self.rate("tbeam", end), 54.0)
+
+    def test_silent_minutes_count_as_zero(self):
+        end = self.minutes("s1board", 0, [3, 0] * 10)
+        self.assertEqual(self.rate("s1board", end), 0.0)    # more silent minutes than busy ones
+
+    def test_unknown_board_or_no_file(self):
+        self.assertIsNone(radio_env.live_rate(self.now, "nobody", T))
+        self.assertIsNone(radio_env.live_rate(os.path.join(self.dir.name, "missing.json"), "tbeam", T))
+
+
 if __name__ == "__main__":
     unittest.main()

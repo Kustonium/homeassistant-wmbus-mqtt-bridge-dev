@@ -5090,6 +5090,18 @@ def _esp_payload() -> dict:
     re_settings = _esp_settings()
     for d in devices_list:
         f_h, m = _re_board_now(re_boards.get(d["name"]) or [], now_epoch)
+        # The rate shown: the median frames/min of the last 15 complete
+        # minutes (radio_env.live_rate) - an hourly mean kept a restarted or
+        # moved board low for an hour. The hourly figure until 15 minutes
+        # have been counted. Meters stay hourly: rare senders need the hour.
+        try:
+            med = _re.live_rate(str(RADIO_ENV_NOW_FILE), d["name"], now_epoch)
+        except Exception:
+            med = None
+        d["rate_median_min"] = med
+        d["rate_window_min"] = _re.LIVE_MINUTES
+        if med is not None:
+            f_h = med * 60
         d["frames_h"] = None if f_h is None else round(f_h)
         d["meters_heard"] = m
         # The board's listen mode as it announces it (t1/c1/both/s1), for
