@@ -1,3 +1,11 @@
+## 1.6.25-dev.529
+
+### Added
+- vendor formats, starting with B METERS Hydroclima v0x34 (d3fc7a5)
+
+### Fixed
+- vendor stage output reached wmbusmeters' stdin, not the decode stream (cbb9077)
+
 ## 1.6.25-dev.528
 
 ### Fixed
