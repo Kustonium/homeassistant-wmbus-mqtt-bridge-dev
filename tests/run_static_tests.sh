@@ -57,4 +57,6 @@ python3 -m unittest tests/test_rx_history.py -v
 python3 -m unittest tests/test_custom_drivers.py -v
 python3 -m unittest tests/test_external_meters.py -v
 python3 -m unittest tests/test_external_instance.py -v
+python3 -m unittest tests/test_vendor_formats.py -v
+python3 rootfs/usr/bin/vendor_formats.py check --formats-dir rootfs/usr/share/wmbus-bridge/formats
 python3 -m unittest tests/test_webui_drivers.py -v
