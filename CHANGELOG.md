@@ -1,3 +1,11 @@
+## 1.6.25-dev.530
+
+### Added
+- vendor formats in the driver picker and as candidate hints (1370da1)
+
+### Fixed
+- vendor stage output reached wmbusmeters' stdin, not the decode stream (cbb9077)
+
 ## 1.6.25-dev.529
 
 ### Added
