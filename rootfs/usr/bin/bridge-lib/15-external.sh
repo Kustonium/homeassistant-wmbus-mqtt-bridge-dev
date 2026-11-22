@@ -34,11 +34,18 @@ external_merge_enabled() {
 # Without such a meter the stage is not started at all. A reader that ends
 # would kill tee (SIGPIPE) and with it the pipeline: the stage itself reads
 # until EOF whatever happens, and should python3 not even start, cat drains.
+#
+# The stage writes to fd 3, bound to this function's stdout before the inner
+# pipeline: a process substitution inherits the stdout of the command it is
+# expanded for, which here is tee's, i.e. the pipe into wmbusmeters - its JSON
+# went to wmbusmeters' stdin and was dropped as not hex (dev.529, seen on the
+# first test). tests/test_vendor_stage_wiring.sh.
 _main_wmbusmeters_stage() {
   if (( ${VENDOR_METERS_COUNT:-0} > 0 )); then
-    tee >(python3 -u "${VENDOR_TOOL}" stage --meter-dir="${VENDOR_METER_DIR}" \
-            --status="${STATUS_VENDOR_FORMATS_FILE:-}" --formats-dir="${VENDOR_FORMATS_DIR:-}"; cat >/dev/null) \
-      | _main_wmbusmeters_core
+    { tee >(python3 -u "${VENDOR_TOOL}" stage --meter-dir="${VENDOR_METER_DIR}" \
+              --status="${STATUS_VENDOR_FORMATS_FILE:-}" --formats-dir="${VENDOR_FORMATS_DIR:-}" >&3
+            cat >/dev/null) \
+        | _main_wmbusmeters_core; } 3>&1
   else
     _main_wmbusmeters_core
   fi
