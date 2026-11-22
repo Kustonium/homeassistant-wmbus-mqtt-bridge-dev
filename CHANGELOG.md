@@ -1,3 +1,8 @@
+## 1.6.26-dev.532
+
+### Added
+- board rate on the Panel is the median of the last 15 minutes (82257eb)
+
 ## 1.6.26-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
