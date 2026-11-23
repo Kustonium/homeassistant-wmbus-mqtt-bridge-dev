@@ -1858,6 +1858,19 @@ def driver_fields(driver: str) -> tuple[bool, list[dict], str]:
     driver = (driver or "").strip()
     if not re.match(r"^[A-Za-z0-9_]+$", driver):
         return False, [], f"Invalid driver: {driver}"
+    if driver.startswith(_vf.PREFIX):
+        # Decoded by the add-on (vendor_formats.py): wmbusmeters does not know
+        # this driver, so its fields come from the format file.
+        fmt = next((f for f in usable_vendor_formats() if f.driver == driver), None)
+        if fmt is None:
+            return False, [], f"No such driver {driver}"
+        names: list[str] = []
+        for frame in fmt.frames.values():
+            for fld in frame["fields"]:
+                if fld[0] not in names:
+                    names.append(fld[0])
+        return True, [{"name": n, "description": "", "no_entity": NON_ENTITY_FIELDS.get(n.lower(), "")}
+                      for n in names], ""
     if driver in DRIVER_FIELDS_CACHE:
         return True, DRIVER_FIELDS_CACHE[driver], ""
     try:
