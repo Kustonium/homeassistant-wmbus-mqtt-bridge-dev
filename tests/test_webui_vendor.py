@@ -78,6 +78,17 @@ class VendorInWebUI(unittest.TestCase):
         self.assertEqual(short_fields["previous_month_10_hca"], 23.6)
         self.assertIsNone(webui._decode_with_driver(LONG, "vendor_no_such_format", "78240400", ""))
 
+    def test_editor_fields_of_a_vendor_driver(self):
+        # 1.6.25 asked wmbusmeters --listfields, which does not know the
+        # driver: the editor showed "No such driver" and no field to pick.
+        ok, fields, err = webui.driver_fields("vendor_bmeters_hydroclima_v34")
+        self.assertTrue(ok, err)
+        names = [f["name"] for f in fields]
+        self.assertIn("current_consumption_hca", names)
+        self.assertIn("consumption_end_of_month_10_hca", names)  # short-frame history too
+        self.assertEqual(len(names), len(set(names)))
+        self.assertFalse(webui.driver_fields("vendor_no_such_format")[0])
+
 
 if __name__ == "__main__":
     unittest.main()

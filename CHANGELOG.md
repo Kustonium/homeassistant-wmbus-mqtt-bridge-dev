@@ -1,3 +1,20 @@
+## 1.6.27-dev
+
+<!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
+
+## 1.6.26-dev.533
+
+### Added
+- board rate on the Panel is the median of the last 15 minutes (82257eb)
+
+### Fixed
+- allocator main value and editor fields for add-on drivers (8ccce01)
+
+## 1.6.26-dev.532
+
+### Added
+- board rate on the Panel is the median of the last 15 minutes (82257eb)
+
 ## 1.6.26-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->

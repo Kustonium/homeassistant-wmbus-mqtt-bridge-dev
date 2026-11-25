@@ -61,4 +61,5 @@ python3 -m unittest tests/test_vendor_formats.py -v
 python3 rootfs/usr/bin/vendor_formats.py check --formats-dir rootfs/usr/share/wmbus-bridge/formats
 bash tests/test_vendor_stage_wiring.sh
 python3 -m unittest tests/test_webui_vendor.py -v
+python3 -m unittest tests/test_primary_value_hca.py -v
 python3 -m unittest tests/test_webui_drivers.py -v
