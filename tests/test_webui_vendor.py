@@ -53,7 +53,7 @@ class VendorInWebUI(unittest.TestCase):
         webui.apply_vendor_hints(cands)
         hc, water = cands
         self.assertEqual(hc["driver"], "vendor_bmeters_hydroclima_v34")
-        self.assertEqual(hc["preview_value_key"], "current_consumption_hca")
+        self.assertEqual(hc["preview_value_key"], "allocation_hca")
         self.assertEqual(hc["preview_value"], "51.7")
         self.assertEqual(water["driver"], "hydrodigit")  # a driver wmbusmeters has is never replaced
 
@@ -72,10 +72,10 @@ class VendorInWebUI(unittest.TestCase):
 
     def test_compare_decodes_with_a_vendor_driver(self):
         long_fields = webui._decode_with_driver(LONG, "vendor_bmeters_hydroclima_v34", "78240400", "")
-        self.assertEqual(long_fields["current_consumption_hca"], 51.7)
+        self.assertEqual(long_fields["allocation_hca"], 51.7)
         # the short frame alone has no constant word; the stored long frame supplies it
         short_fields = webui._decode_with_driver(SHORT, "vendor_bmeters_hydroclima_v34", "78240400", "")
-        self.assertEqual(short_fields["consumption_end_of_month_10_hca"], 23.6)
+        self.assertEqual(short_fields["previous_month_10_hca"], 23.6)
         self.assertIsNone(webui._decode_with_driver(LONG, "vendor_no_such_format", "78240400", ""))
 
     def test_editor_fields_of_a_vendor_driver(self):
@@ -84,8 +84,8 @@ class VendorInWebUI(unittest.TestCase):
         ok, fields, err = webui.driver_fields("vendor_bmeters_hydroclima_v34")
         self.assertTrue(ok, err)
         names = [f["name"] for f in fields]
-        self.assertIn("current_consumption_hca", names)
-        self.assertIn("consumption_end_of_month_10_hca", names)  # short-frame history too
+        self.assertIn("allocation_hca", names)
+        self.assertIn("previous_month_10_hca", names)  # short-frame history too
         self.assertEqual(len(names), len(set(names)))
         self.assertFalse(webui.driver_fields("vendor_no_such_format")[0])
 

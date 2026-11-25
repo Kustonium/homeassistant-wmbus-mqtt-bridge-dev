@@ -37,7 +37,7 @@ OTHER="1944304C72242421D401A2013D4013DD8B46A4999C1293E582CC"
 printf '%s\n%s\n' "${LONG}" "${OTHER}" | _main_wmbusmeters_stage > "${TMP}/out"
 
 fail=0
-json="$(grep -c '^{"_":"telegram".*"id":"78240400".*"current_consumption_hca":51.7' "${TMP}/out" || true)"
+json="$(grep -c '^{"_":"telegram".*"id":"78240400".*"allocation_hca":51.7' "${TMP}/out" || true)"
 if [[ "${json}" != "1" ]]; then
   echo "FAIL: expected the vendor JSON once on stdout, got ${json}"; fail=1
 fi

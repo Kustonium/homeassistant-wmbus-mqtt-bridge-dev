@@ -45,9 +45,18 @@ class ShippedFormats(unittest.TestCase):
             rc = vf.main(["check", f"--formats-dir={FORMATS}"])
         self.assertEqual(rc, 0, out.getvalue())
 
+    def test_long_frame_names_follow_the_wmbusmeters_driver(self):
+        # When wmbusmeters takes the format over (driver hydroclimav34), the
+        # entities must keep their names: the long-frame fields are its names.
+        upstream = {"allocation_hca", "target_hca", "average_ambient_temperature_c",
+                    "previous_average_ambient_temperature_c"}
+        for ftype in ("13", "12"):
+            names = {f["name"] for f in HC["frames"][ftype]["fields"]}
+            self.assertEqual(names - {"previous_month_hca"}, upstream, ftype)
+
     def test_a_wrong_expectation_fails(self):
         spec = json.loads(json.dumps(HC))
-        spec["tests"][0]["expect"]["current_consumption_hca"] = 51.8
+        spec["tests"][0]["expect"]["allocation_hca"] = 51.8
         self.assertTrue(vf.run_tests(vf.Format(spec)))
 
 
@@ -77,7 +86,7 @@ class Engine(unittest.TestCase):
         fmt.decode(bytes.fromhex(LONG_400), cache)
         mid, fields = fmt.decode(bytes.fromhex(SHORT_400), cache)
         self.assertEqual(mid, "78240400")
-        self.assertEqual(fields["consumption_end_of_month_10_hca"], 23.6)
+        self.assertEqual(fields["previous_month_10_hca"], 23.6)
 
     def test_other_frames_do_not_match(self):
         fmt = vf.Format(HC)
@@ -134,11 +143,11 @@ class Stage(unittest.TestCase):
         self.assertEqual(first["id"], "78240400")
         self.assertEqual(first["name"], "radiator")
         self.assertEqual(first["driver"], "vendor_bmeters_hydroclima_v34")
-        self.assertEqual(first["current_consumption_hca"], 51.7)
-        self.assertNotIn("consumption_end_of_month_10_hca", first)
+        self.assertEqual(first["allocation_hca"], 51.7)
+        self.assertNotIn("previous_month_10_hca", first)
         # the short frame adds the history and keeps the long frame's values
-        self.assertEqual(second["consumption_end_of_month_10_hca"], 23.6)
-        self.assertEqual(second["current_consumption_hca"], 51.7)
+        self.assertEqual(second["previous_month_10_hca"], 23.6)
+        self.assertEqual(second["allocation_hca"], 51.7)
         self.assertIn("timestamp", second)
 
     def test_upstream_or_failed_format_is_not_used(self):
@@ -160,14 +169,14 @@ class Upstream(unittest.TestCase):
     def test_probe_with_the_values_means_handled_upstream(self):
         fmt = vf.Format(HC)
         line = json.dumps({"_": "telegram", "driver": "hydroclima", "id": "78240400",
-                           "current_consumption_hca": 51.7, "consumption_hca": 93.8})
+                           "allocation_hca": 51.7, "target_hca": 93.8})
         with self.fake("noise\n" + line + "\n"):
             self.assertEqual(vf.probe_upstream(fmt, "wmbusmeters"), "hydroclima")
 
     def test_null_or_partial_values_are_not_enough(self):
         fmt = vf.Format(HC)
-        for obj in ({"_": "telegram", "driver": "hydroclima", "current_consumption_hca": None},
-                    {"_": "telegram", "driver": "hydroclima", "current_consumption_hca": 51.7}):
+        for obj in ({"_": "telegram", "driver": "hydroclima", "allocation_hca": None},
+                    {"_": "telegram", "driver": "hydroclima", "allocation_hca": 51.7}):
             with self.fake(json.dumps(obj) + "\n"):
                 self.assertEqual(vf.probe_upstream(fmt, "wmbusmeters"), "")
 
