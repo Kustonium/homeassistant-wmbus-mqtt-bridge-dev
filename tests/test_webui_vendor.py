@@ -84,8 +84,8 @@ class VendorInWebUI(unittest.TestCase):
         ok, fields, err = webui.driver_fields("vendor_bmeters_hydroclima_v34")
         self.assertTrue(ok, err)
         names = [f["name"] for f in fields]
-        self.assertIn("current_consumption_hca", names)
-        self.assertIn("consumption_end_of_month_10_hca", names)  # short-frame history too
+        self.assertIn("allocation_hca", names)
+        self.assertIn("previous_month_10_hca", names)  # short-frame history too
         self.assertEqual(len(names), len(set(names)))
         self.assertFalse(webui.driver_fields("vendor_no_such_format")[0])
 
