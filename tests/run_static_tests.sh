@@ -63,3 +63,4 @@ bash tests/test_vendor_stage_wiring.sh
 python3 -m unittest tests/test_webui_vendor.py -v
 python3 -m unittest tests/test_primary_value_hca.py -v
 python3 -m unittest tests/test_webui_drivers.py -v
+python3 -m unittest tests/test_ask_author_unknown_meter.py -v
