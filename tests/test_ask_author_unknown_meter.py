@@ -71,6 +71,17 @@ class AskAuthor(unittest.TestCase):
         self.assertTrue((ROOT / "docs" / "UNKNOWN_METER.md").is_file())
         self.assertTrue((ROOT / "docs" / "UNKNOWN_METER.pl.md").is_file())
 
+    def test_no_wmbusmeters_issue_for_an_unknown_meter(self):
+        # The row tooltip and the window title say what the button does for a
+        # meter no driver knows, and the window offers no upstream issue.
+        js = APP_JS.read_text(encoding="utf-8")
+        self.assertIn('rm.undecoded ? ask : issue + ask', js)
+        self.assertIn('driver === "unknown" ? t("export_report_ask_row"', js)
+        self.assertIn('rm.undecoded ? t("export_report_unknown_title"', js)
+        i18n = (BIN / "i18n.py").read_text(encoding="utf-8")
+        for key in ("export_report_ask_row", "export_report_unknown_title", "export_report_unknown_hint"):
+            self.assertEqual(i18n.count(f'"{key}"'), 5, key)
+
 
 if __name__ == "__main__":
     unittest.main()

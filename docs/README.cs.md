@@ -242,8 +242,9 @@ telegram + výstup `wmbusmeters --analyze`). Telegram obsahuje sériové číslo
 měřiče. AES klíč není nikdy přiložen; pokud se pro analýzu použije uložený klíč,
 dešifrovaný výstup může obsahovat odečty měřiče.
 
-U měřiče, který zatím nezná žádný ovladač, dává okno hlášení na první místo
-**Zeptat se autora doplňku**: otevře vyplněný dotaz v Discussions doplňku
+U měřiče, který zatím nezná žádný ovladač, nabízí okno hlášení jen
+**Zeptat se autora doplňku** (bez issue pro wmbusmeters: bez hodnot z displeje
+tam zatím nepomůže): otevře vyplněný dotaz v Discussions doplňku
 (kategorie *Nowe liczniki / Unknown meters*). Co sbírat a jak vyzkoušet nový
 ovladač (anglicky): [A meter wmbusmeters cannot decode yet](UNKNOWN_METER.md).
 
