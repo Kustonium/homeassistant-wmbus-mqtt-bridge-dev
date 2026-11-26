@@ -2738,7 +2738,7 @@
                             <button class="btn btn-more" data-action="candidate-more" data-id="${escapeHtml(id)}" title="${escapeHtml(t("more_actions", "More actions"))}" aria-expanded="${state.expandedActions.has(id) ? "true" : "false"}">⋯</button>
                             ${state.expandedActions.has(id) ? `
                             <button class="btn" data-action="ignore" data-id="${escapeHtml(id)}">${escapeHtml(t("ignore", "Ignore"))}</button>
-                            <button class="btn" data-action="export-report" data-id="${escapeHtml(id)}" title="${escapeHtml(t("export_report_title", "wmbusmeters issue report"))}">${escapeHtml(t("export_report_btn", "Report…"))}</button>
+                            <button class="btn" data-action="export-report" data-id="${escapeHtml(id)}" title="${escapeHtml(driver === "unknown" ? t("export_report_ask_row", "Ask the add-on author about this meter") : t("export_report_title", "wmbusmeters issue report"))}">${escapeHtml(t("export_report_btn", "Report…"))}</button>
                             ${row.preview_active === "true" ? `<button class="btn" data-action="cancel-preview" data-id="${escapeHtml(id)}">${escapeHtml(t("cancel_preview", "Cancel preview"))}</button>` : ""}` : ""}
                           </div></td>`
                         : ""
@@ -4647,14 +4647,14 @@
       <div class="modal-backdrop">
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="export-report-title">
           <div class="modal-head">
-            <h2 id="export-report-title">${escapeHtml(t("export_report_title", "wmbusmeters issue report"))} — ${escapeHtml(rm.id || "")}</h2>
+            <h2 id="export-report-title">${escapeHtml(rm.undecoded ? t("export_report_unknown_title", "Question about an unknown meter") : t("export_report_title", "wmbusmeters issue report"))} —${escapeHtml(rm.id || "")}</h2>
           </div>
           <div class="modal-body">
             <p style="font-size:11px;color:#f3c84b;margin:0 0 8px;">⚠️ ${escapeHtml(rm.anon
               ? t("export_report_privacy_anon", "The meter number and common serial/fabrication fields are masked. Review the report before sharing it; the AES key is never included.")
               : t("export_report_privacy", "The telegram contains your meter's serial number. The AES key is never included."))}</p>
             ${rm.keyUsed ? `<p style="font-size:11px;color:#f3c84b;margin:0 0 8px;">🔓 ${escapeHtml(t("export_report_key_used", "The analysis ran with your configured AES key — if the telegram is encrypted, the report shows meter readings; the key itself is never included."))}</p>` : ""}
-            ${rm.undecoded && rm.report ? `<p style="font-size:12px;color:#9eafba;margin:0 0 8px;">ℹ️ ${escapeHtml(t("export_report_unknown_hint", "No driver knows this meter yet. That is not a bug: ask the add-on author first. A wmbusmeters issue helps once display readings are known."))}</p>` : ""}
+            ${rm.undecoded && rm.report ? `<p style="font-size:12px;color:#9eafba;margin:0 0 8px;">ℹ️ ${escapeHtml(t("export_report_unknown_hint", "No driver knows this meter yet. That is not a bug: ask the add-on author."))}</p>` : ""}
             ${anonToggle}
             ${body}
           </div>
@@ -4663,8 +4663,11 @@
             ${rm.report ? (() => {
               const issue = `<a class="btn" href="https://github.com/wmbusmeters/wmbusmeters/issues/new" target="_blank" rel="noopener noreferrer">${escapeHtml(t("export_report_open_issue", "Open a new wmbusmeters issue"))}</a>`;
               const ask = `<button class="btn" type="button" data-action="ask-author-report" title="${escapeHtml(t("export_report_ask_hint", "Opens a new question in the add-on's GitHub Discussions with this report filled in. You review it and post it from your own account."))}">${escapeHtml(t("export_report_ask", "Ask the add-on author"))}</button>`;
-              // A meter no driver knows: the question to the author comes first.
-              return `${rm.undecoded ? ask + issue : issue + ask}
+              // A meter no driver knows: only the question to the author. An
+              // upstream issue about a frame nobody can read, without display
+              // readings, is noise for wmbusmeters; it comes at the end, with a
+              // driver and its tests.
+              return `${rm.undecoded ? ask : issue + ask}
               <button class="btn primary" type="button" data-action="copy-report">${escapeHtml(t("copy", "Copy"))}</button>`;
             })() : ""}
           </div>
