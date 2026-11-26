@@ -1,3 +1,8 @@
+## 1.6.28-dev.537
+
+### Added
+- ask the add-on author about a meter no driver knows (f6450b0)
+
 ## 1.6.28-dev
 
 <!-- PROMOTE-CHANGELOG-REQUIRED: replace this placeholder with release notes before promoting. -->
